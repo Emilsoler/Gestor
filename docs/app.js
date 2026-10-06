@@ -6,7 +6,7 @@ import {
   crearPlantilla, guardarPlantilla, borrarPlantilla,
 } from './datos.js';
 
-const VERSION = '1.0';
+const VERSION = '1.1';
 
 const TAGS = [
   { k: 'En trámite', c: '' }, { k: 'Embargo de sueldo', c: 't-emb' }, { k: 'Secuestro / subasta', c: 't-sec' },
@@ -397,7 +397,7 @@ function renderDrawer(entra = false) {
 
   ${S.isNew ? '' : `<div class="actions"><button class="btn danger" data-act="del">Eliminar causa</button></div>`}
   ${S.confirmDel ? `<div class="confirm"><span>¿Eliminar definitivamente ${esc(c.demandado)}? Si terminó, mejor pasala a “Archivada”.</span><button class="btn small danger" data-act="delyes">Sí, eliminar</button><button class="btn small" data-act="delno">Cancelar</button></div>` : ''}
-  <div class="ppie"><button class="btn primary" data-act="save">${S.isNew ? 'Crear causa' : 'Guardar cambios'}</button><button class="btn" data-act="close">Cancelar</button></div>
+  <div class="ppie"><button class="btn primary" data-act="save">${S.isNew ? 'Crear causa' : 'Guardar cambios'}</button><button class="btn" data-act="close">Cancelar</button>${S.isNew ? '' : '<button class="btn" data-act="claude" aria-label="Consultar a Claude sobre esta causa">Claude</button>'}</div>
   </aside>`;
 }
 
@@ -633,6 +633,7 @@ document.addEventListener('click', async (e) => {
   const a = e.target.closest('[data-act]'); if (!a) return;
   const act = a.dataset.act, c = S.open;
   if (act === 'close') { closeDrawer(); return; }
+  if (act === 'claude') { hablarConClaude(S.open); return; }
   if (!c) return;
   if (act === 'choque-ver') { const actual = D.causas.find((x) => x.expte === c.expte); if (!actual) { closeDrawer(); return; } S.open = copia(actual); S.choque = null; S.confirmDel = false; renderDrawer(); return; }
   readForm();
@@ -679,6 +680,15 @@ $('#vLista').onclick = verVista('lista'); $('#vAcuerdos').onclick = verVista('ac
 $('#btnNew').onclick = $('#fabNew').onclick = () => openCausa(null);
 $('#btnTpl').onclick = abrirPlantillas;
 $('#btnExport').onclick = exportar;
+// Claude no vive dentro de la app: se abre una conversación nueva con la causa ya nombrada.
+// Los cambios los hace Claude con el conector de la base y la app los muestra en vivo.
+function hablarConClaude(c) {
+  const texto = c?.expte
+    ? `Sobre el gestor de juicios, causa ${c.expte} (${c.actor} c/ ${c.demandado}): `
+    : 'Sobre el gestor de juicios: ';
+  window.open('https://claude.ai/new?q=' + encodeURIComponent(texto), '_blank', 'noopener');
+}
+$('#btnChat').onclick = () => hablarConClaude(null);
 $('#btnCuenta').onclick = () => { S.menu = !S.menu; renderMenu(); };
 $('#btnFiltros').onclick = (e) => { const abierto = $('#toolbar').classList.toggle('abierto'); e.currentTarget.setAttribute('aria-expanded', abierto); };
 movil.addEventListener('change', () => render());

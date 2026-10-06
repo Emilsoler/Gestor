@@ -125,6 +125,7 @@ aplicarla con `apply_migration` y pasar `get_advisors` (seguridad).
 - **Política de seguridad** (meta CSP en `index.html`): solo scripts y estilos propios, sin
   nada en línea. Los estilos van en `styles.css` (no usar `style="…"`), y todo dato que se
   pinta pasa por `esc()`.
+- **Botón "Claude"**: no hay chat dentro de la app (haría falta una clave de API paga). El botón del encabezado y el de la ficha abren `claude.ai/new` con la causa nombrada; los cambios los hace Claude con el conector de Supabase y la app los muestra en vivo.
 - **Terceros**: `docs/vendor/supabase.js` y las tipografías se copian desde `dev/node_modules`
   con `node dev/vendor.mjs`; no se cargan de ningún CDN.
 

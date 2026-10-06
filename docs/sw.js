@@ -6,7 +6,7 @@
 // - Todo lo que no es de este sitio (la base de datos) va directo a la red: acá no se guardan datos.
 //
 // Al cambiar la lista de archivos o una tipografía/ícono, subir VERSION para renovar la copia.
-const VERSION = 'gestor-v1';
+const VERSION = 'gestor-v2';
 const ESPERA_MS = 4000;
 
 const NUCLEO = [
