@@ -102,6 +102,10 @@ function renderIngreso() {
     c.innerHTML = `<div><b>No se pudo conectar con la base de datos</b>
       <p class="hint m0">Revisá tu conexión a internet. Si hace más de una semana que el gestor no se usa, la base puede estar en pausa: pedile a Claude que la reactive.</p></div>
     <div class="actions"><button class="btn primary" data-ing="reintentar">Reintentar</button></div>`;
+  } else if (S.pantalla === 'en-marco') {
+    c.innerHTML = `<div><b>El gestor no se abre dentro de otra página</b>
+      <p class="hint m0">Por seguridad solo funciona en su propia pestaña o instalado como app.</p></div>
+    <div class="actions"><a class="btn primary" href="./" target="_top" rel="noopener">Abrir el gestor</a></div>`;
   } else if (S.pantalla === 'sin-configurar') {
     c.innerHTML = `<div><b>Falta conectar la app con su base de datos</b>
       <p class="hint m0">Todavía no se cargaron la dirección y la clave pública del proyecto en config.js.</p></div>`;
@@ -292,7 +296,10 @@ function render() {
 
 function applyDone(c) {
   const t = (c.proxima || '').trim(); if (!t) return false;
-  c.historial = [...(c.historial || []), { fecha: c.vence || iso(today()), texto: t, hecha: true }];
+  // Queda con la fecha en que vencía; si todavía no venció (se hizo antes), con la de hoy: un
+  // movimiento con fecha futura taparía la causa en "sin movimiento" y en "última acción".
+  const hoy = iso(today()), fecha = c.vence && c.vence < hoy ? c.vence : hoy;
+  c.historial = [...(c.historial || []), { fecha, texto: t, hecha: true }];
   Object.assign(c, ultimaDe(c.historial)); c.proxima = ''; c.vence = ''; return true;
 }
 
@@ -374,7 +381,7 @@ function renderDrawer(entra = false) {
   <div class="sec"><h4>Próxima acción</h4><div class="grid2">
    <label class="f ancho">Qué hay que hacer<input id="c_proxima" value="${esc(c.proxima)}" placeholder="Ej.: Pedir embargo de la garantía"></label>
    <label class="f">Vence / recordar el<input type="date" id="c_vence" value="${esc(c.vence)}"></label></div>
-   ${S.isNew ? '' : `<div><button class="btn small donebtn" data-act="done">✓ Marcar como realizada</button> <span class="hint">Pasa a los movimientos con su fecha de vencimiento (o la de hoy si no tiene) y se guarda.</span></div>`}</div>
+   ${S.isNew ? '' : `<div><button class="btn small donebtn" data-act="done">✓ Marcar como realizada</button> <span class="hint">Pasa a los movimientos con su fecha de vencimiento (o la de hoy, si no tiene o todavía no venció) y se guarda.</span></div>`}</div>
 
   <div class="sec"><h4>Movimientos</h4>
    <div class="addrow"><input type="date" id="h_fecha" value="${iso(today())}" aria-label="Fecha"><input id="h_texto" placeholder="Ej.: Dimos cédula a Franco" aria-label="Acción realizada"><button class="btn small primary" data-act="histadd">Registrar</button></div>

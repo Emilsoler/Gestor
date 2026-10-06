@@ -33,7 +33,7 @@ select gestor.movimiento('14000001', 'Se libró oficio');                  -- ho
 select gestor.movimiento('14000001', 'Decreto', '2026-10-02', 'A despacho'); -- con fecha y estado
 select gestor.presentacion('14000001', 'Solicita aprobación de liquidación'); -- presentación en el SAC: queda "A despacho"
 select gestor.proxima('14000001', 'Designar martillero', '2026-10-15');   -- próxima acción y vencimiento ('' la borra)
-select gestor.realizada('14000001');                                      -- la próxima acción pasa a movimientos
+select gestor.realizada('14000001');                                      -- la próxima acción pasa a movimientos, con la fecha en que vencía (o la de hoy si aún no venció)
 ```
 
 Para cualquier otro cambio, SQL directo dentro de una transacción que diga quién lo hace:
@@ -61,6 +61,9 @@ Después de escribir, leer la fila y contar qué quedó. La app abierta lo muest
   select id, momento, autor, tabla, clave, operacion from gestor.cambios order by id desc limit 20;
   select gestor.deshacer(123);   -- vuelve ese registro a como estaba antes del cambio 123
   ```
+
+  Restaura el registro entero. Si después del cambio 123 hubo otros sobre el mismo registro,
+  no hace nada y avisa; mirarlos y, si de verdad corresponde pisarlos, `gestor.deshacer(123, true)`.
 
 - **Usuarios**: la app no tiene registro público.
 
@@ -91,10 +94,21 @@ aplicarla con `apply_migration` y pasar `get_advisors` (seguridad).
 
 ## Cómo está armada
 
-- **Acceso**: tener cuenta no alcanza. Las políticas de `causas`, `acuerdos` y `plantillas`
-  exigen estar en `gestor.miembros` (`public.es_miembro()`). El esquema `gestor` no se expone
-  por la API. La clave de `config.js` es la pública; la secreta no se usa en ningún lado.
-- **Concurrencia**: cada fila tiene `rev`, que un trigger sube en cada cambio real. La app
+- **Acceso**: tener cuenta no alcanza; hay que estar en `gestor.miembros`. Lo exigen tres
+  barreras independientes, y ninguna migración debe aflojar una contando con las otras:
+  1. `public.gestor_puerta()`, que PostgREST ejecuta antes de cada pedido
+     (`pgrst.db_pre_request` en el rol `authenticator`) y rechaza a quien no es miembro.
+  2. Las políticas de filas de `causas`, `acuerdos` y `plantillas` (`public.es_miembro()`).
+  3. Las estadísticas del planificador desactivadas en todas las columnas de esas tablas,
+     para que los conteos estimados de la API no revelen contenido. Si una migración agrega
+     columnas, termina con `select gestor.sin_estadisticas();`.
+
+  El esquema `gestor` no se expone por la API y los roles de la API no tienen `USAGE` sobre
+  él: no dárselo nunca. La clave de `config.js` es la pública; la secreta no se usa en ningún
+  lado. En el proyecto de Supabase conviene además tener apagado el registro público
+  (Authentication → Sign In / Providers → "Allow new users to sign up"): la app no lo usa.
+- **Concurrencia**: cada fila tiene `rev`, que un trigger renueva en cada cambio real con un
+  número que no se repite nunca (secuencia `gestor.revisiones`). La app
   guarda con `where rev = <la que tenía>`; si no coincide, avisa y deja elegir. Por eso un
   cambio de Claude nunca se pisa en silencio, ni pisa lo que la persona está editando.
 - **Sincronización** (`docs/datos.js`): Realtime avisa los cambios y se relee; si no hay

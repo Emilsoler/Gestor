@@ -54,6 +54,7 @@ h1{font:600 26px/1.1 var(--f-display);margin:0;text-wrap:balance}
 .sub{color:var(--muted);margin-top:4px}
 .btn{border:1px solid var(--line);background:var(--surface);padding:7px 12px;border-radius:6px;cursor:pointer;white-space:nowrap}
 .btn:hover{border-color:var(--accent)}
+a.btn{display:inline-block;text-decoration:none;color:inherit}
 .btn.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:500}
 .btn.danger{color:var(--bad)}
 .btn.small{padding:4px 9px;font-size:13px}

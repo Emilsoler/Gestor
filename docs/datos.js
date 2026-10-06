@@ -11,10 +11,13 @@
 
 const cfg = window.GESTOR_CONFIG || {};
 
+/** La app no se usa dentro de un marco: otra página podría montarla ahí para inducir clics. */
+export const enMarco = window.top !== window.self;
+
 export const configurado =
   /^https?:\/\/\S+$/.test(cfg.url || '') && !!cfg.key && !/TU-PROYECTO|TU-CLAVE/.test(`${cfg.url}${cfg.key}`);
 
-export const sb = configurado
+export const sb = configurado && !enMarco
   ? window.supabase.createClient(cfg.url, cfg.key, {
       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: 'gestor.sesion' },
     })
@@ -56,6 +59,7 @@ function marcar(e, status) {
   if (status !== undefined && e.status === undefined) e.status = status;
   e.sinRed = pareceRed(e) || e.status === 0 || (e.status >= 500 && e.status < 600);
   e.sinSesion = !e.sinRed && (e.status === 401 || e.code === 'PGRST301' || /jwt/i.test(e.message || ''));
+  e.sinAcceso = e.code === '42501' && /cuenta no autorizada/.test(e.message || ''); // la puerta de la API (gestor_puerta)
   if (e.sinRed) ponerEnLinea(false);
   return e;
 }
@@ -77,7 +81,7 @@ export function mensaje(e, siSinRed = 'no se guardó') {
   switch (e.code) {
     case '23505': return 'Ya existe un registro con esa clave';
     case '23514': return 'Hay un dato con formato inválido';
-    case '42501': return 'Tu cuenta no tiene permiso para hacer esto';
+    case '42501': return e.sinAcceso ? 'Esta cuenta no está autorizada para usar el gestor' : 'Tu cuenta no tiene permiso para hacer esto';
     case 'invalid_credentials': return 'Email o contraseña incorrectos';
     case 'email_not_confirmed': return 'La cuenta todavía no está activada';
     case 'same_password': return 'La contraseña nueva tiene que ser distinta de la actual';
@@ -219,16 +223,12 @@ export function sincronizar(tablas) {
         return;
       }
       const cambio = await recargar(tablas);
-      if (!D.acceso.autorizado) { // le quitaron el acceso mientras usaba la app
-        cortar(); borrarCache();
-        D.causas = []; D.acuerdos = []; D.plantillas = []; D.cargado = false;
-        avisar('sesion', 'sin-acceso');
-        return;
-      }
+      if (!D.acceso.autorizado) { sinAcceso(); avisar('sesion', 'sin-acceso'); return; } // le quitaron el acceso mientras usaba la app
       avisar(cambio ? 'datos' : 'estado');
     } catch (e) {
       marcar(e);
-      if (e.sinSesion) { await cerrarLocal(); avisar('sesion', 'ingreso'); }
+      if (e.sinAcceso) { sinAcceso(); avisar('sesion', 'sin-acceso'); }
+      else if (e.sinSesion) { await cerrarLocal(); avisar('sesion', 'ingreso'); }
       else if (!e.sinRed) console.error('sincronizar:', e);
     } finally {
       enCurso = null;
@@ -310,20 +310,24 @@ async function trasIngreso() {
 
   try {
     D.acceso = await pedir(sb.rpc('mi_acceso'));
-    if (!D.acceso.autorizado) {
-      cortar(); borrarCache();
-      D.causas = []; D.acuerdos = []; D.plantillas = []; D.cargado = false;
-      return 'sin-acceso';
-    }
+    if (!D.acceso.autorizado) { sinAcceso(); return 'sin-acceso'; }
     if (D.acceso.clave_temporal) return 'clave-temporal';
     await recargar();
   } catch (e) {
+    if (e.sinAcceso) { sinAcceso(); return 'sin-acceso'; }
     if (e.sinSesion) { await cerrarLocal(); return 'ingreso'; }
     if (!e.sinRed) throw e;
     return D.cargado ? 'listo' : 'sin-red';
   }
   conectar();
   return 'listo';
+}
+
+/** La cuenta tiene sesión pero no está autorizada: no queda ningún dato en la app ni en el dispositivo. */
+function sinAcceso() {
+  cortar(); borrarCache();
+  D.acceso = { autorizado: false };
+  D.causas = []; D.acuerdos = []; D.plantillas = []; D.cargado = false; D.leido = null; D.deCache = false;
 }
 
 async function cerrarLocal() {
@@ -336,6 +340,7 @@ async function cerrarLocal() {
 
 /** Arranque de la app (una sola vez). Devuelve la pantalla inicial. */
 export async function iniciar() {
+  if (enMarco) return 'en-marco';
   if (!configurado) return 'sin-configurar';
   sb.auth.onAuthStateChange((evento, sesion) => setTimeout(() => alEventoDeSesion(evento, sesion), 0));
   return trasIngreso();
@@ -343,6 +348,7 @@ export async function iniciar() {
 
 /** Botón "Reintentar": rehace el ingreso completo y devuelve la pantalla que corresponde. */
 export async function reconectar() {
+  if (enMarco) return 'en-marco';
   if (!configurado) return 'sin-configurar';
   if (enCurso) await enCurso;
   return trasIngreso();

@@ -2,6 +2,7 @@
 // Requiere `dev/stack.sh up` y `node dev/serve.mjs` (la app en http://127.0.0.1:8080).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import http from 'node:http';
 import { chromium } from 'playwright';
 import { sql, servicio, limpiar, env } from './helpers.mjs';
 
@@ -120,8 +121,8 @@ test('nueva causa: validaciones, alta y autoría', async () => {
   await page.click('.panel .chip[data-t="Martillero"]');
   await page.click('.ppie [data-act=save]'); await toast(page, 'Causa creada'); await cerrado(page);
   assert.match(await fila(page, '2001').textContent(), /OMEGA OSCAR/);
-  assert.equal(sql(`select demandado || '|' || estado || '|' || array_to_string(etiquetas, ',') || '|' || proxima || '|' || vence || '|' || actualizado_por || '|' || rev from public.causas where expte='2001'`),
-    `OMEGA OSCAR|Iniciar|En trámite,Martillero|Notificar|${dia(10)}|Emi|1`);
+  assert.equal(sql(`select demandado || '|' || estado || '|' || array_to_string(etiquetas, ',') || '|' || proxima || '|' || vence || '|' || actualizado_por from public.causas where expte='2001'`),
+    `OMEGA OSCAR|Iniciar|En trámite,Martillero|Notificar|${dia(10)}|Emi`);
 });
 
 test('ficha: registrar movimientos actualiza la última acción', async () => {
@@ -143,6 +144,13 @@ test('acción realizada desde el listado: pasa a movimientos con su fecha de ven
   assert.equal(sql(`select proxima || '|' || coalesce(vence::text, '') || '|' || ultima || '|' || fecha || '|' || (historial -> -1 ->> 'hecha') from public.causas where expte='1001'`),
     `||Pedir embargo|${dia(-2)}|true`);
   await page.waitForFunction(() => !document.querySelector('#main tr[data-id="1001"] [data-done]'));
+});
+
+test('acción realizada antes de su vencimiento: queda con la fecha de hoy, no con una futura', async () => {
+  await fila(page, '1004').locator('[data-done]').click(); // vence dentro de 3 días
+  await toast(page, 'Acción realizada');
+  assert.equal(sql(`select ultima || '|' || fecha || '|' || (historial -> -1 ->> 'fecha') from public.causas where expte='1004'`),
+    `Enviar cédulas|${dia(0)}|${dia(0)}`);
 });
 
 test('liquidación: totales, faltante de embargo y guardado', async () => {
@@ -350,6 +358,19 @@ test('con tiempo real el cambio de Claude llega al instante; si se corta, sigue 
   sql(`select gestor.movimiento('1002', 'Aviso por sondeo', '${dia(1)}')`);
   await p.waitForFunction(() => /Aviso por sondeo/.test(document.querySelector('#main tr[data-id="1002"]')?.textContent || ''), null, { timeout: 12000 });
   await c.close();
+});
+
+test('dentro de un marco de otra página la app no arranca', async () => {
+  const { c, p } = await nuevoContexto({ nombre: 'marco' });
+  // Una página de otro origen (otro puerto) que intenta montar el gestor adentro.
+  const trampa = http.createServer((_, res) => res.writeHead(200, { 'content-type': 'text/html' }).end(`<iframe src="${BASE}" style="width:900px;height:600px"></iframe>`));
+  await new Promise((ok) => trampa.listen(8081, '127.0.0.1', ok));
+  try {
+    await p.goto('http://127.0.0.1:8081/');
+    const marco = p.frameLocator('iframe');
+    await marco.locator('#ingresoCuerpo').getByText('no se abre dentro de otra página').waitFor({ timeout: 10000 });
+    assert.equal(await marco.locator('#fIngreso').count(), 0);
+  } finally { trampa.close(); await c.close(); }
 });
 
 test('una cuenta sin autorización no entra', async () => {

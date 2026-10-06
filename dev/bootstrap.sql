@@ -11,8 +11,12 @@ grant anon, authenticated, service_role to authenticator;
 create role supabase_auth_admin login noinherit createrole password 'postgres';
 create role dashboard_user nologin;
 
--- En Supabase, postgres puede actuar como los roles de la API.
+-- En Supabase, postgres puede actuar como los roles de la API y ajustar la configuración
+-- del rol con el que entra PostgREST (alter role authenticator set …).
 grant anon, authenticated, service_role to postgres with admin option;
+grant authenticator to postgres with admin option;
+-- (en la plataforma lo permite la extensión supautils para los parámetros pgrst.*)
+grant set on parameter pgrst.db_pre_request to postgres;
 
 alter database postgres owner to postgres;
 alter schema public owner to postgres;

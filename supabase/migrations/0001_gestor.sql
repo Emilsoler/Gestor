@@ -87,21 +87,23 @@ alter table gestor.cambios enable row level security;
 comment on table gestor.cambios is
   'Historial de todo cambio en causas, acuerdos y plantillas, con el estado anterior y el posterior. Sirve para ver quién cambió qué y para deshacer.';
 
+-- Las revisiones salen de un contador único para toda la base: un número nunca se repite,
+-- ni siquiera si una causa se elimina y se vuelve a crear con el mismo expediente. Así, quien
+-- tenía abierta la versión anterior no puede pisar la nueva creyendo que es la misma.
+create sequence gestor.revisiones;
+
 -- Antes de guardar: número de revisión, fecha y autor.
 create function gestor.tg_sello() returns trigger
 language plpgsql security definer set search_path = ''
 as $$
 begin
-  if tg_op = 'UPDATE' then
-    if (to_jsonb(new) - 'rev' - 'actualizado' - 'actualizado_por')
-     = (to_jsonb(old) - 'rev' - 'actualizado' - 'actualizado_por') then
-      new.rev := old.rev; new.actualizado := old.actualizado; new.actualizado_por := old.actualizado_por;
-      return new;                       -- guardar sin cambios no cuenta como modificación
-    end if;
-    new.rev := old.rev + 1;
-  else
-    new.rev := 1;
+  if tg_op = 'UPDATE'
+     and (to_jsonb(new) - 'rev' - 'actualizado' - 'actualizado_por')
+       = (to_jsonb(old) - 'rev' - 'actualizado' - 'actualizado_por') then
+    new.rev := old.rev; new.actualizado := old.actualizado; new.actualizado_por := old.actualizado_por;
+    return new;                         -- guardar sin cambios no cuenta como modificación
   end if;
+  new.rev := nextval('gestor.revisiones');
   new.actualizado := now();
   new.actualizado_por := gestor.autor();
   return new;
@@ -146,7 +148,7 @@ create table public.causas (
   notas          text not null default '',
   historial      jsonb not null default '[]'::jsonb check (jsonb_typeof(historial) = 'array'),
   liquidacion    jsonb check (liquidacion is null or jsonb_typeof(liquidacion) = 'object'),
-  rev            integer not null default 1,
+  rev            bigint not null default 0,
   actualizado    timestamptz not null default now(),
   actualizado_por text not null default ''
 );
@@ -160,7 +162,7 @@ create table public.acuerdos (
   notas          text not null default '',
   cuotas         jsonb not null default '[]'::jsonb check (jsonb_typeof(cuotas) = 'array'),
   creado         date not null default (now() at time zone 'America/Argentina/Cordoba')::date,
-  rev            integer not null default 1,
+  rev            bigint not null default 0,
   actualizado    timestamptz not null default now(),
   actualizado_por text not null default ''
 );
@@ -171,7 +173,7 @@ create table public.plantillas (
   id             text primary key default gen_random_uuid()::text,
   titulo         text not null,
   cuerpo         text not null,
-  rev            integer not null default 1,
+  rev            bigint not null default 0,
   actualizado    timestamptz not null default now(),
   actualizado_por text not null default ''
 );
@@ -184,6 +186,31 @@ create trigger sello before insert or update on public.plantillas for each row e
 create trigger auditar after insert or update or delete on public.causas     for each row execute function gestor.tg_auditar('expte');
 create trigger auditar after insert or update or delete on public.acuerdos   for each row execute function gestor.tg_auditar('id');
 create trigger auditar after insert or update or delete on public.plantillas for each row execute function gestor.tg_auditar('id');
+
+-- Postgres guarda estadísticas de cada columna (valores más frecuentes, histogramas) para
+-- planificar consultas, y la API deja pedir el conteo "estimado" de una consulta, que sale de
+-- esas estadísticas sin pasar por las políticas de acceso. Con eso, alguien con una cuenta
+-- pero sin autorización podría ir adivinando contenido. Estas tablas son chicas y no las
+-- necesitan: se desactivan en todas sus columnas, y las estimaciones dejan de depender de los datos.
+create function gestor.sin_estadisticas() returns void
+language plpgsql set search_path = ''
+as $$
+declare r record;
+begin
+  for r in
+    select c.relname, a.attname
+      from pg_catalog.pg_attribute a
+      join pg_catalog.pg_class c on c.oid = a.attrelid
+      join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+     where n.nspname = 'public' and c.relname in ('causas', 'acuerdos', 'plantillas')
+       and c.relkind = 'r' and a.attnum > 0 and not a.attisdropped
+  loop
+    execute format('alter table public.%I alter column %I set statistics 0', r.relname, r.attname);
+  end loop;
+end $$;
+comment on function gestor.sin_estadisticas() is
+  'Desactiva las estadísticas del planificador en todas las columnas de causas, acuerdos y plantillas. Volver a llamarla en cada migración que agregue columnas.';
+select gestor.sin_estadisticas();
 
 -- ───────────────────────── Permisos ─────────────────────────
 -- Solo usuarios con sesión iniciada Y autorizados en gestor.miembros.
@@ -199,7 +226,9 @@ create policy solo_miembros on public.acuerdos for all to authenticated
 create policy solo_miembros on public.plantillas for all to authenticated
   using ((select public.es_miembro())) with check ((select public.es_miembro()));
 
+-- Los permisos se dan uno por uno (los proyectos nuevos de Supabase ya no los dan solos).
 revoke all on public.causas, public.acuerdos, public.plantillas from public, anon, authenticated;
+grant usage on schema public to authenticated, service_role;
 grant select, insert, update, delete on public.causas, public.acuerdos, public.plantillas to authenticated;
 grant all on public.causas, public.acuerdos, public.plantillas to service_role;
 
@@ -293,8 +322,11 @@ begin
   select * into c from public.causas where expte = p_expte for update;
   if not found then raise exception 'No existe la causa con expediente %', p_expte; end if;
   if btrim(c.proxima) = '' then raise exception 'La causa % no tiene próxima acción anotada', p_expte; end if;
+  -- Queda con la fecha en que vencía; si todavía no venció (se hizo antes), con la de hoy:
+  -- un movimiento con fecha futura taparía la causa en "sin movimiento" y en "última acción".
   h := c.historial || jsonb_build_array(jsonb_build_object(
-         'fecha', to_char(coalesce(c.vence, gestor.hoy()), 'YYYY-MM-DD'), 'texto', btrim(c.proxima), 'hecha', true));
+         'fecha', to_char(least(coalesce(c.vence, gestor.hoy()), gestor.hoy()), 'YYYY-MM-DD'),
+         'texto', btrim(c.proxima), 'hecha', true));
   select * into u from gestor.ultima_de(h);
   update public.causas set historial = h, ultima = u.ultima, fecha = u.fecha, proxima = '', vence = null
    where expte = p_expte returning * into c;
@@ -412,15 +444,21 @@ create view gestor.usuarios with (security_invoker = true) as
 
 -- Vuelve un registro a como estaba ANTES del cambio indicado (id de gestor.cambios):
 -- si fue una modificación o una baja, restaura el estado anterior; si fue un alta, la elimina.
--- Ojo: restaura el registro entero, así que también pisa lo que se haya cambiado después.
-create function gestor.deshacer(p_cambio bigint, p_autor text default 'Claude') returns text
+-- Restaura el registro entero. Si después de ese cambio hubo otros sobre el mismo registro,
+-- también los pisaría: en ese caso no hace nada salvo que se pida con p_forzar => true.
+create function gestor.deshacer(p_cambio bigint, p_forzar boolean default false, p_autor text default 'Claude') returns text
 language plpgsql set search_path = ''
 as $$
-declare c gestor.cambios;
+declare c gestor.cambios; posteriores integer;
 begin
   perform set_config('gestor.autor', p_autor, true);
   select * into c from gestor.cambios where id = p_cambio;
   if not found then raise exception 'No existe el cambio %', p_cambio; end if;
+  select count(*) into posteriores from gestor.cambios where tabla = c.tabla and clave = c.clave and id > c.id;
+  if posteriores > 0 and not p_forzar then
+    raise exception 'Después del cambio % hubo % cambio(s) más en % %. Deshacerlo también los pisa: revisalos en gestor.cambios y, si corresponde, repetí con p_forzar => true.',
+      p_cambio, posteriores, c.tabla, c.clave;
+  end if;
 
   if c.operacion = 'alta' then
     execute format('delete from public.%I where %I = $1', c.tabla,
@@ -451,11 +489,13 @@ begin
   return format('%s %s volvió a como estaba antes del cambio %s (%s, %s)', c.tabla, c.clave, c.id, c.autor,
                 to_char(c.momento at time zone 'America/Argentina/Cordoba', 'DD/MM HH24:MI'));
 end $$;
-comment on function gestor.deshacer(bigint, text) is
-  'Deshace un cambio registrado en gestor.cambios: restaura el registro entero al estado anterior a ese cambio.';
+comment on function gestor.deshacer(bigint, boolean, text) is
+  'Deshace un cambio registrado en gestor.cambios: restaura el registro entero al estado anterior a ese cambio. Si hubo cambios posteriores sobre el mismo registro exige p_forzar => true.';
 
--- Nada del esquema privado es ejecutable ni legible por los roles de la API.
+-- Nada del esquema privado es alcanzable por los roles de la API. La barrera que vale es que
+-- no tienen USAGE sobre el esquema (ver arriba): NO darles nunca `grant usage on schema gestor`.
+-- Las funciones nuevas de Postgres nacen ejecutables por PUBLIC, así que además se les quita
+-- acá a las que existen; una migración que agregue funciones a `gestor` tiene que repetir estas líneas.
 revoke all on all tables in schema gestor from public, anon, authenticated;
+revoke all on all sequences in schema gestor from public, anon, authenticated;
 revoke all on all functions in schema gestor from public, anon, authenticated;
-alter default privileges in schema gestor revoke all on tables from public, anon, authenticated;
-alter default privileges in schema gestor revoke all on functions from public, anon, authenticated;

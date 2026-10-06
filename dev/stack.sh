@@ -90,7 +90,7 @@ EOF
       sql_admin -c "create table public._migraciones_locales(nombre text primary key); revoke all on public._migraciones_locales from anon, authenticated;"
     fi
     if ! sql_admin -Atc "select 1 from public._migraciones_locales where nombre='$name'" | grep -q 1; then
-      echo "aplicando $name"; sql_pg -f "$f"; sql_admin -c "insert into public._migraciones_locales values ('$name')"
+      echo "aplicando $name"; sql_pg -1 -f "$f"; sql_admin -c "insert into public._migraciones_locales values ('$name')"   # -1: todo o nada, como apply_migration
     fi
   done
 
