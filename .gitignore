@@ -1,0 +1,9 @@
+node_modules/
+*.log
+.DS_Store
+
+# Datos de clientes: exportaciones y lotes de traspaso no van nunca al repositorio.
+/datos/
+/export/
+/traspaso/
+*.csv

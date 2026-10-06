@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Juicios · Estudio Soler</title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="description" content="Gestor de juicios del Estudio Soler">
+<!-- Solo se cargan archivos de la propia app; lo único externo es la base de datos (Supabase). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="theme-color" content="#f5f6f4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141917" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Juicios">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="vArranque" class="arranque">Abriendo el gestor…</div>
+
+<main id="vIngreso" class="portada" hidden>
+  <section class="caratula" aria-labelledby="tIngreso">
+    <div>
+      <h1 id="tIngreso">Juicios</h1>
+      <div class="estudio">Estudio Soler</div>
+    </div>
+    <div id="ingresoCuerpo" class="caratula-cuerpo"></div>
+  </section>
+</main>
+
+<div id="vApp" hidden>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>Juicios</h1>
+        <div class="sub" id="sub">Cargando causas…</div>
+      </div>
+      <div class="actions">
+        <button class="btn solo-escritorio" id="btnTpl">Plantillas</button>
+        <button class="btn solo-escritorio" id="btnExport">Exportar a Excel (CSV)</button>
+        <button class="btn primary solo-escritorio" id="btnNew">+ Nueva causa</button>
+        <button class="cuenta" id="btnCuenta" aria-haspopup="menu" aria-expanded="false" aria-label="Cuenta y opciones"></button>
+      </div>
+    </header>
+
+    <div id="franja"></div>
+    <div id="avisos"></div>
+    <div class="stats" id="stats"></div>
+
+    <div class="toolbar" id="toolbar">
+      <input type="search" id="q" placeholder="Buscar por demandado, actor, expediente o acción…" aria-label="Buscar">
+      <button class="btn solo-movil" id="btnFiltros" aria-expanded="false" aria-controls="filtros">Filtros</button>
+      <div class="filtros" id="filtros">
+      <select id="fEstado" aria-label="Estado"></select>
+      <select id="fNom" aria-label="Nominación"></select>
+      <select id="fOrden" aria-label="Orden del listado">
+        <option value="dias:-1">Más tiempo sin movimiento</option>
+        <option value="dias:1">Movimiento más reciente</option>
+        <option value="vence:1">Vencimiento más próximo</option>
+        <option value="demandado:1">Demandado (A–Z)</option>
+        <option value="estado:1">Estado</option>
+        <option value="" hidden>Otro orden</option>
+      </select>
+      </div>
+      <div class="seg" role="group" aria-label="Vista">
+        <button id="vLista" aria-pressed="true">Lista</button>
+        <button id="vTablero" aria-pressed="false">Tablero</button>
+        <button id="vAcuerdos" aria-pressed="false">Acuerdos</button>
+      </div>
+    </div>
+    <div class="chips" id="chips"></div>
+
+    <main id="main"></main>
+  </div>
+  <button class="btn primary fab" id="fabNew">+ Nueva causa</button>
+</div>
+
+<div id="drawer" hidden></div>
+<div id="menu" hidden></div>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<noscript>El gestor necesita JavaScript para funcionar.</noscript>
+<script src="vendor/supabase.js"></script>
+<script src="config.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>

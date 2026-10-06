@@ -1,0 +1,22 @@
+{
+  "name": "gestor-dev",
+  "private": true,
+  "type": "module",
+  "description": "Herramientas de prueba del gestor (no se publican con la app)",
+  "scripts": {
+    "stack": "./stack.sh up",
+    "test:db": "node --test tests/db.test.mjs",
+    "test:app": "node --test tests/app.test.mjs",
+    "vendor": "node vendor.mjs"
+  },
+  "devDependencies": {
+    "@fontsource-variable/source-serif-4": "^5.3.0",
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/ibm-plex-sans": "^5.3.0",
+    "@supabase/supabase-js": "2.117.2",
+    "pg": "^8.23.1",
+    "playwright": "^1.56.0",
+    "sharp": "^0.34.5",
+    "ws": "^8.22.0"
+  }
+}
