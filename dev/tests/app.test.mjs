@@ -112,7 +112,9 @@ test('la sesión se mantiene al recargar', async () => {
 
 test('nueva causa: validaciones, alta y autoría', async () => {
   await page.click('#btnNew'); await page.waitForSelector('.panel');
-  await page.click('.ppie [data-act=save]'); await toast(page, 'Falta el demandado');
+  await page.fill('#c_actor', ''); // sin actor ni demandado no hay con qué nombrarla
+  await page.click('.ppie [data-act=save]'); await toast(page, 'Falta el actor o el demandado');
+  await page.fill('#c_actor', 'AMB');
   await page.fill('#c_demandado', 'OMEGA OSCAR'); await page.fill('#c_expte', '12-A');
   await page.click('.ppie [data-act=save]'); await toast(page, 'numérico');
   await page.fill('#c_expte', '1001');
@@ -124,6 +126,49 @@ test('nueva causa: validaciones, alta y autoría', async () => {
   assert.match(await fila(page, '2001').textContent(), /OMEGA OSCAR/);
   assert.equal(sql(`select demandado || '|' || estado || '|' || array_to_string(etiquetas, ',') || '|' || proxima || '|' || vence || '|' || actualizado_por from public.causas where expte='2001'`),
     `OMEGA OSCAR|Iniciar|En trámite,Martillero|Notificar|${dia(10)}|Emi`);
+});
+
+test('causa sin demandado: se guarda, se nombra por el actor y se puede editar', async () => {
+  await page.click('#btnNew'); await page.waitForSelector('.panel');
+  await page.fill('#c_actor', 'PEREZ PABLO'); await page.fill('#c_tipo', 'DECLARATORIA DE HEREDEROS');
+  await page.fill('#c_expte', '3001'); await page.fill('#c_nom', '1'); await page.fill('#c_oficina', 'SECRETARIA 2');
+  await page.click('.ppie [data-act=save]'); await toast(page, 'Causa creada'); await cerrado(page);
+  assert.equal(sql(`select actor || '|' || demandado || '|' || tipo from public.causas where expte='3001'`), 'PEREZ PABLO||DECLARATORIA DE HEREDEROS');
+  // en el listado el nombre es el actor, sin "c/", y ordena entre los demandados
+  assert.equal(await fila(page, '3001').locator('td.car b').textContent(), 'PEREZ PABLO');
+  assert.equal(await fila(page, '3001').locator('td.car small').textContent(), 'DECLARATORIA DE HEREDEROS');
+  await page.click('th[data-k="demandado"]');
+  assert.deepEqual((await page.locator('#main tbody td.car b').allTextContents()).slice(-2), ['OMEGA OSCAR', 'PEREZ PABLO']);
+  await page.click('th[data-k="dias"]'); await page.click('th[data-k="dias"]');
+  // el tablero y la lista de causas de los acuerdos la nombran igual
+  await page.click('#vTablero');
+  assert.equal(await page.locator('#main .card[data-id="3001"] b').first().textContent(), 'PEREZ PABLO');
+  await page.click('#vAcuerdos');
+  assert.equal(await page.locator('#na_expte option[value="3001"]').textContent(), 'PEREZ PABLO · 3001');
+  await page.click('#vLista');
+  // en el celular, la tarjeta también
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForSelector('#main .filas');
+  assert.equal(await page.locator('#main .fila[data-id="3001"] .fila-top b').textContent(), 'PEREZ PABLO');
+  await page.setViewportSize({ width: 1280, height: 860 });
+  await page.waitForSelector('#main .tablebox');
+  // la ficha: carátula sin "c/", también en las plantillas y al consultar a Claude; y guarda los cambios
+  await abrir(page, '3001');
+  assert.equal(await page.textContent('.panel h2'), 'PEREZ PABLO – DECLARATORIA DE HEREDEROS');
+  await page.selectOption('#tp_sel', 'aprobacion');
+  assert.equal(await page.inputValue('#tp_cue'), 'En autos PEREZ PABLO – DECLARATORIA DE HEREDEROS, expediente 3001 de la 1° nominación.');
+  await page.evaluate(() => { window.open = (u) => { window.__abierta = u; }; });
+  await page.click('.ppie [data-act=claude]');
+  assert.equal(new URL(await page.evaluate(() => window.__abierta)).searchParams.get('q'), 'Sobre el gestor de juicios, causa 3001 (PEREZ PABLO): ');
+  await page.fill('#c_notas', 'sin contraparte');
+  await page.click('.ppie [data-act=save]'); await toast(page, 'Cambios guardados'); await cerrado(page);
+  assert.equal(sql(`select demandado || '|' || notas from public.causas where expte='3001'`), '|sin contraparte');
+  // se elimina como cualquier otra (las pruebas que siguen cuentan las causas)
+  await abrir(page, '3001');
+  await page.click('[data-act=del]');
+  assert.match(await page.textContent('.confirm'), /¿Eliminar definitivamente PEREZ PABLO\?/);
+  await page.click('[data-act=delyes]'); await toast(page, 'Causa eliminada'); await cerrado(page);
+  assert.equal(sql(`select count(*) from public.causas where expte='3001'`), '0');
 });
 
 test('ficha: registrar movimientos actualiza la última acción', async () => {

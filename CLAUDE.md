@@ -26,8 +26,8 @@ como "Claude":
 
 ```sql
 -- encontrar la causa (confirmar cuál es si hay más de una coincidencia)
-select expte, demandado, estado, ultima, fecha, proxima, vence
-  from public.causas where demandado ilike '%apellido%';
+select expte, actor, demandado, estado, ultima, fecha, proxima, vence
+  from public.causas where demandado ilike '%apellido%' or actor ilike '%apellido%';
 
 select gestor.movimiento('14000001', 'Se libró oficio');                  -- hoy, hora de Córdoba
 select gestor.movimiento('14000001', 'Decreto', '2026-10-02', 'A despacho'); -- con fecha y estado
@@ -49,12 +49,16 @@ Después de escribir, leer la fila y contar qué quedó. La app abierta lo muest
 
 - **Estados**: los de `gestor.estados_base()`. Un estado nuevo crea una columna en el tablero:
   no inventarlos.
+- **Causas sin demandado**: los juicios sin contraparte (limitación de la capacidad,
+  sucesiones…) van con `demandado = ''` y el interesado en `actor`; la app los nombra por el
+  actor. No inventar un demandado para completar el campo.
 - **Última acción**: es el movimiento de fecha más reciente (a igual fecha, el anotado después).
   Las funciones ya lo calculan; con SQL directo sobre `historial` hay que actualizar también
   `ultima` y `fecha` (`gestor.ultima_de(historial)`).
 - **Plantillas**: `select id, titulo, cuerpo from public.plantillas`. Los campos `{{caratula}}`,
   `{{expediente}}`, `{{actor}}`, `{{demandado}}`, `{{tipo}}`, `{{nominacion}}` y `{{oficina}}`
-  se completan con la causa; la carátula es `actor c/ demandado – tipo`.
+  se completan con la causa; la carátula es `actor c/ demandado – tipo` (sin demandado,
+  `actor – tipo`).
 - **Ver qué cambió y deshacer**: todo cambio queda en `gestor.cambios` con el estado anterior.
 
   ```sql

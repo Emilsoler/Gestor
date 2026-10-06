@@ -6,7 +6,7 @@ import {
   crearPlantilla, guardarPlantilla, borrarPlantilla,
 } from './datos.js';
 
-const VERSION = '1.1';
+const VERSION = '1.2';
 
 const TAGS = [
   { k: 'En trámite', c: '' }, { k: 'Embargo de sueldo', c: 't-emb' }, { k: 'Secuestro / subasta', c: 't-sec' },
@@ -40,7 +40,12 @@ const days = (s) => { const d = parse(s); return d ? Math.round((today() - d) / 
 const money = (n) => '$ ' + Math.round(n || 0).toLocaleString('es-AR');
 const hora = (d) => d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 const cuando = (d) => (iso(d) === iso(new Date()) ? 'hoy' : 'el ' + d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })) + ' a las ' + hora(d);
-const caratula = (c) => `${c.actor || 'AMB'} c/ ${c.demandado || '…'}${c.tipo ? ' – ' + c.tipo : ''}`;
+// Hay juicios sin contraparte (limitación de la capacidad, sucesiones…): no llevan demandado
+// y se nombran por el actor, como en la carátula del SAC.
+const titulo = (c) => c.demandado || c.actor || '(sin carátula)';
+const partes = (c) => (c.actor && !c.demandado ? c.actor : `${c.actor || 'AMB'} c/ ${c.demandado || '…'}`);
+const bajada = (c) => (c.demandado ? `${c.actor || ''} c/ … ${c.tipo || ''}` : c.tipo || '');
+const caratula = (c) => `${partes(c)}${c.tipo ? ' – ' + c.tipo : ''}`;
 const sClass = (e) => { e = (e || '').toLowerCase(); return e.includes('casillero') ? 's-casillero' : e.includes('despacho') ? 's-despacho' : e.includes('sentencia') ? 's-sentencia' : e.includes('acuerdo') ? 's-acuerdo' : e.includes('notific') ? 's-notificando' : e.includes('subasta') ? 's-subasta' : ''; };
 const tagClass = (t) => (TAGS.find((x) => x.k === t) || {}).c || '';
 const movil = window.matchMedia('(max-width: 720px)');
@@ -185,7 +190,7 @@ function filtered() {
     return true;
   });
   const { k, dir } = S.sort;
-  const val = (c) => (k === 'dias' ? (days(c.fecha) ?? 99999) : k === 'vence' ? (c.proxima && c.vence) || '9999' : k === 'nom' ? Number(c.nom) || 0 : String(c[k] || '').toLowerCase());
+  const val = (c) => (k === 'dias' ? (days(c.fecha) ?? 99999) : k === 'vence' ? (c.proxima && c.vence) || '9999' : k === 'nom' ? Number(c.nom) || 0 : k === 'demandado' ? titulo(c).toLowerCase() : String(c[k] || '').toLowerCase());
   r.sort((a, b) => { const x = val(a), y = val(b); return (x > y ? 1 : x < y ? -1 : 0) * dir; });
   return r;
 }
@@ -223,7 +228,7 @@ function renderList(rows) {
   if (movil.matches) return renderFilas(rows);
   const th = (k, l) => `<th data-k="${k}">${l}${S.sort.k === k ? (S.sort.dir > 0 ? ' ↑' : ' ↓') : ''}</th>`;
   return `<div class="tablebox"><table><thead><tr>${th('demandado', 'Carátula')}${th('expte', 'Expte.')}${th('nom', 'Nom. / Oficina')}${th('estado', 'Estado')}${th('ultima', 'Última acción')}${th('dias', 'Fecha')}${th('proxima', 'Próxima acción')}${th('vence', 'Vence')}</tr></thead><tbody>` +
-    rows.map((c) => `<tr data-id="${esc(c.expte)}" tabindex="0"><td class="car"><b>${esc(c.demandado)}</b><small>${esc(c.actor)} c/ … ${esc(c.tipo)}</small>${tagsHtml(c)}</td>
+    rows.map((c) => `<tr data-id="${esc(c.expte)}" tabindex="0"><td class="car"><b>${esc(titulo(c))}</b><small>${esc(bajada(c))}</small>${tagsHtml(c)}</td>
    <td class="mono">${esc(c.expte)}</td><td>${c.nom ? esc(c.nom) + '°' : ''} ${esc(c.oficina)}</td>
    <td>${c.estado ? `<span class="pill ${sClass(c.estado)}">${esc(c.estado)}</span>` : '<span class="hint">—</span>'}</td>
    <td>${esc(c.ultima) || '<span class="hint">—</span>'}</td><td>${ageHtml(c)}</td>
@@ -233,8 +238,8 @@ function renderList(rows) {
 
 // En pantallas chicas, cada causa es una tarjeta: se lee de arriba abajo sin deslizar de costado.
 function renderFilas(rows) {
-  return `<div class="filas">` + rows.map((c) => `<article class="fila" data-id="${esc(c.expte)}" tabindex="0" role="button" aria-label="Abrir la ficha de ${esc(c.demandado)}">
-    <div class="fila-top"><b>${esc(c.demandado) || '(sin demandado)'}</b>${c.estado ? `<span class="pill ${sClass(c.estado)}">${esc(c.estado)}</span>` : ''}</div>
+  return `<div class="filas">` + rows.map((c) => `<article class="fila" data-id="${esc(c.expte)}" tabindex="0" role="button" aria-label="Abrir la ficha de ${esc(titulo(c))}">
+    <div class="fila-top"><b>${esc(titulo(c))}</b>${c.estado ? `<span class="pill ${sClass(c.estado)}">${esc(c.estado)}</span>` : ''}</div>
     <div class="mono">${esc(c.expte)} · ${c.nom ? esc(c.nom) + '° ' : ''}${esc(c.oficina)}${c.tipo ? ' · ' + esc(c.tipo) : ''}</div>
     ${tagsHtml(c)}
     <div class="fila-ult"><span>${esc(c.ultima) || '<span class="hint">Sin acción cargada</span>'}</span>${ageHtml(c)}</div>
@@ -247,7 +252,7 @@ function renderBoard(rows) {
   return `<div class="board">` + cols.map((e) => {
     const cs = rows.filter((c) => (c.estado || '(sin estado)') === e);
     if (!cs.length && (movil.matches || !ESTADOS.includes(e))) return ''; // en el celular, las columnas vacías no ocupan pantalla
-    return `<section class="col"><h3><span>${esc(e)}</span><span>${cs.length}</span></h3>` + cs.map((c) => `<button class="card" data-id="${esc(c.expte)}"><b>${esc(c.demandado)}</b><div class="mono">${esc(c.expte)} · ${c.nom ? esc(c.nom) + '° ' : ''}${esc(c.oficina)}</div>${tagsHtml(c)}<p>${esc(c.ultima || 'Sin acción cargada')}</p>${ageHtml(c)}${c.proxima ? `<p><b>→</b> ${esc(c.proxima)}</p>` : ''}</button>`).join('') + `</section>`;
+    return `<section class="col"><h3><span>${esc(e)}</span><span>${cs.length}</span></h3>` + cs.map((c) => `<button class="card" data-id="${esc(c.expte)}"><b>${esc(titulo(c))}</b><div class="mono">${esc(c.expte)} · ${c.nom ? esc(c.nom) + '° ' : ''}${esc(c.oficina)}</div>${tagsHtml(c)}<p>${esc(c.ultima || 'Sin acción cargada')}</p>${ageHtml(c)}${c.proxima ? `<p><b>→</b> ${esc(c.proxima)}</p>` : ''}</button>`).join('') + `</section>`;
   }).join('') + `</div>`;
 }
 
@@ -367,7 +372,7 @@ function renderDrawer(entra = false) {
 
   <div class="sec"><h4>Datos de la causa</h4><div class="grid2">
    <label class="f">Actor<input id="c_actor" value="${esc(c.actor)}"></label>
-   <label class="f">Demandado<input id="c_demandado" value="${esc(c.demandado)}"></label>
+   <label class="f">Demandado<input id="c_demandado" value="${esc(c.demandado)}" placeholder="Puede ir vacío"></label>
    <label class="f">Tipo<input id="c_tipo" list="tipos" value="${esc(c.tipo)}"></label>
    <label class="f">N° de expediente<input id="c_expte" inputmode="numeric" value="${esc(c.expte)}" ${S.isNew ? '' : 'readonly'}></label>
    <label class="f">Nominación<input id="c_nom" value="${esc(c.nom)}"></label>
@@ -396,7 +401,7 @@ function renderDrawer(entra = false) {
   <div class="sec"><h4>Notas</h4><label class="f"><textarea id="c_notas" rows="3" placeholder="Datos del martillero, montos del acuerdo, teléfonos…" aria-label="Notas">${esc(c.notas)}</textarea></label></div>
 
   ${S.isNew ? '' : `<div class="actions"><button class="btn danger" data-act="del">Eliminar causa</button></div>`}
-  ${S.confirmDel ? `<div class="confirm"><span>¿Eliminar definitivamente ${esc(c.demandado)}? Si terminó, mejor pasala a “Archivada”.</span><button class="btn small danger" data-act="delyes">Sí, eliminar</button><button class="btn small" data-act="delno">Cancelar</button></div>` : ''}
+  ${S.confirmDel ? `<div class="confirm"><span>¿Eliminar definitivamente ${esc(titulo(c))}? Si terminó, mejor pasala a “Archivada”.</span><button class="btn small danger" data-act="delyes">Sí, eliminar</button><button class="btn small" data-act="delno">Cancelar</button></div>` : ''}
   <div class="ppie"><button class="btn primary" data-act="save">${S.isNew ? 'Crear causa' : 'Guardar cambios'}</button><button class="btn" data-act="close">Cancelar</button>${S.isNew ? '' : '<button class="btn" data-act="claude" aria-label="Consultar a Claude sobre esta causa">Claude</button>'}</div>
   </aside>`;
 }
@@ -415,7 +420,7 @@ function readForm() {
 
 async function save({ forzar = false, recrear = false } = {}) {
   const c = readForm();
-  if (!c.demandado) { toast('Falta el demandado'); return; }
+  if (!c.demandado && !c.actor) { toast('Falta el actor o el demandado'); return; } // sin demandado se nombra por el actor
   if (!/^\d+$/.test(c.expte)) { toast('El N° de expediente debe ser numérico'); return; }
   if (S.isNew && D.causas.some((x) => x.expte === c.expte)) { toast('Ya existe una causa con ese expediente'); return; }
   await conBoton($('.ppie [data-act=save]'), 'Guardando…', async () => {
@@ -438,10 +443,10 @@ function renderAvisos() {
    <div class="actions"><button class="btn small primary" data-ac="pay" data-id="${esc(a.id)}" data-i="${i}" data-v="pagada">Sí, pagó</button><button class="btn small danger" data-ac="pay" data-id="${esc(a.id)}" data-i="${i}" data-v="impaga">No pagó</button></div></div>`).join('');
 }
 function renderAcuerdos() {
-  const n = S.na, cs = D.causas.filter((c) => c.estado !== 'Archivada').sort((a, b) => (a.demandado || '').localeCompare(b.demandado || ''));
+  const n = S.na, cs = D.causas.filter((c) => c.estado !== 'Archivada').sort((a, b) => titulo(a).localeCompare(titulo(b)));
   const form = `<div class="sec"><h4>Nuevo acuerdo</h4><div class="grid2">
     <label class="f">Deudor<input id="na_deudor" value="${esc(n.deudor)}" placeholder="Apellido y nombre"></label>
-    <label class="f">Causa (opcional)<select id="na_expte"><option value="">Sin vincular a una causa</option>${cs.map((c) => `<option value="${esc(c.expte)}" ${n.expte === c.expte ? 'selected' : ''}>${esc(c.demandado)} · ${esc(c.expte)}</option>`).join('')}</select></label>
+    <label class="f">Causa (opcional)<select id="na_expte"><option value="">Sin vincular a una causa</option>${cs.map((c) => `<option value="${esc(c.expte)}" ${n.expte === c.expte ? 'selected' : ''}>${esc(titulo(c))} · ${esc(c.expte)}</option>`).join('')}</select></label>
     <label class="f">Cantidad de cuotas<input id="na_n" type="number" min="1" max="120" value="${esc(n.n)}"></label>
     <label class="f">Monto de cada cuota ($)<input id="na_monto" type="number" min="0" value="${esc(n.monto)}"></label>
     <label class="f">Vence la 1ª cuota<input id="na_fecha" type="date" value="${esc(n.fecha)}"></label>
@@ -684,7 +689,7 @@ $('#btnExport').onclick = exportar;
 // Los cambios los hace Claude con el conector de la base y la app los muestra en vivo.
 function hablarConClaude(c) {
   const texto = c?.expte
-    ? `Sobre el gestor de juicios, causa ${c.expte} (${c.actor} c/ ${c.demandado}): `
+    ? `Sobre el gestor de juicios, causa ${c.expte} (${partes(c)}): `
     : 'Sobre el gestor de juicios: ';
   window.open('https://claude.ai/new?q=' + encodeURIComponent(texto), '_blank', 'noopener');
 }
