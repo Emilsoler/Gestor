@@ -80,7 +80,7 @@ function renderIngreso() {
       ${error}
       <button class="btn primary" type="submit">Ingresar</button>
     </form>
-    <p class="pie hint">¿Olvidaste la contraseña? Pedile a Claude una clave nueva para el gestor.</p>`;
+    <p class="pie hint">¿Olvidaste la contraseña? Pedile a Claude que te guíe para restablecerla.</p>`;
     $('#i_email').focus();
   } else if (S.pantalla === 'clave-temporal') {
     c.innerHTML = `<div><b>Elegí tu contraseña</b>

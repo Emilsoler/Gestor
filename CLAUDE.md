@@ -64,19 +64,24 @@ Después de escribir, leer la fila y contar qué quedó. La app abierta lo muest
 
   Restaura el registro entero. Si después del cambio 123 hubo otros sobre el mismo registro,
   no hace nada y avisa; mirarlos y, si de verdad corresponde pisarlos, `gestor.deshacer(123, true)`.
+  Sirve para modificaciones y bajas; no elimina nunca (deshacer un alta es un `delete` aparte,
+  pedido expresamente).
 
-- **Usuarios**: la app no tiene registro público.
+- **Usuarios**: la app no tiene registro público. La cuenta (email y contraseña) se crea en el
+  panel de Supabase — Authentication → Users → "Add user", con "Auto Confirm User" marcado — y
+  la contraseña la escribe la persona ahí: no pasa por el chat. Después se la habilita:
 
   ```sql
-  select gestor.crear_usuario('persona@mail.com', 'Nombre');  -- devuelve una clave temporal
-  select gestor.nueva_clave('persona@mail.com');              -- olvidó la clave
-  select gestor.quitar_usuario('persona@mail.com');
+  select gestor.autorizar('persona@mail.com', 'Nombre');        -- ya puede usar el gestor
+  select gestor.autorizar('persona@mail.com', 'Nombre', true);  -- ídem, y la app le hace elegir clave nueva al entrar
+  select gestor.quitar_usuario('persona@mail.com');             -- pierde el acceso en el acto
   select * from gestor.usuarios;
   ```
 
-  La clave temporal se le pasa a la persona; la app la obliga a cambiarla al entrar. Si en la
-  plataforma `crear_usuario` falla por permisos sobre `auth`, la cuenta se crea desde el panel
-  de Supabase (Authentication → Users) y se habilita con `gestor.autorizar(email, nombre)`.
+  Las funciones de `gestor` no escriben en las tablas de `auth` (crear cuentas o cambiar
+  contraseñas por SQL no es un camino admitido). Quien olvidó la contraseña y no tiene la app
+  abierta en ningún lado la restablece desde el panel de Supabase; con la app abierta, se
+  cambia en el menú de la cuenta.
 - **"La app no conecta"** después de una semana o más sin uso: el plan gratuito pausa el
   proyecto. `get_project` lo confirma y `restore_project` lo reactiva (tarda unos minutos).
 

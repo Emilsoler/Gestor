@@ -4,6 +4,9 @@
 -- Esquema `public`: lo que usa la app por la API (causas, acuerdos, plantillas).
 -- Esquema `gestor`: privado, no se expone por la API. Usuarios autorizados,
 --                   historial de cambios y funciones que usa Claude por el conector.
+--
+-- En el proyecto real se aplicó en partes (gestor_esquema, gestor_01_miembros … gestor_06_deshacer),
+-- con el mismo contenido y en este orden.
 
 create schema if not exists gestor;
 revoke all on schema gestor from public;
@@ -19,7 +22,7 @@ create table gestor.miembros (
 );
 alter table gestor.miembros enable row level security;
 comment on table gestor.miembros is
-  'Quién puede usar el gestor. Tener una cuenta no alcanza: sin fila acá, la API no devuelve ni acepta nada. Se administra con gestor.crear_usuario / nueva_clave / quitar_usuario.';
+  'Quién puede usar el gestor. Tener una cuenta no alcanza: sin fila acá, la API no devuelve ni acepta nada. Se administra con gestor.autorizar y gestor.quitar_usuario.';
 
 create function public.es_miembro() returns boolean
 language sql stable security definer set search_path = ''
@@ -333,108 +336,45 @@ begin
   return c;
 end $$;
 
--- ───────────────────────── Altas y claves de usuarios ─────────────────────────
--- La app no tiene registro público: los usuarios los da de alta Claude a pedido de Emi.
+-- ───────────────────────── Usuarios ─────────────────────────
+-- Las cuentas (email y contraseña) las maneja el servicio de login de Supabase y se crean desde
+-- su panel (Authentication → Users → Add user). Acá solo se decide cuáles de esas cuentas pueden
+-- usar el gestor. Ninguna función de este esquema escribe en las tablas de `auth`.
 
-create function gestor.clave_aleatoria() returns text
-language sql volatile set search_path = ''
-as $$
-  with b as (select extensions.gen_random_bytes(12) as x),
-       a as (select 'abcdefghjkmnpqrstuvwxyz23456789' as alfabeto)
-  select string_agg(substr(a.alfabeto, 1 + get_byte(b.x, i) % length(a.alfabeto), 1)
-                    || case when i in (3, 7) then '-' else '' end, '' order by i)
-    from b, a, generate_series(0, 11) as i;
-$$;
-
--- Crea el usuario (o le renueva la clave si ya existe) y lo autoriza.
--- Devuelve la clave temporal: la app obliga a cambiarla en el primer ingreso.
-create function gestor.crear_usuario(p_email text, p_nombre text default '') returns text
-language plpgsql set search_path = ''
-as $$
-declare
-  v_email text := lower(btrim(p_email));
-  v_clave text := gestor.clave_aleatoria();
-  v_hash  text := extensions.crypt(v_clave, extensions.gen_salt('bf', 10));
-  v_id    uuid;
-begin
-  if v_email !~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$' then
-    raise exception 'Email inválido: %', p_email;
-  end if;
-  select id into v_id from auth.users where lower(email) = v_email;
-  if v_id is null then
-    v_id := gen_random_uuid();
-    insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
-                            raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
-                            confirmation_token, recovery_token, email_change_token_new, email_change)
-    values ('00000000-0000-0000-0000-000000000000', v_id, 'authenticated', 'authenticated', v_email, v_hash, now(),
-            '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb, now(), now(), '', '', '', '');
-    insert into auth.identities (id, user_id, provider_id, provider, identity_data, last_sign_in_at, created_at, updated_at)
-    values (gen_random_uuid(), v_id, v_id::text, 'email',
-            jsonb_build_object('sub', v_id::text, 'email', v_email, 'email_verified', true, 'phone_verified', false),
-            now(), now(), now());
-  else
-    update auth.users
-       set encrypted_password = v_hash, email_confirmed_at = coalesce(email_confirmed_at, now()), updated_at = now()
-     where id = v_id;
-    begin
-      delete from auth.sessions where user_id = v_id;     -- cierra las sesiones abiertas con la clave anterior
-    exception when insufficient_privilege then null;
-    end;
-  end if;
-  insert into gestor.miembros (user_id, email, nombre, clave_temporal)
-  values (v_id, v_email, coalesce(btrim(p_nombre), ''), true)
-  on conflict (user_id) do update
-     set clave_temporal = true,
-         email = excluded.email,
-         nombre = case when excluded.nombre <> '' then excluded.nombre else gestor.miembros.nombre end;
-  return v_clave;
-end $$;
-comment on function gestor.crear_usuario(text, text) is
-  'Da de alta y autoriza a un usuario del gestor; devuelve su clave temporal. Si ya existe, le genera una clave nueva.';
-
-create function gestor.nueva_clave(p_email text) returns text
-language plpgsql set search_path = ''
-as $$
-begin
-  if not exists (select 1 from gestor.miembros where email = lower(btrim(p_email))) then
-    raise exception 'No hay un usuario autorizado con el email %', p_email;
-  end if;
-  return gestor.crear_usuario(p_email);
-end $$;
-comment on function gestor.nueva_clave(text) is
-  'Para cuando alguien olvidó la clave: genera una temporal nueva y cierra sus sesiones.';
-
-create function gestor.quitar_usuario(p_email text) returns void
-language plpgsql set search_path = ''
-as $$
-declare v_id uuid;
-begin
-  select user_id into v_id from gestor.miembros where email = lower(btrim(p_email));
-  if v_id is null then raise exception 'No hay un usuario autorizado con el email %', p_email; end if;
-  delete from gestor.miembros where user_id = v_id;       -- pierde el acceso en el acto
-  begin
-    delete from auth.users where id = v_id;
-  exception when insufficient_privilege then null;
-  end;
-end $$;
-
--- Autoriza a alguien que ya tiene cuenta (por ejemplo, creada desde el panel de Supabase)
--- sin tocarle la contraseña.
-create function gestor.autorizar(p_email text, p_nombre text default '') returns void
+-- Autoriza a una cuenta que ya existe. Con p_clave_temporal, la app le hace elegir una
+-- contraseña nueva la próxima vez que entre (para cuando la cuenta se creó con una provisoria).
+create function gestor.autorizar(p_email text, p_nombre text default '', p_clave_temporal boolean default false) returns text
 language plpgsql set search_path = ''
 as $$
 declare v_email text := lower(btrim(p_email)); v_id uuid;
 begin
   select id into v_id from auth.users where lower(email) = v_email;
   if v_id is null then
-    raise exception 'No existe una cuenta con el email %. Se crea con gestor.crear_usuario o desde el panel de Supabase.', p_email;
+    raise exception 'No existe una cuenta con el email %. Primero hay que crearla en el panel de Supabase (Authentication → Users → Add user).', p_email;
   end if;
   insert into gestor.miembros (user_id, email, nombre, clave_temporal)
-  values (v_id, v_email, coalesce(btrim(p_nombre), ''), false)
+  values (v_id, v_email, coalesce(btrim(p_nombre), ''), p_clave_temporal)
   on conflict (user_id) do update
      set email = excluded.email,
+         clave_temporal = excluded.clave_temporal,
          nombre = case when excluded.nombre <> '' then excluded.nombre else gestor.miembros.nombre end;
+  return format('%s ya puede usar el gestor', v_email);
 end $$;
+comment on function gestor.autorizar(text, text, boolean) is
+  'Habilita a una cuenta existente (creada en el panel de Supabase) a usar el gestor.';
+
+-- Le quita el acceso en el acto. La cuenta sigue existiendo en el panel de Supabase, sin poder ver nada.
+create function gestor.quitar_usuario(p_email text) returns text
+language plpgsql set search_path = ''
+as $$
+declare v_email text := lower(btrim(p_email));
+begin
+  delete from gestor.miembros where email = v_email;
+  if not found then raise exception 'No hay un usuario autorizado con el email %', p_email; end if;
+  return format('%s ya no puede usar el gestor', v_email);
+end $$;
+comment on function gestor.quitar_usuario(text) is
+  'Quita el acceso al gestor. No borra la cuenta: eso se hace en el panel de Supabase.';
 
 create view gestor.usuarios with (security_invoker = true) as
   select m.email, m.nombre, m.clave_temporal, m.creado, u.last_sign_in_at as ultimo_ingreso
@@ -442,10 +382,11 @@ create view gestor.usuarios with (security_invoker = true) as
 
 -- ───────────────────────── Deshacer ─────────────────────────
 
--- Vuelve un registro a como estaba ANTES del cambio indicado (id de gestor.cambios):
--- si fue una modificación o una baja, restaura el estado anterior; si fue un alta, la elimina.
--- Restaura el registro entero. Si después de ese cambio hubo otros sobre el mismo registro,
--- también los pisaría: en ese caso no hace nada salvo que se pida con p_forzar => true.
+-- Vuelve un registro a como estaba ANTES del cambio indicado (id de gestor.cambios): deshace
+-- una modificación o recupera algo eliminado. Restaura el registro entero. Si después de ese
+-- cambio hubo otros sobre el mismo registro, también los pisaría: en ese caso no hace nada
+-- salvo que se pida con p_forzar => true.
+-- Nunca elimina: deshacer un alta es borrar un registro, y eso se hace aparte y a propósito.
 create function gestor.deshacer(p_cambio bigint, p_forzar boolean default false, p_autor text default 'Claude') returns text
 language plpgsql set search_path = ''
 as $$
@@ -461,9 +402,8 @@ begin
   end if;
 
   if c.operacion = 'alta' then
-    execute format('delete from public.%I where %I = $1', c.tabla,
-                   case c.tabla when 'causas' then 'expte' else 'id' end) using c.clave;
-    return format('Se eliminó %s %s (deshace su alta)', c.tabla, c.clave);
+    raise exception 'El cambio % es el alta de % %. Deshacerla sería eliminar el registro, y esta función no elimina nada.',
+      p_cambio, c.tabla, c.clave;
   end if;
 
   if c.tabla = 'causas' then
@@ -490,7 +430,7 @@ begin
                 to_char(c.momento at time zone 'America/Argentina/Cordoba', 'DD/MM HH24:MI'));
 end $$;
 comment on function gestor.deshacer(bigint, boolean, text) is
-  'Deshace un cambio registrado en gestor.cambios: restaura el registro entero al estado anterior a ese cambio. Si hubo cambios posteriores sobre el mismo registro exige p_forzar => true.';
+  'Deshace una modificación o una baja registrada en gestor.cambios: restaura el registro entero al estado anterior. Si hubo cambios posteriores sobre el mismo registro exige p_forzar => true. No deshace altas (nunca elimina).';
 
 -- Nada del esquema privado es alcanzable por los roles de la API. La barrera que vale es que
 -- no tienen USAGE sobre el esquema (ver arriba): NO darles nunca `grant usage on schema gestor`.

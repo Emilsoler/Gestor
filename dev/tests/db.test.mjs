@@ -3,16 +3,20 @@
 // revisiones, el historial de cambios y las funciones que usa Claude.
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { sql, sqlFalla, anon, servicio, entrar, limpiar } from './helpers.mjs';
+import { sql, sqlFalla, anon, servicio, entrar, limpiar, crearCuenta } from './helpers.mjs';
 
-let claveEmi, emi;
+const CLAVE_PROVISORIA = 'Provisoria-del-panel-1';
+let emi;
 
 before(() => limpiar());
 
-test('alta de usuario por SQL: puede iniciar sesión con la clave temporal', async () => {
-  claveEmi = sql(`select gestor.crear_usuario('Emi@Test.Local ', 'Emi')`);
-  assert.match(claveEmi, /^[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}$/);
-  emi = await entrar('emi@test.local', claveEmi);
+test('una cuenta creada en el panel y autorizada puede entrar', async () => {
+  assert.match(sqlFalla(`select gestor.autorizar('emi@test.local', 'Emi')`), /No existe una cuenta/);
+  assert.equal(await crearCuenta('emi@test.local', CLAVE_PROVISORIA), 'emi@test.local ya puede usar el gestor');
+  // autorizar de nuevo actualiza nombre y marca; el email se normaliza
+  assert.equal(sql(`select gestor.autorizar(' Emi@Test.Local ', 'Emi', true)`), 'emi@test.local ya puede usar el gestor');
+  assert.equal(sql(`select count(*) from gestor.miembros`), '1');
+  emi = await entrar('emi@test.local', CLAVE_PROVISORIA);
   assert.equal(emi.sesion.user.email, 'emi@test.local');
   const { data, error } = await emi.rpc('mi_acceso');
   assert.ifError(error);
@@ -168,11 +172,13 @@ test('el esquema privado no es alcanzable por la API', async () => {
     const r = await emi.schema('gestor').from(t).select('*');
     assert.ok(r.error, `gestor.${t} no debería ser accesible`);
   }
-  const r = await emi.schema('gestor').rpc('crear_usuario', { p_email: 'a@b.co' });
+  const r = await emi.schema('gestor').rpc('autorizar', { p_email: 'intruso@test.local' });
   assert.ok(r.error);
+  assert.ok((await emi.rpc('autorizar', { p_email: 'intruso@test.local' })).error, 'tampoco existe como función pública');
   // ni siquiera con SQL en nombre de un usuario de la app
-  const err = sqlFalla(`set role authenticated; select gestor.crear_usuario('a@b.co')`);
+  const err = sqlFalla(`set role authenticated; select gestor.autorizar('intruso@test.local')`);
   assert.match(err, /permission denied/);
+  assert.equal(sql(`select count(*) from gestor.miembros where email = 'intruso@test.local'`), '0');
 });
 
 test('cambio de clave: deja de ser temporal y la vieja ya no sirve', async () => {
@@ -180,7 +186,7 @@ test('cambio de clave: deja de ser temporal y la vieja ya no sirve', async () =>
   assert.ifError(error);
   assert.ifError((await emi.rpc('clave_definida')).error);
   assert.equal((await emi.rpc('mi_acceso')).data.clave_temporal, false);
-  assert.ok((await anon().auth.signInWithPassword({ email: 'emi@test.local', password: claveEmi })).error);
+  assert.ok((await anon().auth.signInWithPassword({ email: 'emi@test.local', password: CLAVE_PROVISORIA })).error);
   emi = await entrar('emi@test.local', 'Clave-definitiva-2026');
 });
 
@@ -230,7 +236,7 @@ test('historial de cambios: quién, qué y el estado anterior', () => {
   assert.equal(sql(`select antes ->> 'estado' from gestor.cambios where tabla='causas' and clave='14000001' and operacion='cambio' order by id limit 1`), 'Casillero');
 });
 
-test('deshacer: un cambio, una baja y un alta', () => {
+test('deshacer: un cambio y una baja; nunca elimina', () => {
   sql(`insert into public.causas (expte, demandado, estado, etiquetas, vence, historial, liquidacion)
        values ('777', 'PRUEBA', 'Casillero', '{"En trámite","Martillero"}', '2026-11-01', '[{"fecha":"2026-10-01","texto":"uno"}]', '{"fecha":"2026-10-01","embargo":5,"rubros":[]}')`);
   const antes = sql(`select to_jsonb(c) - 'rev' - 'actualizado' - 'actualizado_por' from public.causas c where expte='777'`);
@@ -250,12 +256,17 @@ test('deshacer: un cambio, una baja y un alta', () => {
   id = sql(`select max(id) from gestor.cambios where tabla='causas' and clave='777'`);
   sql(`select gestor.deshacer(${id})`);
   assert.equal(sql(`select (liquidacion is null) || '|' || notas from public.causas where expte='777'`), 'true|');
-  // un alta, con cambios posteriores: no los pisa salvo que se lo pidan
-  id = sql(`select min(id) from gestor.cambios where tabla='causas' and clave='777' and operacion='alta'`);
+  // con cambios posteriores no pisa nada, salvo que se lo pidan
+  id = sql(`select min(id) from gestor.cambios where tabla='causas' and clave='777' and operacion='cambio'`);
   assert.match(sqlFalla(`select gestor.deshacer(${id})`), /hubo \d+ cambio\(s\) más en causas 777/);
+  assert.equal(sql(`select notas from public.causas where expte='777'`), '');
+  assert.match(sql(`select gestor.deshacer(${id}, true)`), /volvió a como estaba antes/);
+  assert.equal(sql(`select to_jsonb(c) - 'rev' - 'actualizado' - 'actualizado_por' from public.causas c where expte='777'`), antes);
+  // un alta no se deshace: sería eliminar
+  id = sql(`select min(id) from gestor.cambios where tabla='causas' and clave='777' and operacion='alta'`);
+  assert.match(sqlFalla(`select gestor.deshacer(${id}, true)`), /no elimina nada/);
   assert.equal(sql(`select count(*) from public.causas where expte='777'`), '1');
-  assert.match(sql(`select gestor.deshacer(${id}, true)`), /Se eliminó causas 777/);
-  assert.equal(sql(`select count(*) from public.causas where expte='777'`), '0');
+  sql(`delete from public.causas where expte='777'`);
   // acuerdos y plantillas
   const aid = sql(`insert into public.acuerdos (deudor, cuotas) values ('D', '[{"vence":"2026-10-10","monto":1,"estado":"pendiente","pago":""}]') returning id`);
   sql(`update public.acuerdos set cuotas = '[]' where id='${aid}'`);
@@ -272,11 +283,12 @@ test('autorizar una cuenta que ya existe, sin tocarle la clave', async () => {
   const { error } = await servicio().auth.admin.createUser({ email: 'socia@test.local', password: 'Socia-123456789', email_confirm: true });
   assert.ifError(error);
   assert.match(sqlFalla(`select gestor.autorizar('nadie@test.local')`), /No existe una cuenta/);
-  sql(`select gestor.autorizar('Socia@test.local', 'Socia')`);
+  assert.equal(sql(`select gestor.autorizar('Socia@test.local', 'Socia')`), 'socia@test.local ya puede usar el gestor');
+  sql(`select gestor.autorizar('socia@test.local')`); // repetirlo sin nombre no lo borra
   const s = await entrar('socia@test.local', 'Socia-123456789');
   assert.deepEqual((await s.rpc('mi_acceso')).data, { autorizado: true, clave_temporal: false, nombre: 'Socia', email: 'socia@test.local' });
   assert.equal(sql(`select email || '|' || nombre from gestor.usuarios where email='socia@test.local'`), 'socia@test.local|Socia');
-  sql(`select gestor.quitar_usuario('socia@test.local')`);
+  assert.equal(sql(`select gestor.quitar_usuario('socia@test.local')`), 'socia@test.local ya no puede usar el gestor');
 });
 
 test('lo que cambia Claude lo ve la app en la siguiente lectura, y su revisión vieja ya no pisa', async () => {
@@ -289,19 +301,17 @@ test('lo que cambia Claude lo ve la app en la siguiente lectura, y su revisión 
   assert.ok(ahora.rev > antes.rev);
 });
 
-test('olvidó la clave: una temporal nueva cierra las sesiones anteriores', async () => {
-  const nueva = sql(`select gestor.nueva_clave('emi@test.local')`);
-  assert.ok((await anon().auth.signInWithPassword({ email: 'emi@test.local', password: 'Clave-definitiva-2026' })).error);
-  const { error } = await emi.auth.refreshSession();
-  assert.ok(error, 'la sesión vieja no se puede renovar');
-  emi = await entrar('emi@test.local', nueva);
-  assert.equal((await emi.rpc('mi_acceso')).data.clave_temporal, true);
-  assert.match(sqlFalla(`select gestor.nueva_clave('nadie@test.local')`), /No hay un usuario autorizado/);
-});
-
-test('quitar un usuario le corta el acceso en el acto', async () => {
+test('quitar un usuario le corta el acceso en el acto, aunque su sesión siga abierta', async () => {
+  assert.ifError((await emi.from('causas').select('expte')).error);
   sql(`select gestor.quitar_usuario('emi@test.local')`);
   const r = await emi.from('causas').select('*');
-  assert.ok(r.error || r.data.length === 0);
-  assert.equal(sql(`select count(*) from auth.users where email='emi@test.local'`), '0');
+  assert.equal(r.error?.code, '42501');
+  assert.match(r.error.message, /cuenta no autorizada/);
+  assert.equal(sql(`select count(*) from auth.users where email='emi@test.local'`), '1', 'la cuenta no se borra: eso es del panel');
+  assert.match(sqlFalla(`select gestor.quitar_usuario('emi@test.local')`), /No hay un usuario autorizado/);
+});
+
+test('las funciones del esquema no escriben en las tablas de login', () => {
+  const fuentes = sql(`select string_agg(p.prosrc, ' ') from pg_proc p where p.pronamespace = 'gestor'::regnamespace`).toLowerCase();
+  assert.doesNotMatch(fuentes, /(insert\s+into|update|delete\s+from)\s+auth\./);
 });

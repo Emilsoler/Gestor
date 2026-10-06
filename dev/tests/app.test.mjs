@@ -4,7 +4,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { chromium } from 'playwright';
-import { sql, servicio, limpiar, env } from './helpers.mjs';
+import { sql, servicio, limpiar, env, crearCuenta } from './helpers.mjs';
 
 const BASE = process.env.BASE || 'http://127.0.0.1:8080/';
 const EMAIL = 'emi@test.local';
@@ -12,7 +12,8 @@ const CLAVE = 'Una-clave-larga-2026';
 const hoy = new Date();
 const dia = (n) => { const d = new Date(hoy); d.setDate(d.getDate() + n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
 
-let browser, ctx, page, claveTemporal;
+const claveTemporal = 'Provisoria-del-panel-1';
+let browser, ctx, page;
 const errores = [];
 
 function vigilar(p, nombre) {
@@ -42,7 +43,7 @@ const cerrado = (p) => p.waitForSelector('#drawer', { state: 'hidden' });
 before(async () => {
   await caido(false); await tiempoReal(false);
   limpiar();
-  claveTemporal = sql(`select gestor.crear_usuario('${EMAIL}', 'Emi')`);
+  await crearCuenta(EMAIL, claveTemporal, 'Emi', true); // creada con una clave provisoria: la app obliga a cambiarla
   sql(`begin; select set_config('gestor.autor', 'Semilla', true);
     insert into public.causas (expte, actor, demandado, tipo, nom, oficina, estado, etiquetas, proxima, vence, ultima, fecha, historial) values
      ('1001','AMB','ALFA ANA','EJECUTIVO','1','OEP','Casillero','{"En trámite"}','Pedir embargo','${dia(-2)}','Dimos cédula','${dia(-40)}','[{"fecha":"${dia(-40)}","texto":"Dimos cédula"}]'),

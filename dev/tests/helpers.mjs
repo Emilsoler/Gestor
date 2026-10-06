@@ -26,6 +26,16 @@ const opts = { auth: { persistSession: false, autoRefreshToken: false } };
 export const anon = () => createClient(env.SUPABASE_URL, env.ANON_KEY, opts);
 export const servicio = () => createClient(env.SUPABASE_URL, env.SERVICE_KEY, opts);
 
+/**
+ * Crea una cuenta como se hace en el proyecto real (por el servicio de login, con la API de
+ * administración, que es lo que usa el panel de Supabase) y la autoriza a usar el gestor.
+ */
+export async function crearCuenta(email, clave, nombre = '', temporal = false) {
+  const { error } = await servicio().auth.admin.createUser({ email, password: clave, email_confirm: true });
+  if (error) throw new Error(`crear ${email}: ${error.message}`);
+  return sql(`select gestor.autorizar('${email}', '${nombre}', ${temporal})`);
+}
+
 /** Cliente con sesión iniciada. */
 export async function entrar(email, clave) {
   const c = anon();

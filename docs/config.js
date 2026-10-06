@@ -5,6 +5,6 @@
 // que solo dejan leer y escribir a los usuarios autorizados. La clave secreta
 // (service_role / secret) NO va nunca en este archivo ni en este repositorio.
 window.GESTOR_CONFIG = {
-  url: 'https://TU-PROYECTO.supabase.co',
-  key: 'TU-CLAVE-PUBLICA',
+  url: 'https://udfmoxnehgoihzsyrpvy.supabase.co',
+  key: 'sb_publishable_p2DnLiy6F-cZfo1dRYg88w_8PEzO3qR',
 };
