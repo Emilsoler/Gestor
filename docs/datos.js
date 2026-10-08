@@ -103,12 +103,12 @@ function ponerEnLinea(v) {
 // La base guarda fechas vacías como null; la interfaz las maneja como ''.
 
 const DE = {
-  causas: (f) => ({ ...f, vence: f.vence || '', fecha: f.fecha || '', etiquetas: f.etiquetas || [], historial: f.historial || [] }),
+  causas: (f) => ({ ...f, vence: f.vence || '', fecha: f.fecha || '', etiquetas: f.etiquetas || [], historial: f.historial || [], demandados: f.demandados || [], titulos: f.titulos || [] }),
   acuerdos: (f) => ({ ...f, cuotas: f.cuotas || [] }),
   plantillas: (f) => ({ ...f }),
 };
 
-const CAMPOS_CAUSA = ['expte', 'actor', 'demandado', 'tipo', 'nom', 'oficina', 'estado', 'etiquetas', 'proxima', 'vence', 'ultima', 'fecha', 'notas', 'historial', 'liquidacion'];
+const CAMPOS_CAUSA = ['expte', 'actor', 'demandado', 'tipo', 'nom', 'oficina', 'estado', 'etiquetas', 'proxima', 'vence', 'ultima', 'fecha', 'notas', 'historial', 'liquidacion', 'demandados', 'titulos'];
 const movLimpio = (h) => (h.hecha ? { fecha: h.fecha || '', texto: h.texto || '', hecha: true } : { fecha: h.fecha || '', texto: h.texto || '' });
 
 function causaAFila(c) {
@@ -119,6 +119,8 @@ function causaAFila(c) {
   f.etiquetas = c.etiquetas || [];
   f.historial = (c.historial || []).map(movLimpio);
   f.liquidacion = c.liquidacion || null;
+  f.demandados = (c.demandados || []).map((d) => ({ nombre: d.nombre || '', dni: d.dni || '', telefono: d.telefono || '', domicilio: d.domicilio || '', notas: d.notas || '' }));
+  f.titulos = (c.titulos || []).map((t) => ({ tipo: t.tipo === 'prenda' ? 'prenda' : 'pagare', monto: +t.monto || 0, vence: t.vence || '', descripcion: t.descripcion || '', vehiculo: t.tipo === 'prenda' ? (t.vehiculo || '') : '' }));
   return f;
 }
 

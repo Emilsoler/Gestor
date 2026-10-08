@@ -213,6 +213,32 @@ test('liquidación: totales, faltante de embargo y guardado', async () => {
     '1000|400|150|6');
 });
 
+test('demandados y títulos: ficha de contacto, WhatsApp y monto reclamado con interés simple', async () => {
+  await abrir(page, '1001');
+  await page.click('[data-act=demadd]');
+  await page.fill('#d_nombre0', 'Ana Alfa'); await page.fill('#d_telefono0', '03534-123456'); await page.fill('#d_domicilio0', 'Bv. Colón 135');
+  await page.click('.panel [data-act=demadd]'); // se guardan los campos al agregar otro
+  assert.equal(await page.inputValue('#d_nombre0'), 'Ana Alfa');
+  await page.click('[data-act=demdel][data-i="1"]');
+  assert.equal(await page.getAttribute('.tarjeta a.btn', 'href'), 'https://wa.me/5493534123456');
+  await page.click('[data-act=titadd][data-t=pagare]');
+  await page.fill('#t_monto0', '100000'); await page.fill('#t_vence0', dia(-60));
+  await page.click('[data-act=titadd][data-t=prenda]');
+  await page.fill('#t_monto1', '200000'); await page.fill('#t_vence1', dia(-30)); await page.fill('#t_vehiculo1', 'Ford Fiesta AA123BB');
+  await page.waitForFunction(() => /320\.000/.test(document.querySelector('.panel .totals')?.textContent || ''), null, { timeout: 5000 });
+  const t = await page.textContent('.panel .totals');
+  assert.match(t, /Capital\$ 300\.000/); assert.match(t, /\$ 20\.000/); assert.match(t, /Total reclamado\$ 320\.000/);
+  assert.equal(await page.locator('#t_vehiculo0').count(), 0, 'el pagaré no pide vehículo');
+  await page.selectOption('#t_tipo0', 'prenda');
+  assert.equal(await page.locator('#t_vehiculo0').count(), 1, 'al pasar a prenda aparece el vehículo');
+  await page.selectOption('#t_tipo0', 'pagare');
+  await page.click('.ppie [data-act=save]'); await toast(page, 'Cambios guardados'); await cerrado(page);
+  assert.equal(sql(`select (select count(*) from jsonb_array_elements(demandados))::text || '|' || (demandados -> 0 ->> 'telefono') || '|' || (titulos -> 1 ->> 'vehiculo') || '|' || (titulos -> 0 ->> 'tipo') || '|' || (titulos -> 0 ->> 'vehiculo') from public.causas where expte='1001'`),
+    '1|03534-123456|Ford Fiesta AA123BB|pagare|');
+  // la función de Claude calcula lo mismo que la pantalla
+  assert.equal(sql(`select (gestor.reclamado('1001') ->> 'total')::numeric`), '320000.00');
+});
+
 test('plantillas: se completan con los datos de la causa; alta, edición y baja', async () => {
   await abrir(page, '1002');
   await page.selectOption('#tp_sel', 'aprobacion');

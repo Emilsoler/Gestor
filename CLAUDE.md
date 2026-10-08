@@ -36,6 +36,23 @@ select gestor.proxima('14000001', 'Designar martillero', '2026-10-15');   -- pr�
 select gestor.realizada('14000001');                                      -- la próxima acción pasa a movimientos, con la fecha en que vencía (o la de hoy si aún no venció)
 ```
 
+Datos de los demandados y títulos reclamados (pagarés o prenda), con su monto reclamado:
+
+```sql
+select gestor.agregar_demandado('14000001', 'Lucas Piedra', '20-30123456-7', '3534123456', 'Bv. San Martín 450', 'notas');
+select gestor.agregar_titulo('14000001', 'pagare', 400000, '2026-06-30', 'Pagaré 1');
+select gestor.agregar_titulo('14000001', 'prenda', 3500000, '2026-03-15', 'Prenda N° 4821', 'Fiat Cronos AB123CD');
+select gestor.reclamado('14000001');   -- capital, interés y total por título y en conjunto, a hoy
+```
+
+`reclamado` y la ficha de la app calculan igual: interés simple de 5% mensual (`0.05` cada 30 días
+desde el vencimiento de cada título; sin vencimiento o aún no vencido, sin interés). Las dos
+listas son columnas `jsonb` de `causas` (`demandados`, `titulos`): para editarlas o quitar un
+elemento, `update` directo con `set_config('gestor.autor', …)`, como cualquier otro campo. Los
+mensajes a los demandados (por ejemplo una oferta de acuerdo) se redactan a partir de estos datos
+y de `gestor.reclamado`; los envía la persona, desde el enlace de WhatsApp de la ficha. Son datos
+personales: usarlos solo para el reclamo de esa causa.
+
 Para cualquier otro cambio, SQL directo dentro de una transacción que diga quién lo hace:
 
 ```sql

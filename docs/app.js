@@ -319,7 +319,7 @@ async function quickDone(id) {
 
 // ───────────────────────── Ficha ─────────────────────────
 
-function blank() { return { expte: '', actor: 'AMB', demandado: '', tipo: 'EJECUTIVO', nom: '', oficina: 'OEP', estado: 'Iniciar', proxima: '', vence: '', ultima: '', fecha: '', etiquetas: ['En trámite'], notas: '', historial: [] }; }
+function blank() { return { expte: '', actor: 'AMB', demandado: '', tipo: 'EJECUTIVO', nom: '', oficina: 'OEP', estado: 'Iniciar', proxima: '', vence: '', ultima: '', fecha: '', etiquetas: ['En trámite'], notas: '', historial: [], demandados: [], titulos: [] }; }
 function openCausa(id) {
   S.open = id ? copia(D.causas.find((c) => c.expte === id) || blank()) : blank();
   S.isNew = !id; S.confirmDel = false; S.choque = null; S.tpl = false; S.clave = false; S.tpSel = '';
@@ -342,6 +342,63 @@ function liqHtml(c) {
    <div><button class="btn small" data-act="rubadd">+ Rubro</button></div>
    <div class="totals"><div><span>Total planilla</span><b>${money(k.tot)}</b></div><div><span>Cobrado por OP</span><b>${money(k.pag)}</b></div><div><span>Saldo pendiente</span><b>${money(k.saldo)}</b></div>
    <div class="${k.dif < 0 ? 'neg' : 'pos'}"><span>${k.dif < 0 ? 'Faltante: pedir ampliación de embargo' : 'Excedente sobre planilla'}</span><b>${money(Math.abs(k.dif))}</b></div></div></div>`;
+}
+
+
+// ───────────────────────── Demandados y monto reclamado ─────────────────────────
+
+const TASA_MENSUAL = 0.05; // interés judicial simple: 5% del capital por cada 30 días desde el vencimiento
+const DEM_VACIO = () => ({ nombre: '', dni: '', telefono: '', domicilio: '', notas: '' });
+const TIT_VACIO = (tipo = 'pagare') => ({ tipo, monto: 0, vence: '', descripcion: '', vehiculo: '' });
+/** Capital + interés simple por título, a la fecha de hoy. Sin vencimiento o aún no vencido: sin interés. */
+function reclamo(c) {
+  const filas = (c.titulos || []).map((t) => {
+    const capital = +t.monto || 0, dias = Math.max(0, days(t.vence) ?? 0);
+    const interes = Math.round(capital * TASA_MENSUAL * dias / 30 * 100) / 100;
+    return { capital, dias, interes, total: capital + interes };
+  });
+  const suma = (k) => filas.reduce((a, f) => a + f[k], 0);
+  return { filas, capital: suma('capital'), interes: suma('interes'), total: suma('total') };
+}
+/** Número para wa.me: sin signos, con 54 9 delante si es un celular argentino escrito con el código de área. */
+function numWhatsapp(tel) {
+  let n = String(tel || '').replace(/\D/g, '').replace(/^0+/, '');
+  if (!n) return '';
+  if (n.startsWith('549')) return n;
+  if (n.startsWith('54')) return '549' + n.slice(2);
+  return n.length <= 10 ? '549' + n : n;
+}
+function demandadosHtml(c) {
+  const lista = c.demandados || [];
+  return `<div class="sec"><h4>Demandados</h4>
+   ${lista.length ? lista.map((d, i) => { const wa = numWhatsapp(d.telefono); return `<div class="tarjeta" data-i="${i}">
+     <div class="grid2">
+      <label class="f ancho">Nombre<input id="d_nombre${i}" value="${esc(d.nombre)}"></label>
+      <label class="f">DNI / CUIT<input id="d_dni${i}" value="${esc(d.dni)}"></label>
+      <label class="f">Teléfono / WhatsApp<input id="d_telefono${i}" inputmode="tel" value="${esc(d.telefono)}" placeholder="Con código de área, sin 0 ni 15"></label>
+      <label class="f ancho">Domicilio<input id="d_domicilio${i}" value="${esc(d.domicilio)}"></label>
+      <label class="f ancho">Notas<input id="d_notas${i}" value="${esc(d.notas)}"></label>
+     </div>
+     <div class="actions">${wa ? `<a class="btn small" href="https://wa.me/${wa}" target="_blank" rel="noopener">Abrir WhatsApp</a>` : ''}<button class="btn small danger" data-act="demdel" data-i="${i}">Quitar</button></div>
+    </div>`; }).join('') : '<p class="hint m0">Sin demandados cargados.</p>'}
+   <div><button class="btn small" data-act="demadd">+ Demandado</button></div></div>`;
+}
+function titulosHtml(c) {
+  const lista = c.titulos || [], k = reclamo(c);
+  return `<div class="sec"><h4>Títulos y monto reclamado</h4>
+   ${lista.length ? lista.map((t, i) => { const f = k.filas[i]; return `<div class="tarjeta" data-i="${i}">
+     <div class="grid2">
+      <label class="f">Tipo<select id="t_tipo${i}" data-i="${i}"><option value="pagare" ${t.tipo === 'pagare' ? 'selected' : ''}>Pagaré</option><option value="prenda" ${t.tipo === 'prenda' ? 'selected' : ''}>Prenda</option></select></label>
+      <label class="f">Monto ($)<input type="number" min="0" id="t_monto${i}" value="${+t.monto || 0}"></label>
+      <label class="f">Vencimiento<input type="date" id="t_vence${i}" value="${esc(t.vence)}"></label>
+      <label class="f">Detalle<input id="t_descripcion${i}" value="${esc(t.descripcion)}" placeholder="${t.tipo === 'prenda' ? 'Ej.: Prenda N° …' : 'Ej.: Pagaré N° 1'}"></label>
+      ${t.tipo === 'prenda' ? `<label class="f ancho">Vehículo<input id="t_vehiculo${i}" value="${esc(t.vehiculo)}" placeholder="Marca, modelo, dominio"></label>` : ''}
+     </div>
+     <div class="resumen"><span>${f.dias ? f.dias + ' días de mora' : t.vence ? 'No vencido' : 'Sin vencimiento'}</span><span>Interés <b>${money(f.interes)}</b></span><span>Con interés <b>${money(f.total)}</b></span>
+      <button class="btn small danger" data-act="titdel" data-i="${i}">Quitar</button></div>
+    </div>`; }).join('') : '<p class="hint m0">Sin títulos cargados.</p>'}
+   <div class="actions"><button class="btn small" data-act="titadd" data-t="pagare">+ Pagaré</button><button class="btn small" data-act="titadd" data-t="prenda">+ Prenda</button></div>
+   ${lista.length ? `<div class="totals"><div><span>Capital</span><b>${money(k.capital)}</b></div><div><span>Intereses al ${fmt(iso(today()))} (${Math.round(TASA_MENSUAL * 100)}% mensual simple)</span><b>${money(k.interes)}</b></div><div><span>Total reclamado</span><b>${money(k.total)}</b></div></div>` : ''}</div>`;
 }
 
 // Aviso dentro de la ficha cuando la causa cambió desde otro lado (Claude, otro dispositivo).
@@ -394,6 +451,10 @@ function renderDrawer(entra = false) {
    ${hist.length ? `<ul class="hist">${hist.map((h) => `<li><span class="mono">${fmt(h.fecha)}</span><span>${h.hecha ? '<span class="tag t-acu">✓ realizada</span> ' : ''}${esc(h.texto)}</span><button class="x" data-act="histdel" data-i="${h.i}" aria-label="Borrar movimiento">×</button></li>`).join('')}</ul>` : '<p class="hint m0">Sin movimientos registrados.</p>'}
   </div>
 
+  ${demandadosHtml(c)}
+
+  ${titulosHtml(c)}
+
   ${liqHtml(c)}
 
   ${S.isNew ? '' : tplHtml(c)}
@@ -411,6 +472,15 @@ function rerenderDrawer() { const p = $('.panel'), sc = p ? p.scrollTop : 0; ren
 function readForm() {
   const c = S.open;
   ['actor', 'demandado', 'tipo', 'expte', 'nom', 'oficina', 'estado', 'proxima', 'vence', 'notas'].forEach((k) => { const el = $('#c_' + k); if (el) c[k] = el.value.trim(); });
+  (c.demandados || []).forEach((d, i) => ['nombre', 'dni', 'telefono', 'domicilio', 'notas'].forEach((k) => { const el = $('#d_' + k + i); if (el) d[k] = el.value.trim(); }));
+  (c.titulos || []).forEach((t, i) => {
+    const g = (k) => $('#t_' + k + i);
+    if (g('tipo')) t.tipo = g('tipo').value;
+    if (g('monto')) t.monto = Math.max(0, +g('monto').value || 0);
+    if (g('vence')) t.vence = g('vence').value;
+    if (g('descripcion')) t.descripcion = g('descripcion').value.trim();
+    t.vehiculo = t.tipo === 'prenda' && g('vehiculo') ? g('vehiculo').value.trim() : (t.tipo === 'prenda' ? t.vehiculo || '' : '');
+  });
   if (c.liquidacion) {
     const l = c.liquidacion; l.fecha = $('#l_fecha').value; l.embargo = +$('#l_emb').value || 0;
     document.querySelectorAll('.liq input[data-f]').forEach((el) => { const r = l.rubros[+el.dataset.i]; r[el.dataset.f] = el.dataset.f === 'rubro' ? el.value : (+el.value || 0); });
@@ -601,9 +671,9 @@ async function menuAct(b) {
 function abrirPlantillas() { S.open = null; S.clave = false; S.tpl = true; renderTpl(true); }
 
 function exportar() {
-  const cols = ['Actor', 'Demandado', 'Tipo', 'Expediente', 'Nominación', 'Oficina', 'Estado', 'Etiquetas', 'Última acción', 'Fecha última acción', 'Próxima acción', 'Vence', 'Notas'];
+  const cols = ['Actor', 'Demandado', 'Tipo', 'Expediente', 'Nominación', 'Oficina', 'Estado', 'Etiquetas', 'Última acción', 'Fecha última acción', 'Próxima acción', 'Vence', 'Notas', 'Capital reclamado', 'Intereses', 'Total reclamado'];
   const q = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
-  const csv = '\ufeff' + cols.join(';') + '\n' + filtered().map((c) => [c.actor, c.demandado, c.tipo, c.expte, c.nom, c.oficina, c.estado, (c.etiquetas || []).join(', '), c.ultima, c.fecha, c.proxima, c.vence, c.notas].map(q).join(';')).join('\n');
+  const csv = '\ufeff' + cols.join(';') + '\n' + filtered().map((c) => [c.actor, c.demandado, c.tipo, c.expte, c.nom, c.oficina, c.estado, (c.etiquetas || []).join(', '), c.ultima, c.fecha, c.proxima, c.vence, c.notas, ...(() => { const k = reclamo(c); return [k.capital, k.interes, k.total]; })()].map(q).join(';')).join('\n');
   try {
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const a = Object.assign(document.createElement('a'), { href: url, download: `juicios-${iso(today())}.csv` });
@@ -650,6 +720,10 @@ document.addEventListener('click', async (e) => {
     c.historial = [...(c.historial || []), { fecha: f, texto: t }]; Object.assign(c, ultimaDe(c.historial));
   }
   if (act === 'histdel') { c.historial.splice(+a.dataset.i, 1); Object.assign(c, ultimaDe(c.historial)); }
+  if (act === 'demadd') { c.demandados = [...(c.demandados || []), DEM_VACIO()]; }
+  if (act === 'demdel') { c.demandados.splice(+a.dataset.i, 1); }
+  if (act === 'titadd') { c.titulos = [...(c.titulos || []), TIT_VACIO(a.dataset.t)]; }
+  if (act === 'titdel') { c.titulos.splice(+a.dataset.i, 1); }
   if (act === 'liqnew') { c.liquidacion = { fecha: iso(today()), embargo: 0, rubros: RUBROS.map((r) => ({ rubro: r, monto: 0, pagado: 0 })) }; }
   if (act === 'rubadd') { c.liquidacion.rubros.push({ rubro: '', monto: 0, pagado: 0 }); }
   if (act === 'rubdel') { c.liquidacion.rubros.splice(+a.dataset.i, 1); }
@@ -664,7 +738,7 @@ document.addEventListener('click', async (e) => {
 });
 
 document.addEventListener('input', (e) => {
-  if (e.target.closest('.liq') || e.target.id === 'l_emb') { // recalcular los totales sin perder el foco
+  if (e.target.closest('.liq') || e.target.id === 'l_emb' || /^t_(monto|vence)\d+$/.test(e.target.id)) { // recalcular los totales sin perder el foco
     clearTimeout(S.lt); S.lt = setTimeout(() => { if (!S.open) return; const id = document.activeElement?.id; readForm(); rerenderDrawer(); if (id) { const el = document.getElementById(id); if (el) el.focus(); } }, 700);
   }
 });
@@ -674,6 +748,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.target.id === 'h_texto') document.querySelector('[data-act="histadd"]').click();
 });
 document.addEventListener('change', (e) => {
+  if (/^t_tipo\d+$/.test(e.target.id)) { readForm(); rerenderDrawer(); return; }
   if (e.target.id === 'tp_sel') { readForm(); S.tpSel = e.target.value; rerenderDrawer(); }
 });
 $('#q').addEventListener('input', (e) => { S.q = e.target.value; render(); });

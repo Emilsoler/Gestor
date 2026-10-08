@@ -301,6 +301,27 @@ test('lo que cambia Claude lo ve la app en la siguiente lectura, y su revisión 
   assert.ok(ahora.rev > antes.rev);
 });
 
+test('demandados y títulos: se cargan, la app los lee y el reclamado suma interés simple', async () => {
+  assert.match(sqlFalla(`select gestor.agregar_titulo('14000001', 'letra', 1000)`), /pagare/);
+  assert.match(sqlFalla(`select gestor.agregar_titulo('14000001', 'pagare', -5)`), /no negativo/);
+  assert.match(sqlFalla(`select gestor.agregar_demandado('0', 'Nadie')`), /No existe la causa/);
+  sql(`select gestor.agregar_demandado('14000001', 'Lucas Piedra', '20-1', '3534000000', 'Bv. Colón 1', 'trabaja de día')`);
+  sql(`select gestor.agregar_titulo('14000001', 'pagare', 100000, '2026-04-07', 'Pagaré 1')`);
+  sql(`select gestor.agregar_titulo('14000001', 'prenda', 200000, '2026-07-06', 'Prenda', 'Ford Fiesta AA123BB')`);
+  const fila = (await emi.from('causas').select('demandados, titulos').eq('expte', '14000001').single()).data;
+  assert.equal(fila.demandados[0].telefono, '3534000000');
+  assert.equal(fila.titulos[1].vehiculo, 'Ford Fiesta AA123BB');
+  const r = JSON.parse(sql(`select gestor.reclamado('14000001', '2026-10-07')`));
+  assert.deepEqual([r.capital, r.interes, r.total], [300000, 61500, 361500]);
+  assert.equal(r.titulos[0].dias, 183);
+  // sin vencimiento o con vencimiento futuro no hay interés
+  assert.equal(JSON.parse(sql(`select gestor.reclamado('14000001', '2026-04-01')`)).interes, 0);
+  // deshacer devuelve las listas a como estaban
+  const id = sql(`select max(id) from gestor.cambios where tabla = 'causas' and clave = '14000001'`);
+  sql(`select gestor.deshacer(${id})`);
+  assert.equal(sql(`select jsonb_array_length(titulos) from public.causas where expte = '14000001'`), '1');
+});
+
 test('quitar un usuario le corta el acceso en el acto, aunque su sesión siga abierta', async () => {
   assert.ifError((await emi.from('causas').select('expte')).error);
   sql(`select gestor.quitar_usuario('emi@test.local')`);

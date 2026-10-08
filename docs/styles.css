@@ -164,6 +164,10 @@ label.f input,label.f select,label.f textarea{padding:7px 9px;border:1px solid v
 .liq input.lbl{text-align:left;font-family:var(--f-body)}
 .liq .num,.cuo .num{text-align:right}
 .liq .num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.tarjeta{border:1px solid var(--line);border-radius:6px;padding:10px;display:grid;grid-template-columns:minmax(0,1fr);gap:8px;background:var(--bg)}
+.resumen{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-size:12.5px;color:var(--muted)}
+.resumen b{font:500 13px var(--f-mono);color:var(--fg);font-variant-numeric:tabular-nums}
+.resumen .btn{margin-left:auto}
 .totals{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
 .totals div{background:var(--sunken);border-radius:6px;padding:8px 10px}
 .totals span{display:block;font-size:11.5px;color:var(--muted)}
