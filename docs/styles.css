@@ -160,15 +160,7 @@ label.f input,label.f select,label.f textarea{padding:7px 9px;border:1px solid v
 .x:hover{color:var(--bad)}
 .addrow{display:grid;grid-template-columns:140px 1fr auto;gap:8px}
 .addrow input{padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--bg);min-width:0}
-.liq{width:100%;border-collapse:collapse;min-width:0}
-.liq td,.liq th{padding:5px 4px;border-bottom:1px solid var(--line);position:static;background:none;cursor:default;text-transform:none;letter-spacing:0;font-size:12.5px}
-.liq input{width:100%;min-width:0;padding:5px 6px;border:1px solid var(--line);border-radius:4px;background:var(--bg);text-align:right;font-family:var(--f-mono);font-size:12.5px}
-.liq input.lbl{text-align:left;font-family:var(--f-body)}
-.liq .num,.cuo .num{text-align:right}
-.pago{border:1px solid var(--line);border-radius:6px;padding:8px;display:grid;gap:8px}
-.pagotot{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.pagotot b{font:500 14px var(--f-mono);font-variant-numeric:tabular-nums;margin-right:auto}
-.liq .num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.cuo .num{text-align:right}
 .tarjeta{border:1px solid var(--line);border-radius:6px;padding:10px;display:grid;grid-template-columns:minmax(0,1fr);gap:8px;background:var(--bg)}
 .resumen{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-size:12.5px;color:var(--muted)}
 .resumen b{font:500 13px var(--f-mono);color:var(--fg);font-variant-numeric:tabular-nums}
@@ -179,6 +171,48 @@ label.f input,label.f select,label.f textarea{padding:7px 9px;border:1px solid v
 .totals b{font:500 15px var(--f-mono);font-variant-numeric:tabular-nums}
 .totals .neg b{color:var(--bad)} .totals .pos b{color:var(--ok)}
 .confirm{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--bad-soft);padding:10px;border-radius:6px}
+
+/* Liquidación en la ficha: tres cifras y el botón que abre la planilla */
+.cifras{display:flex;flex-wrap:wrap;gap:6px 26px;margin:0}
+.cifras div{display:grid;gap:1px}
+.cifras dt{font-size:11.5px;color:var(--muted)}
+.cifras dd{margin:0;font:500 15px var(--f-mono);font-variant-numeric:tabular-nums}
+.liqpie{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between}
+.sucio{background:var(--warn-soft);color:var(--fg);border-radius:6px;padding:7px 10px;font-size:12.5px}
+
+/* ───────── Planilla de liquidación: una hoja de cálculo ─────────
+   Rubros en filas, cada orden de pago en una columna. La primera columna queda fija al
+   deslizar de costado; las celdas calculadas van en gris y no se editan. */
+.hoja{justify-self:start;max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:6px;background:var(--surface);overscroll-behavior-x:contain}  /* tan ancha como sus columnas; si no entran, se desliza */
+.planilla{border-collapse:separate;border-spacing:0;width:max-content}
+.planilla th,.planilla td{position:static;top:auto;cursor:default;user-select:auto;white-space:nowrap;text-transform:none;letter-spacing:0;
+  padding:0;border:0;border-right:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--surface);color:var(--fg);font-size:13px;font-weight:400;vertical-align:middle;text-align:right}
+.planilla tbody tr{cursor:default}
+.planilla tbody tr:hover td{background:var(--surface)}
+.planilla tbody tr:last-child td,.planilla tbody tr:last-child th{border-bottom:1px solid var(--line)}
+.planilla thead th{background:var(--sunken);color:var(--muted);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:500;padding:8px 10px}
+.planilla .rub{position:sticky;left:0;z-index:1;text-align:left;width:220px;min-width:220px;max-width:220px}
+.planilla thead .rub{z-index:2}
+.planilla tfoot th,.planilla tfoot td{font-weight:600;border-top:2px solid var(--fg);border-bottom:0}
+.planilla tfoot th{padding:8px 10px}
+.planilla .calc{background:var(--sunken);font-family:var(--f-mono);font-variant-numeric:tabular-nums;padding:8px 10px;min-width:128px}
+.planilla tbody tr:hover .calc{background:var(--sunken)}
+.planilla .calc.neg{color:var(--bad)}
+.celda{display:block;width:100%;min-width:0;margin:0;border:0;border-radius:0;background:transparent;padding:8px 10px;color:var(--fg);font:inherit;text-transform:none;letter-spacing:0;text-align:inherit}
+.celda.num{width:148px;text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.celda:focus{outline:2px solid var(--accent);outline-offset:-2px;background:var(--bg)}
+.celda::placeholder{color:var(--muted);opacity:.55}
+.rubcab{display:flex;align-items:center}
+.rubcab .celda{flex:1;text-align:left;text-overflow:ellipsis}
+.rubcab .x,.opcab .x{flex:none;padding:0 8px;opacity:.45}
+.rubcab .x:hover,.opcab .x:hover,.rubcab .x:focus-visible,.opcab .x:focus-visible{opacity:1}
+.planilla thead .opcol{padding:0;width:148px;vertical-align:top}
+.opcab{display:flex;align-items:center;border-bottom:1px solid var(--line)}
+.oplbl{flex:none;padding-left:10px;font-size:11px;letter-spacing:.06em;color:var(--muted)}
+.opcab .celda{flex:1;width:0;text-align:right;font-family:var(--f-mono);font-weight:500;font-size:13px;padding:7px 2px 7px 6px}
+.celda.fecha{font-size:12.5px;color:var(--muted);text-align:right;padding:5px 10px}
+.celda.fecha::-webkit-calendar-picker-indicator{opacity:.6;cursor:pointer}
+.plcampos{max-width:520px}
 
 /* Pie fijo de la ficha: guardar siempre a mano */
 .ppie{position:sticky;bottom:0;margin:0 -18px;padding:10px 18px calc(var(--abajo) + 10px);background:var(--bg);border-top:1px solid var(--line);
@@ -273,6 +307,13 @@ label.f input,label.f select,label.f textarea{padding:7px 9px;border:1px solid v
   .panel [data-act=maxi]{display:none}  /* en el celular la ficha ya ocupa todo */
   .ppie{margin:0 -14px;padding-left:14px;padding-right:14px}
   .ppie .hint{display:none}
+  .celda,.opcab .celda{font-size:16px}  /* evita el zoom de iOS al tocar una celda */
+  .celda.fecha{font-size:16px}
+  .planilla .rub{width:168px;min-width:168px;max-width:168px}
+  .rubcab .x{padding:0 6px}
+  .celda.num,.planilla thead .opcol{width:140px}
+  .plan .phead{flex-direction:column;align-items:stretch}  /* el título a lo ancho y los botones abajo */
+  .plan .phead .btns{justify-content:flex-start}
   .fab{display:inline-flex;position:fixed;right:16px;bottom:calc(var(--abajo) + 18px);z-index:9;border-radius:999px;padding:13px 18px;
     box-shadow:0 6px 18px rgba(10,14,12,.25);font-size:15px}
   .menu{top:auto;bottom:0;left:0;right:0;width:auto;border-radius:14px 14px 0 0;border-width:1px 0 0;padding:8px 8px calc(var(--abajo) + 10px)}

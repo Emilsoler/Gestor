@@ -69,7 +69,7 @@ Después de escribir, leer la fila y contar qué quedó. La app abierta lo muest
 - **Causas sin demandado**: los juicios sin contraparte (limitación de la capacidad,
   sucesiones…) van con `demandado = ''` y el interesado en `actor`; la app los nombra por el
   actor. No inventar un demandado para completar el campo.
-- **Liquidación**: `liquidacion` es `{fecha, embargo, rubros:[{id, rubro, monto, pagado}], pagos:[{id, fecha, op, imp:{<id del rubro>: monto}}]}`. Cada pago es una orden de pago (`op` es su N°) que reparte su monto entre rubros en `imp`. `pagado` de cada rubro es la suma de lo imputado: si se editan los pagos con SQL directo, recalcular `pagado` también.
+- **Liquidación**: `liquidacion` es `{fecha, embargo, rubros:[{id, rubro, monto, pagado}], pagos:[{id, fecha, op, imp:{<id del rubro>: monto}}]}`. Cada pago es una orden de pago (`op` es su N°) que reparte su monto entre rubros en `imp`. `pagado` de cada rubro es la suma de lo imputado: si se editan los pagos con SQL directo, recalcular `pagado` también. En la app, la ficha muestra solo total, cobrado y saldo, y el botón "Abrir planilla": una hoja con los rubros en filas y cada orden de pago en una columna, que se guarda en este mismo campo (lo que cargue Claude por SQL aparece ahí). "Descargar en Excel" arma un .xlsx con fórmulas en el navegador; es una copia: lo que se cambie en el archivo no vuelve al gestor.
 - **Última acción**: es el movimiento de fecha más reciente (a igual fecha, el anotado después).
   Las funciones ya lo calculan; con SQL directo sobre `historial` hay que actualizar también
   `ultima` y `fecha` (`gestor.ultima_de(historial)`).
@@ -109,7 +109,9 @@ Después de escribir, leer la fila y contar qué quedó. La app abierta lo muest
 
 ### 2. Cambiar la app
 
-1. Editar en `docs/` (`app.js` interfaz, `datos.js` todo lo que habla con la base, `styles.css`).
+1. Editar en `docs/` (`app.js` interfaz, `datos.js` todo lo que habla con la base, `styles.css`,
+   `liquidacion.js` cuentas de la liquidación e importes escritos a la argentina, `excel.js` el armado
+   de archivos .xlsx sin librerías).
 2. Probar en local: `dev/README.md` explica cómo levantar la base y correr las pruebas.
    `npm run test:db` y `npm run test:app` tienen que pasar; si el cambio se ve, mirar capturas
    (`node tests/mirar.mjs`), también en ancho de celular.

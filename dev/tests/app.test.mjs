@@ -39,6 +39,19 @@ const toast = (p, texto) => p.waitForFunction((t) => { const e = document.queryS
 const fila = (p, expte) => p.locator(`#main tr[data-id="${expte}"]`);
 const abrir = async (p, expte) => { await fila(p, expte).locator('td.car').click(); await p.waitForSelector('.panel'); };
 const cerrado = (p) => p.waitForSelector('#drawer', { state: 'hidden' });
+const enfocado = (p) => p.evaluate(() => document.activeElement?.id);
+async function leer(descarga) { const partes = []; for await (const c of await descarga.createReadStream()) partes.push(c); return Buffer.concat(partes); }
+/** Las partes de un .zip guardado sin comprimir, como los .xlsx que arma la app: { nombre: texto }. */
+function leerZip(buf) {
+  const partes = {};
+  for (let i = 0; i + 30 <= buf.length && buf.readUInt32LE(i) === 0x04034b50;) {
+    assert.equal(buf.readUInt16LE(i + 8), 0, 'parte sin comprimir');
+    const tam = buf.readUInt32LE(i + 18), n = buf.readUInt16LE(i + 26), extra = buf.readUInt16LE(i + 28), desde = i + 30 + n + extra;
+    partes[buf.toString('utf8', i + 30, i + 30 + n)] = buf.toString('utf8', desde, desde + tam);
+    i = desde + tam;
+  }
+  return partes;
+}
 
 before(async () => {
   await caido(false); await tiempoReal(false);
@@ -199,23 +212,86 @@ test('acción realizada antes de su vencimiento: queda con la fecha de hoy, no c
     `Enviar cédulas|${dia(0)}|${dia(0)}`);
 });
 
-test('liquidación: totales, faltante de embargo y guardado', async () => {
+test('liquidación: un botón de la ficha abre la planilla; totales, faltante de embargo y guardado', async () => {
   await abrir(page, '1002');
-  await page.click('[data-act=liqnew]');
-  await page.fill('#l_emb', '1000');
-  await page.fill('#lr_m0', '400'); await page.fill('#lr_m4', '900');
-  await page.click('[data-act=pagadd]'); await page.fill('#lp_o0', '4321'); await page.fill('#li_0_0', '150');
-  await page.waitForFunction(() => /Cobrado por OP\$ 150/.test(document.querySelector('.totals')?.textContent || ''), null, { timeout: 5000 });
-  const totales = await page.textContent('.totals');
+  assert.match(await page.textContent('#secLiq'), /Sin liquidación cargada/);
+  await page.click('#secLiq [data-act=planilla]'); await page.waitForSelector('.panel.plan');
+  assert.equal(await page.locator('.planilla tbody tr').count(), 6, 'arranca con los rubros de siempre');
+  await page.fill('#pl_emb', '1.000'); // con punto de miles, como en el expediente
+  await page.fill('#pl_m0', '400'); await page.fill('#pl_m4', '900');
+  await page.click('[data-act=pagadd]');
+  assert.equal(await enfocado(page), 'pl_o0', 'la orden de pago nueva queda lista para escribir su N°');
+  await page.keyboard.type('4321');
+  await page.fill('#pl_i0_0', '150');
+  // se recalcula mientras se escribe
+  assert.equal(await page.textContent('#pl_c0'), '$ 150'); assert.equal(await page.textContent('#pl_s0'), '$ 250');
+  assert.equal(await page.textContent('#pl_t0'), '$ 150'); assert.equal(await page.textContent('#pl_tm'), '$ 1.300');
+  const totales = await page.textContent('#pl_totales');
   assert.match(totales, /Total planilla\$ 1\.300/); assert.match(totales, /Cobrado por OP\$ 150/); assert.match(totales, /Saldo pendiente\$ 1\.150/);
   assert.match(totales, /Faltante: pedir ampliación de embargo\$ 300/);
-  await page.click('.ppie [data-act=save]'); await toast(page, 'Cambios guardados'); await cerrado(page);
+  await page.click('[data-act=plsave]'); await toast(page, 'Planilla guardada');
+  assert.equal(await page.locator('.panel.plan').count(), 1, 'la planilla sigue abierta para seguir cargando');
   assert.equal(sql(`select (liquidacion ->> 'embargo') || '|' || (liquidacion -> 'rubros' -> 0 ->> 'monto') || '|' || (liquidacion -> 'rubros' -> 0 ->> 'pagado') || '|' || jsonb_array_length(liquidacion -> 'rubros') from public.causas where expte='1002'`),
     '1000|400|150|6');
   assert.equal(sql(`select liquidacion -> 'pagos' -> 0 ->> 'op' || '|' || (liquidacion -> 'pagos' -> 0 -> 'imp' ->> ((liquidacion -> 'rubros' -> 0 ->> 'id'))) from public.causas where expte='1002'`), '4321|150');
+  // en la ficha queda el resumen
+  await page.click('.ppie [data-act=plvolver]'); await page.waitForSelector('#secLiq .cifras');
+  const resumen = await page.textContent('#secLiq');
+  assert.match(resumen, /Total\$ 1\.300/); assert.match(resumen, /Saldo\$ 1\.150/); assert.match(resumen, /1 orden de pago/);
+  assert.match(resumen, /Faltante sobre el embargo: \$ 300/);
+  assert.equal(await page.locator('#secLiq .sucio').count(), 0, 'no quedan cambios sin guardar');
+  await page.click('.ppie [data-act=close]'); await cerrado(page);
 });
 
-test('ficha: se puede maximizar y restaurar, y el pago guarda fecha y N° de OP', async () => {
+test('planilla: celdas como en Excel, cambios sin guardar y descarga del .xlsx', async () => {
+  await abrir(page, '1002');
+  await page.click('#secLiq [data-act=planilla]'); await page.waitForSelector('.panel.plan');
+  assert.equal(await page.inputValue('#pl_o0'), '4321'); assert.equal(await page.inputValue('#pl_m4'), '900');
+  // Enter baja a la celda de abajo; al salir, el importe queda con miles y centavos
+  await page.click('#pl_m1'); await page.keyboard.type('1234,5'); await page.keyboard.press('Enter');
+  assert.equal(await enfocado(page), 'pl_m2');
+  assert.equal(await page.inputValue('#pl_m1'), '1.234,50');
+  assert.equal(await page.textContent('#pl_s1'), '$ 1.234,50');
+  // una segunda orden de pago, imputada a Capital
+  await page.click('[data-act=pagadd]'); await page.keyboard.type('5555'); await page.fill('#pl_i4_1', '200.000');
+  assert.equal(await page.textContent('#pl_c4'), '$ 200.000'); assert.equal(await page.textContent('#pl_s4'), '-$ 199.100');
+  // el Excel: rubros en filas desde la 8, las órdenes de pago desde la columna E, cobrado y saldo con fórmula y resultado
+  const [descarga] = await Promise.all([page.waitForEvent('download'), page.click('[data-act=plexcel]')]);
+  assert.match(descarga.suggestedFilename(), /^liquidacion-1002-beta-bruno-\d{4}-\d{2}-\d{2}\.xlsx$/);
+  const partes = leerZip(await leer(descarga));
+  for (const p of ['[Content_Types].xml', '_rels/.rels', 'xl/workbook.xml', 'xl/_rels/workbook.xml.rels', 'xl/styles.xml']) assert.ok(partes[p], 'falta ' + p);
+  const hoja = partes['xl/worksheets/sheet1.xml'];
+  assert.match(hoja, /OP N° 4321/); assert.match(hoja, /OP N° 5555/); assert.match(hoja, /AMB c\/ BETA BRUNO – PRENDARIO/);
+  assert.match(hoja, /<c r="C12" s="7"><f>SUM\(E12:F12\)<\/f><v>200000<\/v><\/c>/, 'cobrado de Capital');
+  assert.match(hoja, /<c r="D9" s="7"><f>B9-C9<\/f><v>1234.5<\/v><\/c>/, 'saldo de Intereses honorarios');
+  assert.match(hoja, /<c r="B14" s="9"><f>SUM\(B8:B13\)<\/f><v>2534.5<\/v><\/c>/, 'total de la planilla');
+  // volver sin guardar: la ficha avisa, y "Guardar cambios" guarda también la planilla
+  await page.click('.ppie [data-act=plvolver]');
+  assert.match(await page.textContent('#secLiq .sucio'), /cambios sin guardar/);
+  await page.click('.ppie [data-act=save]'); await toast(page, 'Cambios guardados'); await cerrado(page);
+  assert.equal(sql(`select (liquidacion -> 'rubros' -> 1 ->> 'monto') || '|' || (liquidacion -> 'pagos' -> 1 ->> 'op') || '|' || (liquidacion -> 'rubros' -> 4 ->> 'pagado') from public.causas where expte='1002'`),
+    '1234.5|5555|200000');
+});
+
+test('planilla: si Claude cambió la causa no se pisa, y guardarla igual conserva lo de Claude', async () => {
+  await abrir(page, '1002');
+  await page.click('#secLiq [data-act=planilla]'); await page.waitForSelector('.panel.plan');
+  await page.fill('#pl_m5', '50.000');
+  sql(`select gestor.movimiento('1002', 'Se libró oficio')`);
+  await page.waitForSelector('#nota .nota', { timeout: 10000 });
+  assert.equal(await page.inputValue('#pl_m5'), '50.000', 'el aviso no borra lo que estaba escribiendo');
+  await page.click('[data-act=plsave]');
+  await page.waitForSelector('#nota .nota.choque');
+  assert.equal(sql(`select liquidacion -> 'rubros' -> 5 ->> 'monto' from public.causas where expte='1002'`), '0', 'no se guardó encima');
+  await page.click('[data-act=choque-pisar]'); await toast(page, 'Planilla guardada');
+  assert.equal(sql(`select (liquidacion -> 'rubros' -> 5 ->> 'monto') || '|' || ultima from public.causas where expte='1002'`), '50000|Se libró oficio');
+  await page.click('.ppie [data-act=plvolver]');
+  assert.match(await page.textContent('.hist'), /Se libró oficio/, 'la ficha ya muestra el movimiento de Claude');
+  await page.click('.ppie [data-act=save]'); await toast(page, 'Cambios guardados'); await cerrado(page);
+  assert.equal(sql(`select ultima from public.causas where expte='1002'`), 'Se libró oficio', 'guardar la ficha después tampoco lo borra');
+});
+
+test('ficha: se puede maximizar y restaurar', async () => {
   await abrir(page, '1002');
   assert.equal(await page.locator('.panel.max').count(), 0);
   await page.click('.panel [data-act=maxi]');
@@ -412,6 +488,10 @@ test('celular: tarjetas, filtros plegados y botón de nueva causa', async () => 
   await p.tap('#main .fila[data-id="1002"] .fila-top');
   await p.waitForSelector('.panel');
   assert.equal(await p.evaluate(() => { const s = document.querySelector('.panel'); return s.scrollWidth <= s.clientWidth; }), true, 'la ficha entra en el ancho');
+  await p.tap('#secLiq [data-act=planilla]'); await p.waitForSelector('.panel.plan');
+  assert.equal(await p.evaluate(() => { const s = document.querySelector('.panel'); return s.scrollWidth <= s.clientWidth; }), true, 'la planilla entra en el ancho');
+  assert.equal(await p.evaluate(() => { const h = document.querySelector('#pl_hoja'); return h.scrollWidth > h.clientWidth; }), true, 'las columnas se deslizan dentro de la hoja');
+  await p.tap('.ppie [data-act=plvolver]'); await p.waitForSelector('#secLiq');
   await p.tap('.ppie [data-act=close]');
   await p.tap('#fabNew'); await p.waitForSelector('.panel');
   assert.match(await p.textContent('.panel h2'), /Nueva causa/);

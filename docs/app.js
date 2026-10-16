@@ -5,14 +5,14 @@ import {
   crearAcuerdo, actualizarAcuerdo, borrarAcuerdo,
   crearPlantilla, guardarPlantilla, borrarPlantilla,
 } from './datos.js';
+import { idNuevo, nuevaLiquidacion, cobradoRubro, totalPago, liqNormal, liqCalc, importe, pesos, enCelda, planillaExcel } from './liquidacion.js';
 
-const VERSION = '1.2';
+const VERSION = '1.3';
 
 const TAGS = [
   { k: 'En trámite', c: '' }, { k: 'Embargo de sueldo', c: 't-emb' }, { k: 'Secuestro / subasta', c: 't-sec' },
   { k: 'Acuerdo', c: 't-acu' }, { k: 'Martillero', c: 't-mar' }, { k: 'OP solicitada', c: 't-op' }];
 const ESTADOS = ['Iniciar', 'Notificando', 'Casillero', 'A despacho', 'Sentencia', 'Tramites p/ subasta', 'Acuerdo', 'Archivada'];
-const RUBROS = ['Honorarios', 'Intereses honorarios', 'Auto honorarios x ejec.', 'Gastos', 'Capital', 'Intereses capital'];
 const STALE = 30; // días sin movimiento para marcar una causa
 const GRACIA = 5; // días después del vencimiento de una cuota antes de preguntar si se pagó
 const CLAVE_MIN = 10;
@@ -21,6 +21,7 @@ const S = {
   pantalla: 'arranque',
   q: '', estado: '', nom: '', tag: '', quick: '', view: 'lista', sort: { k: 'dias', dir: -1 },
   open: null, isNew: false, confirmDel: false, choque: null, // ficha abierta
+  planilla: false, liqSucia: false, // la planilla de liquidación está a la vista / tiene cambios sin guardar
   tpl: false, tpSel: '', tplDel: '', clave: false, // otros paneles
   na: { deudor: '', expte: '', n: '', monto: '', fecha: '', cada: 'mes', notas: '' }, acDel: '',
   menu: false, instalar: null, ocupado: false,
@@ -323,53 +324,153 @@ async function quickDone(id) {
 function blank() { return { expte: '', actor: 'AMB', demandado: '', tipo: 'EJECUTIVO', nom: '', oficina: 'OEP', estado: 'Iniciar', proxima: '', vence: '', ultima: '', fecha: '', etiquetas: ['En trámite'], notas: '', historial: [], demandados: [], titulos: [] }; }
 function openCausa(id) {
   S.open = id ? copia(D.causas.find((c) => c.expte === id) || blank()) : blank();
+  S.base = copia(S.open); // la causa como se abrió: para saber qué se cambió en la ficha
   S.isNew = !id; S.confirmDel = false; S.choque = null; S.tpl = false; S.clave = false; S.tpSel = '';
+  S.planilla = false; S.liqSucia = false;
   renderDrawer(true);
 }
 function closeDrawer() {
   S.open = null; S.tpl = false; S.clave = false; S.tpSel = ''; S.tplDel = ''; S.choque = null; S.confirmDel = false;
+  S.planilla = false; S.liqSucia = false;
   $('#drawer').hidden = true; $('#drawer').innerHTML = ''; document.body.style.overflow = '';
 }
-const idNuevo = () => Math.random().toString(36).slice(2, 10);
-/** Lo imputado a un rubro, sumando todos los pagos. */
-function cobradoRubro(l, id) { return l.pagos.reduce((a, p) => a + (+p.imp[id] || 0), 0); }
-/**
- * Cada pago (una OP) reparte su monto entre los rubros y `pagado` de cada rubro es lo imputado.
- * Las liquidaciones anteriores tenían `pagado` cargado a mano: pasa a un único pago sin fecha ni OP.
- */
-function liqNormal(l) {
-  l.rubros.forEach((r) => { if (!r.id) r.id = idNuevo(); });
-  if (!Array.isArray(l.pagos)) {
+
+// ───────────────────────── Liquidación ─────────────────────────
+// En la ficha queda un resumen y el botón "Abrir planilla". La planilla ocupa toda la pantalla
+// y se maneja como una hoja de Excel: los rubros en filas y cada orden de pago en una columna.
+
+function liqHtml(c) {
+  const l = c.liquidacion, h = '<h4>Liquidación y órdenes de pago</h4>';
+  if (S.isNew) return `<div class="sec">${h}<p class="hint m0">La planilla de liquidación se carga una vez creada la causa.</p></div>`;
+  if (!l) return `<div class="sec" id="secLiq">${h}<div class="liqpie"><span class="hint">Sin liquidación cargada.</span><button class="btn small primary" data-act="planilla">Cargar planilla</button></div></div>`;
+  const k = liqCalc(l), n = l.pagos.length, emb = +l.embargo || 0;
+  return `<div class="sec" id="secLiq">${h}
+   <dl class="cifras"><div><dt>Total</dt><dd>${pesos(k.tot)}</dd></div><div><dt>Cobrado</dt><dd>${pesos(k.pag)}</dd></div><div><dt>Saldo</dt><dd>${pesos(k.saldo)}</dd></div></dl>
+   ${emb && k.dif < 0 ? `<p class="malo m0">Faltante sobre el embargo: ${pesos(-k.dif)}. Pedir ampliación.</p>` : ''}
+   ${S.liqSucia ? '<p class="sucio m0"><b>La planilla tiene cambios sin guardar.</b> Se guardan con “Guardar cambios”.</p>' : ''}
+   <div class="liqpie"><span class="hint">${l.fecha ? 'Planilla del ' + fmt(l.fecha) + ' · ' : ''}${n ? n + (n === 1 ? ' orden de pago' : ' órdenes de pago') : 'Sin órdenes de pago'}</span><button class="btn small primary" data-act="planilla">Abrir planilla</button></div></div>`;
+}
+
+function totalesHtml(l) {
+  const k = liqCalc(l), emb = +l.embargo || 0;
+  return `<div><span>Total planilla</span><b>${pesos(k.tot)}</b></div><div><span>Cobrado por OP</span><b>${pesos(k.pag)}</b></div><div><span>Saldo pendiente</span><b>${pesos(k.saldo)}</b></div>` +
+    (emb ? `<div class="${k.dif < 0 ? 'neg' : 'pos'}"><span>${k.dif < 0 ? 'Faltante: pedir ampliación de embargo' : 'Excedente sobre planilla'}</span><b>${pesos(Math.abs(k.dif))}</b></div>` : '<div><span>Embargo trabado</span><b>Sin cargar</b></div>');
+}
+
+function planillaHtml(c, entra) {
+  const l = c.liquidacion, P = l.pagos, k = liqCalc(l);
+  // Celda de importe: se escribe como en el expediente ("150.000" o "1.234,50"); Enter baja de fila.
+  const celda = (id, v, r, col, nombre, extra = '') => `<input class="celda num" id="${id}" value="${esc(enCelda(v))}" inputmode="decimal" autocomplete="off" data-importe data-r="${r}" data-c="${col}" aria-label="${esc(nombre)}"${extra}>`;
+  const cab = P.map((p, j) => `<th scope="col" class="opcol"><div class="opcab"><span class="oplbl" aria-hidden="true">OP N°</span><input class="celda op" id="pl_o${j}" value="${esc(p.op)}" placeholder="N° de OP" inputmode="numeric" autocomplete="off" aria-label="N° de la orden de pago ${j + 1}"><button class="x" data-act="pagdel" data-i="${j}" aria-label="Quitar la orden de pago ${esc(p.op || j + 1)}">×</button></div><input class="celda fecha" type="date" id="pl_f${j}" value="${esc(p.fecha)}" aria-label="Fecha de la orden de pago ${j + 1}"></th>`).join('');
+  const filas = l.rubros.map((r, i) => {
+    const nombre = r.rubro || `rubro ${i + 1}`, saldo = (+r.monto || 0) - (+r.pagado || 0);
+    return `<tr><th scope="row" class="rub"><div class="rubcab"><input class="celda txt" id="pl_r${i}" value="${esc(r.rubro)}" placeholder="Nombre del rubro" autocomplete="off" data-r="${i}" data-c="r" aria-label="Rubro ${i + 1}"><button class="x" data-act="rubdel" data-i="${i}" aria-label="Quitar ${esc(nombre)}">×</button></div></th>
+     <td>${celda('pl_m' + i, r.monto, i, 'm', 'Monto de ' + nombre, ' placeholder="0"')}</td><td class="calc" id="pl_c${i}">${pesos(r.pagado)}</td><td class="calc${saldo < 0 ? ' neg' : ''}" id="pl_s${i}">${pesos(saldo)}</td>
+     ${P.map((p, j) => `<td>${celda(`pl_i${i}_${j}`, p.imp[r.id], i, j, `${p.op ? 'OP N° ' + p.op : 'Orden de pago ' + (j + 1)}: imputado a ${nombre}`)}</td>`).join('')}</tr>`;
+  }).join('');
+  return `<div class="scrim"></div><aside class="panel max plan${entra ? ' entra' : ''}" role="dialog" aria-modal="true" aria-label="Planilla de liquidación">
+  <div class="phead"><div><div class="hint">Planilla de liquidación · Expte. ${esc(c.expte)}</div><h2>${esc(caratula(c))}</h2></div>
+   <div class="btns"><button class="btn small" data-act="plexcel">Descargar en Excel</button><button class="btn small" data-act="plvolver">Volver a la ficha</button></div></div>
+  <div id="nota">${notaHtml()}</div>
+  <div class="sec">
+   <div class="grid2 plcampos"><label class="f">Fecha de la liquidación<input type="date" id="pl_fecha" value="${esc(l.fecha)}"></label><label class="f">Embargo trabado ($)<input id="pl_emb" value="${esc(enCelda(l.embargo))}" placeholder="0" inputmode="decimal" autocomplete="off" data-importe></label></div>
+   <div class="hoja" id="pl_hoja"><table class="planilla"><thead><tr><th scope="col" class="rub">Rubro</th><th scope="col">Monto</th><th scope="col">Cobrado</th><th scope="col">Saldo</th>${cab}</tr></thead>
+    <tbody>${filas}</tbody>
+    <tfoot><tr><th scope="row" class="rub">Total</th><td class="calc" id="pl_tm">${pesos(k.tot)}</td><td class="calc" id="pl_tc">${pesos(k.pag)}</td><td class="calc" id="pl_ts">${pesos(k.saldo)}</td>${P.map((p, j) => `<td class="calc" id="pl_t${j}">${pesos(totalPago(p))}</td>`).join('')}</tr></tfoot></table></div>
+   <div class="actions"><button class="btn small" data-act="rubadd">+ Rubro</button><button class="btn small" data-act="pagadd">+ Orden de pago</button>${P.length ? '' : '<span class="hint">Todavía no hay órdenes de pago: cada una se agrega como una columna.</span>'}</div>
+   <p class="hint m0">Escribí los importes como en el expediente (150.000 o 1.234,50). Cobrado, saldo y totales se calculan solos. Enter baja a la fila de abajo.</p>
+   <div class="totals" id="pl_totales">${totalesHtml(l)}</div>
+  </div>
+  <div class="ppie"><button class="btn primary" data-act="plsave">Guardar planilla</button><button class="btn" data-act="plvolver">Volver a la ficha</button><span class="hint">Se guarda en el gestor. El Excel es una copia para abrir, imprimir o mandar.</span></div>
+  </aside>`;
+}
+
+/** Pasa lo que está escrito en la planilla a la liquidación de la causa abierta. */
+function leerPlanilla(l) {
+  const el = (id) => document.getElementById(id);
+  if (el('pl_fecha')) l.fecha = el('pl_fecha').value;
+  if (el('pl_emb')) l.embargo = importe(el('pl_emb').value);
+  l.rubros.forEach((r, i) => {
+    if (el('pl_r' + i)) r.rubro = el('pl_r' + i).value.trim();
+    if (el('pl_m' + i)) r.monto = importe(el('pl_m' + i).value);
+  });
+  l.pagos.forEach((p, j) => {
+    if (el('pl_o' + j)) p.op = el('pl_o' + j).value.trim();
+    if (el('pl_f' + j)) p.fecha = el('pl_f' + j).value;
     const imp = {};
-    l.rubros.forEach((r) => { if (+r.pagado > 0) imp[r.id] = +r.pagado; });
-    l.pagos = Object.keys(imp).length ? [{ id: idNuevo(), fecha: '', op: '', imp }] : [];
-  }
-  l.pagos.forEach((p) => { if (!p.id) p.id = idNuevo(); p.imp = p.imp || {}; });
+    l.rubros.forEach((r, i) => { const v = el(`pl_i${i}_${j}`); const n = v ? Math.max(0, importe(v.value)) : (+p.imp[r.id] || 0); if (n) imp[r.id] = n; });
+    p.imp = imp;
+  });
   l.rubros.forEach((r) => { r.pagado = cobradoRubro(l, r.id); });
 }
-function liqCalc(l) { const tot = l.rubros.reduce((a, r) => a + (+r.monto || 0), 0), pag = l.rubros.reduce((a, r) => a + (+r.pagado || 0), 0); return { tot, pag, saldo: tot - pag, dif: (+l.embargo || 0) - tot }; }
-function pagoHtml(l, p, j) {
-  const total = Object.values(p.imp).reduce((a, v) => a + (+v || 0), 0);
-  return `<div class="pago">
-   <div class="grid2"><label class="f">Fecha del pago<input type="date" id="lp_f${j}" value="${esc(p.fecha)}"></label><label class="f">N° de Orden de Pago<input class="lbl" id="lp_o${j}" value="${esc(p.op)}" inputmode="numeric"></label></div>
-   <table class="liq"><tbody>${l.rubros.map((r, i) => `<tr><td>${esc(r.rubro || '(sin nombre)')}</td><td><input type="number" id="li_${j}_${i}" value="${+p.imp[r.id] || 0}" aria-label="Imputado a ${esc(r.rubro)}"></td></tr>`).join('')}</tbody></table>
-   <div class="pagotot"><span class="hint m0">Total de esta OP</span><b>${money(total)}</b><button class="btn small danger" data-act="pagdel" data-i="${j}">Borrar pago</button></div></div>`;
+
+/** Recalcula cobrado, saldo y totales mientras se escribe, sin redibujar (no se pierde el cursor). */
+function recalcPlanilla() {
+  const l = S.open?.liquidacion; if (!S.planilla || !l) return;
+  leerPlanilla(l); S.liqSucia = true;
+  const poner = (id, n) => { const e = document.getElementById(id); if (e) { e.textContent = pesos(n); e.classList.toggle('neg', n < 0); } };
+  l.rubros.forEach((r, i) => { poner('pl_c' + i, r.pagado); poner('pl_s' + i, (+r.monto || 0) - (+r.pagado || 0)); });
+  l.pagos.forEach((p, j) => poner('pl_t' + j, totalPago(p)));
+  const k = liqCalc(l); poner('pl_tm', k.tot); poner('pl_tc', k.pag); poner('pl_ts', k.saldo);
+  const t = document.getElementById('pl_totales'); if (t) t.innerHTML = totalesHtml(l);
 }
-function liqHtml(c) {
-  const l = c.liquidacion;
-  if (!l) return `<div class="sec"><h4>Liquidación y órdenes de pago</h4><p class="hint m0">Sin liquidación cargada.</p><div><button class="btn small" data-act="liqnew">Cargar liquidación</button></div></div>`;
-  const k = liqCalc(l);
-  return `<div class="sec"><h4>Liquidación y órdenes de pago</h4>
-   <div class="grid2"><label class="f">Fecha liquidación<input type="date" id="l_fecha" value="${esc(l.fecha)}"></label><label class="f">Embargo trabado ($)<input type="number" id="l_emb" value="${+l.embargo || 0}"></label></div>
-   <div class="scrollx"><table class="liq"><thead><tr><th>Rubro</th><th class="num">Monto</th><th class="num">Cobrado</th><th class="num">Saldo</th><th></th></tr></thead><tbody>
-   ${l.rubros.map((r, i) => `<tr><td><input class="lbl" id="lr_r${i}" data-i="${i}" data-f="rubro" value="${esc(r.rubro)}" aria-label="Rubro"></td><td><input type="number" id="lr_m${i}" data-i="${i}" data-f="monto" value="${+r.monto || 0}" aria-label="Monto"></td><td class="num">${money(r.pagado)}</td><td class="num">${money((+r.monto || 0) - (+r.pagado || 0))}</td><td><button class="x" data-act="rubdel" data-i="${i}" aria-label="Quitar rubro">×</button></td></tr>`).join('')}
-   </tbody></table></div>
-   <div><button class="btn small" data-act="rubadd">+ Rubro</button></div>
-   <div class="hint">Pagos (órdenes de pago): cada pago se reparte entre los rubros según lo que se cobró.</div>
-   ${l.pagos.length ? l.pagos.map((p, j) => pagoHtml(l, p, j)).join('') : '<p class="hint m0">Sin pagos cargados.</p>'}
-   <div><button class="btn small" data-act="pagadd">+ Pago</button></div>
-   <div class="totals"><div><span>Total planilla</span><b>${money(k.tot)}</b></div><div><span>Cobrado por OP</span><b>${money(k.pag)}</b></div><div><span>Saldo pendiente</span><b>${money(k.saldo)}</b></div>
-   <div class="${k.dif < 0 ? 'neg' : 'pos'}"><span>${k.dif < 0 ? 'Faltante: pedir ampliación de embargo' : 'Excedente sobre planilla'}</span><b>${money(Math.abs(k.dif))}</b></div></div></div>`;
+
+function abrirPlanilla() {
+  const c = S.open;
+  if (!c.liquidacion) { c.liquidacion = nuevaLiquidacion(iso(today())); S.liqSucia = true; }
+  S.planilla = true; renderDrawer(true); $('.panel').scrollTop = 0;
+}
+function volverAFicha() {
+  S.planilla = false; renderDrawer();
+  $('#secLiq')?.scrollIntoView({ block: 'center' });
+}
+
+const CAMPOS_FICHA = ['actor', 'demandado', 'tipo', 'nom', 'oficina', 'estado', 'etiquetas', 'proxima', 'vence', 'ultima', 'fecha', 'notas', 'historial', 'demandados', 'titulos'];
+/**
+ * Guarda solo la liquidación, sin cerrar: la planilla sigue abierta para seguir cargando.
+ * Con `forzar` (la persona eligió guardarla aunque la causa haya cambiado desde otro lado) pisa
+ * la liquidación y nada más: lo que Claude haya cambiado en el resto de la causa se conserva.
+ */
+async function guardarPlanilla(boton, forzar = false) {
+  const c = S.open; leerPlanilla(c.liquidacion);
+  await conBoton(boton, 'Guardando…', async () => {
+    try {
+      const r = await actualizarCausa(c.expte, forzar ? null : c.rev, { liquidacion: c.liquidacion });
+      if (r.conflicto) { S.choque = { actual: r.actual }; rerenderDrawer(); $('.panel').scrollTop = 0; return; }
+      // La causa queda como está en la base, más lo que se haya cambiado en la ficha y todavía no se guardó.
+      const nueva = copia(r.fila);
+      CAMPOS_FICHA.forEach((k) => { if (JSON.stringify(c[k] ?? null) !== JSON.stringify(S.base?.[k] ?? null)) nueva[k] = c[k]; });
+      nueva.liquidacion = c.liquidacion;
+      S.open = nueva; S.base = copia(r.fila); S.liqSucia = false; S.choque = null;
+      const n = $('#nota'); if (n) n.innerHTML = notaHtml();
+      toast('Planilla guardada');
+    } catch (e) { toast(mensaje(e)); }
+  });
+}
+
+const slug = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+
+function descargarPlanilla() {
+  const c = S.open; if (!c?.liquidacion) return;
+  const nombre = ['liquidacion', c.expte, slug(titulo(c)), iso(today())].filter(Boolean).join('-') + '.xlsx';
+  let archivo;
+  try { archivo = planillaExcel({ caratula: caratula(c), expte: c.expte, nom: c.nom, oficina: c.oficina, liquidacion: c.liquidacion }, iso(today())); } catch (e) { console.error(e); toast('No se pudo armar el Excel'); return; }
+  entregar(archivo, nombre).then((ok) => { if (ok) toast('Archivo listo: ' + nombre); }, () => toast('No se pudo descargar el archivo en este dispositivo'));
+}
+
+/**
+ * En el celular abre el menú de compartir (Excel, Drive, WhatsApp…); en la computadora lo
+ * descarga. Devuelve false si la persona cerró el menú sin elegir nada.
+ */
+async function entregar(blob, nombre) {
+  const archivo = typeof File === 'function' ? new File([blob], nombre, { type: blob.type }) : null;
+  if (movil.matches && archivo && navigator.canShare?.({ files: [archivo] })) {
+    try { await navigator.share({ files: [archivo], title: nombre }); return true; } catch (e) { if (e.name === 'AbortError') return false; }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = Object.assign(document.createElement('a'), { href: url, download: nombre });
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  return true;
 }
 
 
@@ -438,7 +539,7 @@ function notaHtml() {
       <div class="actions"><button class="btn small" data-act="choque-crear">Volver a crearla con estos datos</button><button class="btn small" data-act="close">Cerrar sin guardar</button></div></div>`;
     const a = S.choque.actual;
     return `<div class="nota choque" role="alert"><p><b>No se guardó:</b> ${esc(a.actualizado_por || 'alguien')} modificó esta causa ${a.actualizado ? cuando(new Date(a.actualizado)) : 'recién'}, mientras la editabas.</p>
-      <div class="actions"><button class="btn small" data-act="choque-ver">Ver la versión actual (descarta lo mío)</button><button class="btn small" data-act="choque-pisar">Guardar lo mío igual</button></div></div>`;
+      <div class="actions"><button class="btn small" data-act="choque-ver">Ver la versión actual (descarta lo mío)</button><button class="btn small" data-act="choque-pisar">${S.planilla ? 'Guardar mi planilla igual' : 'Guardar lo mío igual'}</button></div></div>`;
   }
   const actual = D.causas.find((x) => x.expte === c.expte);
   if (!actual) return `<div class="nota" role="status"><p><b>Esta causa fue eliminada desde otro lugar.</b></p></div>`;
@@ -450,7 +551,9 @@ function notaHtml() {
 function renderDrawer(entra = false) {
   const c = S.open, d = $('#drawer'); d.hidden = false; document.body.style.overflow = 'hidden';
   if (c.liquidacion) liqNormal(c.liquidacion);
-  const hist = (c.historial || []).map((h, i) => ({ ...h, i })).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '') || b.i - a.i);
+  if (S.planilla && c.liquidacion) { d.innerHTML = planillaHtml(c, entra); return; }
+  S.planilla = false;
+  const hist =(c.historial || []).map((h, i) => ({ ...h, i })).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '') || b.i - a.i);
   const meta = !S.isNew && c.actualizado ? ` · último cambio ${cuando(new Date(c.actualizado))}${c.actualizado_por ? ' (' + esc(c.actualizado_por) + ')' : ''}` : '';
   d.innerHTML = `<div class="scrim" data-act="close"></div><aside class="panel${entra ? ' entra' : ''}${S.maxi ? ' max' : ''}" role="dialog" aria-modal="true" aria-label="Ficha de la causa">
   <div class="phead"><div><div class="hint">${S.isNew ? 'Nueva causa' : 'Expte. ' + esc(c.expte) + meta}</div><h2>${esc(S.isNew && !c.demandado ? 'Nueva causa' : caratula(c))}</h2></div><div class="btns"><button class="btn small" data-act="maxi" aria-pressed="${!!S.maxi}">${S.maxi ? 'Restaurar' : 'Maximizar'}</button><button class="btn small" data-act="close">Cerrar</button></div></div>
@@ -496,7 +599,12 @@ function renderDrawer(entra = false) {
   </aside>`;
 }
 
-function rerenderDrawer() { const p = $('.panel'), sc = p ? p.scrollTop : 0; renderDrawer(); if (sc) $('.panel').scrollTop = sc; }
+function rerenderDrawer() {
+  const p = $('.panel'), sc = p ? p.scrollTop : 0, h = $('#pl_hoja'), sx = h ? h.scrollLeft : 0;
+  renderDrawer();
+  if (sc) $('.panel').scrollTop = sc;
+  if (sx && $('#pl_hoja')) $('#pl_hoja').scrollLeft = sx; // la planilla queda en la misma columna
+}
 
 function readForm() {
   const c = S.open;
@@ -510,18 +618,7 @@ function readForm() {
     if (g('descripcion')) t.descripcion = g('descripcion').value.trim();
     t.vehiculo = t.tipo === 'prenda' && g('vehiculo') ? g('vehiculo').value.trim() : (t.tipo === 'prenda' ? t.vehiculo || '' : '');
   });
-  if (c.liquidacion) {
-    const l = c.liquidacion; l.fecha = $('#l_fecha').value; l.embargo = +$('#l_emb').value || 0;
-    document.querySelectorAll('.liq input[data-f]').forEach((el) => { const r = l.rubros[+el.dataset.i]; r[el.dataset.f] = el.dataset.f === 'rubro' ? el.value : (+el.value || 0); });
-    l.pagos.forEach((p, j) => {
-      const f = $('#lp_f' + j), o = $('#lp_o' + j);
-      if (f) p.fecha = f.value;
-      if (o) p.op = o.value.trim();
-      p.imp = {};
-      l.rubros.forEach((r, i) => { const v = $('#li_' + j + '_' + i); if (v) { const n = Math.max(0, +v.value || 0); if (n) p.imp[r.id] = n; } });
-    });
-    l.rubros.forEach((r) => { r.pagado = cobradoRubro(l, r.id); });
-  }
+  if (S.planilla && c.liquidacion) leerPlanilla(c.liquidacion);
   return c;
 }
 
@@ -747,8 +844,13 @@ document.addEventListener('click', async (e) => {
   if (act === 'close') { closeDrawer(); return; }
   if (act === 'claude') { hablarConClaude(S.open); return; }
   if (!c) return;
-  if (act === 'choque-ver') { const actual = D.causas.find((x) => x.expte === c.expte); if (!actual) { closeDrawer(); return; } S.open = copia(actual); S.choque = null; S.confirmDel = false; renderDrawer(); return; }
+  if (act === 'choque-ver') { const actual = D.causas.find((x) => x.expte === c.expte); if (!actual) { closeDrawer(); return; } S.open = copia(actual); S.base = copia(actual); S.choque = null; S.confirmDel = false; S.liqSucia = false; renderDrawer(); return; }
   readForm();
+  if (act === 'choque-pisar' && S.planilla && S.choque?.actual) { await guardarPlanilla(a, true); return; }
+  if (act === 'plexcel') { descargarPlanilla(); return; } // antes de cualquier espera: el menú de compartir del celular lo exige
+  if (act === 'planilla') { abrirPlanilla(); return; }
+  if (act === 'plvolver') { volverAFicha(); return; }
+  if (act === 'plsave') { await guardarPlanilla(a); return; }
   if (act === 'choque-pisar') { S.choque = null; await save({ forzar: true }); return; }
   if (act === 'choque-crear') { S.choque = null; await save({ recrear: true }); return; }
   if (act === 'tag') { const t = a.dataset.t; c.etiquetas = (c.etiquetas || []).includes(t) ? c.etiquetas.filter((x) => x !== t) : [...(c.etiquetas || []), t]; }
@@ -761,11 +863,10 @@ document.addEventListener('click', async (e) => {
   if (act === 'demdel') { c.demandados.splice(+a.dataset.i, 1); }
   if (act === 'titadd') { c.titulos = [...(c.titulos || []), TIT_VACIO(a.dataset.t)]; }
   if (act === 'titdel') { c.titulos.splice(+a.dataset.i, 1); }
-  if (act === 'liqnew') { c.liquidacion = { fecha: iso(today()), embargo: 0, rubros: RUBROS.map((r) => ({ id: idNuevo(), rubro: r, monto: 0, pagado: 0 })), pagos: [] }; }
-  if (act === 'rubadd') { c.liquidacion.rubros.push({ id: idNuevo(), rubro: '', monto: 0, pagado: 0 }); }
-  if (act === 'rubdel') { const [quitado] = c.liquidacion.rubros.splice(+a.dataset.i, 1); c.liquidacion.pagos.forEach((p) => delete p.imp[quitado.id]); }
-  if (act === 'pagadd') { c.liquidacion.pagos.push({ id: idNuevo(), fecha: iso(today()), op: '', imp: {} }); }
-  if (act === 'pagdel') { c.liquidacion.pagos.splice(+a.dataset.i, 1); }
+  if (act === 'rubadd') { c.liquidacion.rubros.push({ id: idNuevo(), rubro: '', monto: 0, pagado: 0 }); S.liqSucia = true; }
+  if (act === 'rubdel') { const [quitado] = c.liquidacion.rubros.splice(+a.dataset.i, 1); c.liquidacion.pagos.forEach((p) => delete p.imp[quitado.id]); S.liqSucia = true; }
+  if (act === 'pagadd') { c.liquidacion.pagos.push({ id: idNuevo(), fecha: iso(today()), op: '', imp: {} }); S.liqSucia = true; }
+  if (act === 'pagdel') { c.liquidacion.pagos.splice(+a.dataset.i, 1); S.liqSucia = true; }
   if (act === 'maxi') { S.maxi = !S.maxi; try { localStorage.setItem('gj.maxi', S.maxi ? '1' : '0'); } catch { /* sin almacenamiento */ } }
   if (act === 'done') { if (!applyDone(c)) { toast('No hay próxima acción anotada'); return; } $('#c_proxima').value = ''; $('#c_vence').value = ''; await save(); return; }
   if (act === 'del') { S.confirmDel = true; }
@@ -775,15 +876,31 @@ document.addEventListener('click', async (e) => {
   rerenderDrawer();
   if (act === 'del') $('.confirm')?.scrollIntoView({ block: 'nearest' });
   if (act === 'histadd') toast('Movimiento agregado. Tocá “Guardar cambios”.');
+  if (act === 'pagadd') { const h = $('#pl_hoja'); if (h) h.scrollLeft = h.scrollWidth; $('#pl_o' + (c.liquidacion.pagos.length - 1))?.focus(); }
+  if (act === 'rubadd') $('#pl_r' + (c.liquidacion.rubros.length - 1))?.focus();
 });
 
 document.addEventListener('input', (e) => {
-  if (e.target.closest('.liq') || e.target.id === 'l_emb' || /^t_(monto|vence)\d+$/.test(e.target.id)) { // recalcular los totales sin perder el foco
+  if (/^pl_/.test(e.target.id)) { recalcPlanilla(); return; }
+  if (/^t_(monto|vence)\d+$/.test(e.target.id)) { // recalcular los totales sin perder el foco
     clearTimeout(S.lt); S.lt = setTimeout(() => { if (!S.open) return; const id = document.activeElement?.id; readForm(); rerenderDrawer(); if (id) { const el = document.getElementById(id); if (el) el.focus(); } }, 700);
   }
 });
+// Celdas de importe de la planilla: al entrar se selecciona lo escrito (como en Excel, escribir
+// lo reemplaza) y al salir queda con el formato de miles y centavos.
+document.addEventListener('focusin', (e) => { if (e.target.matches?.('input[data-importe]')) e.target.select(); });
+document.addEventListener('focusout', (e) => { if (e.target.matches?.('input[data-importe]')) e.target.value = enCelda(importe(e.target.value)); });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { if (S.menu) { S.menu = false; renderMenu(); } else if (S.open || S.tpl || S.clave) closeDrawer(); }
+  // En la planilla, Enter y las flechas verticales pasan a la celda de abajo o de arriba
+  if (e.target.matches?.('.planilla input[data-r]') && (e.key === 'Enter' || e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+    e.preventDefault();
+    const sube = e.key === 'ArrowUp' || (e.key === 'Enter' && e.shiftKey);
+    document.querySelector(`.planilla input[data-r="${+e.target.dataset.r + (sube ? -1 : 1)}"][data-c="${e.target.dataset.c}"]`)?.focus();
+    return;
+  }
+  if (e.key === 'Escape') {
+    if (S.menu) { S.menu = false; renderMenu(); } else if (S.planilla && S.open) { readForm(); volverAFicha(); } else if (S.open || S.tpl || S.clave) closeDrawer();
+  }
   if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('tr[data-id], .fila[data-id]')) { e.preventDefault(); openCausa(e.target.dataset.id); }
   if (e.key === 'Enter' && e.target.id === 'h_texto') document.querySelector('[data-act="histadd"]').click();
 });

@@ -51,6 +51,9 @@ async function ingresar(page, foto) {
   await foto('06-ficha');
   await page.evaluate(() => { document.querySelector('.panel').scrollTop = 99999; }); await page.waitForTimeout(150);
   await foto('07-ficha-final');
+  await page.click('#secLiq [data-act=planilla]'); await page.waitForSelector('.panel.plan'); await page.waitForTimeout(200);
+  await foto('07b-planilla'); // si la causa no tenía liquidación, se ve una nueva sin guardar
+  await page.keyboard.press('Escape'); // de la planilla vuelve a la ficha
   await page.keyboard.press('Escape');
   await page.click('#btnTpl'); await page.waitForSelector('.panel'); await page.waitForTimeout(200); await foto('08-plantillas');
   await page.keyboard.press('Escape');
@@ -76,6 +79,9 @@ async function ingresar(page, foto) {
   await foto('06-ficha');
   await page.evaluate(() => { document.querySelector('.panel').scrollTop = 700; }); await page.waitForTimeout(150);
   await foto('07-ficha-medio');
+  await page.tap('#secLiq [data-act=planilla]'); await page.waitForSelector('.panel.plan'); await page.waitForTimeout(200);
+  await foto('07b-planilla');
+  await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
   await page.click('#btnCuenta'); await page.waitForSelector('.menu'); await foto('09-menu');
   await ctx.close();
