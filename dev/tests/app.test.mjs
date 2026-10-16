@@ -203,14 +203,26 @@ test('liquidación: totales, faltante de embargo y guardado', async () => {
   await abrir(page, '1002');
   await page.click('[data-act=liqnew]');
   await page.fill('#l_emb', '1000');
-  await page.fill('#lr_m0', '400'); await page.fill('#lr_m4', '900'); await page.fill('#lr_p0', '150');
-  await page.waitForFunction(() => /1\.300/.test(document.querySelector('.totals')?.textContent || ''), null, { timeout: 5000 });
+  await page.fill('#lr_m0', '400'); await page.fill('#lr_m4', '900');
+  await page.click('[data-act=pagadd]'); await page.fill('#lp_o0', '4321'); await page.fill('#li_0_0', '150');
+  await page.waitForFunction(() => /Cobrado por OP\$ 150/.test(document.querySelector('.totals')?.textContent || ''), null, { timeout: 5000 });
   const totales = await page.textContent('.totals');
   assert.match(totales, /Total planilla\$ 1\.300/); assert.match(totales, /Cobrado por OP\$ 150/); assert.match(totales, /Saldo pendiente\$ 1\.150/);
   assert.match(totales, /Faltante: pedir ampliación de embargo\$ 300/);
   await page.click('.ppie [data-act=save]'); await toast(page, 'Cambios guardados'); await cerrado(page);
   assert.equal(sql(`select (liquidacion ->> 'embargo') || '|' || (liquidacion -> 'rubros' -> 0 ->> 'monto') || '|' || (liquidacion -> 'rubros' -> 0 ->> 'pagado') || '|' || jsonb_array_length(liquidacion -> 'rubros') from public.causas where expte='1002'`),
     '1000|400|150|6');
+  assert.equal(sql(`select liquidacion -> 'pagos' -> 0 ->> 'op' || '|' || (liquidacion -> 'pagos' -> 0 -> 'imp' ->> ((liquidacion -> 'rubros' -> 0 ->> 'id'))) from public.causas where expte='1002'`), '4321|150');
+});
+
+test('ficha: se puede maximizar y restaurar, y el pago guarda fecha y N° de OP', async () => {
+  await abrir(page, '1002');
+  assert.equal(await page.locator('.panel.max').count(), 0);
+  await page.click('.panel [data-act=maxi]');
+  assert.equal(await page.locator('.panel.max').count(), 1, 'la barra ocupa todo el ancho');
+  await page.click('.panel [data-act=maxi]');
+  assert.equal(await page.locator('.panel.max').count(), 0, 'vuelve al ancho normal');
+  await page.click('.ppie [data-act=close]'); await cerrado(page);
 });
 
 test('demandados y títulos: ficha de contacto, WhatsApp y monto reclamado con interés simple', async () => {

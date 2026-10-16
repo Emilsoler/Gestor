@@ -69,6 +69,7 @@ Después de escribir, leer la fila y contar qué quedó. La app abierta lo muest
 - **Causas sin demandado**: los juicios sin contraparte (limitación de la capacidad,
   sucesiones…) van con `demandado = ''` y el interesado en `actor`; la app los nombra por el
   actor. No inventar un demandado para completar el campo.
+- **Liquidación**: `liquidacion` es `{fecha, embargo, rubros:[{id, rubro, monto, pagado}], pagos:[{id, fecha, op, imp:{<id del rubro>: monto}}]}`. Cada pago es una orden de pago (`op` es su N°) que reparte su monto entre rubros en `imp`. `pagado` de cada rubro es la suma de lo imputado: si se editan los pagos con SQL directo, recalcular `pagado` también.
 - **Última acción**: es el movimiento de fecha más reciente (a igual fecha, el anotado después).
   Las funciones ya lo calculan; con SQL directo sobre `historial` hay que actualizar también
   `ultima` y `fecha` (`gestor.ultima_de(historial)`).

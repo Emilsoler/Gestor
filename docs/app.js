@@ -26,6 +26,7 @@ const S = {
   menu: false, instalar: null, ocupado: false,
 };
 try { S.view = localStorage.getItem('gj.view') || 'lista'; } catch { /* sin almacenamiento */ }
+try { S.maxi = localStorage.getItem('gj.maxi') === '1'; } catch { /* sin almacenamiento */ }
 
 // ───────────────────────── Utilidades ─────────────────────────
 
@@ -329,17 +330,44 @@ function closeDrawer() {
   S.open = null; S.tpl = false; S.clave = false; S.tpSel = ''; S.tplDel = ''; S.choque = null; S.confirmDel = false;
   $('#drawer').hidden = true; $('#drawer').innerHTML = ''; document.body.style.overflow = '';
 }
+const idNuevo = () => Math.random().toString(36).slice(2, 10);
+/** Lo imputado a un rubro, sumando todos los pagos. */
+function cobradoRubro(l, id) { return l.pagos.reduce((a, p) => a + (+p.imp[id] || 0), 0); }
+/**
+ * Cada pago (una OP) reparte su monto entre los rubros y `pagado` de cada rubro es lo imputado.
+ * Las liquidaciones anteriores tenían `pagado` cargado a mano: pasa a un único pago sin fecha ni OP.
+ */
+function liqNormal(l) {
+  l.rubros.forEach((r) => { if (!r.id) r.id = idNuevo(); });
+  if (!Array.isArray(l.pagos)) {
+    const imp = {};
+    l.rubros.forEach((r) => { if (+r.pagado > 0) imp[r.id] = +r.pagado; });
+    l.pagos = Object.keys(imp).length ? [{ id: idNuevo(), fecha: '', op: '', imp }] : [];
+  }
+  l.pagos.forEach((p) => { if (!p.id) p.id = idNuevo(); p.imp = p.imp || {}; });
+  l.rubros.forEach((r) => { r.pagado = cobradoRubro(l, r.id); });
+}
 function liqCalc(l) { const tot = l.rubros.reduce((a, r) => a + (+r.monto || 0), 0), pag = l.rubros.reduce((a, r) => a + (+r.pagado || 0), 0); return { tot, pag, saldo: tot - pag, dif: (+l.embargo || 0) - tot }; }
+function pagoHtml(l, p, j) {
+  const total = Object.values(p.imp).reduce((a, v) => a + (+v || 0), 0);
+  return `<div class="pago">
+   <div class="grid2"><label class="f">Fecha del pago<input type="date" id="lp_f${j}" value="${esc(p.fecha)}"></label><label class="f">N° de Orden de Pago<input class="lbl" id="lp_o${j}" value="${esc(p.op)}" inputmode="numeric"></label></div>
+   <table class="liq"><tbody>${l.rubros.map((r, i) => `<tr><td>${esc(r.rubro || '(sin nombre)')}</td><td><input type="number" id="li_${j}_${i}" value="${+p.imp[r.id] || 0}" aria-label="Imputado a ${esc(r.rubro)}"></td></tr>`).join('')}</tbody></table>
+   <div class="pagotot"><span class="hint m0">Total de esta OP</span><b>${money(total)}</b><button class="btn small danger" data-act="pagdel" data-i="${j}">Borrar pago</button></div></div>`;
+}
 function liqHtml(c) {
   const l = c.liquidacion;
   if (!l) return `<div class="sec"><h4>Liquidación y órdenes de pago</h4><p class="hint m0">Sin liquidación cargada.</p><div><button class="btn small" data-act="liqnew">Cargar liquidación</button></div></div>`;
   const k = liqCalc(l);
   return `<div class="sec"><h4>Liquidación y órdenes de pago</h4>
    <div class="grid2"><label class="f">Fecha liquidación<input type="date" id="l_fecha" value="${esc(l.fecha)}"></label><label class="f">Embargo trabado ($)<input type="number" id="l_emb" value="${+l.embargo || 0}"></label></div>
-   <div class="scrollx"><table class="liq"><thead><tr><th>Rubro</th><th class="num">Monto</th><th class="num">Pagado (OP)</th><th class="num">Saldo</th><th></th></tr></thead><tbody>
-   ${l.rubros.map((r, i) => `<tr><td><input class="lbl" id="lr_r${i}" data-i="${i}" data-f="rubro" value="${esc(r.rubro)}" aria-label="Rubro"></td><td><input type="number" id="lr_m${i}" data-i="${i}" data-f="monto" value="${+r.monto || 0}" aria-label="Monto"></td><td><input type="number" id="lr_p${i}" data-i="${i}" data-f="pagado" value="${+r.pagado || 0}" aria-label="Pagado"></td><td class="num">${money((+r.monto || 0) - (+r.pagado || 0))}</td><td><button class="x" data-act="rubdel" data-i="${i}" aria-label="Quitar rubro">×</button></td></tr>`).join('')}
+   <div class="scrollx"><table class="liq"><thead><tr><th>Rubro</th><th class="num">Monto</th><th class="num">Cobrado</th><th class="num">Saldo</th><th></th></tr></thead><tbody>
+   ${l.rubros.map((r, i) => `<tr><td><input class="lbl" id="lr_r${i}" data-i="${i}" data-f="rubro" value="${esc(r.rubro)}" aria-label="Rubro"></td><td><input type="number" id="lr_m${i}" data-i="${i}" data-f="monto" value="${+r.monto || 0}" aria-label="Monto"></td><td class="num">${money(r.pagado)}</td><td class="num">${money((+r.monto || 0) - (+r.pagado || 0))}</td><td><button class="x" data-act="rubdel" data-i="${i}" aria-label="Quitar rubro">×</button></td></tr>`).join('')}
    </tbody></table></div>
    <div><button class="btn small" data-act="rubadd">+ Rubro</button></div>
+   <div class="hint">Pagos (órdenes de pago): cada pago se reparte entre los rubros según lo que se cobró.</div>
+   ${l.pagos.length ? l.pagos.map((p, j) => pagoHtml(l, p, j)).join('') : '<p class="hint m0">Sin pagos cargados.</p>'}
+   <div><button class="btn small" data-act="pagadd">+ Pago</button></div>
    <div class="totals"><div><span>Total planilla</span><b>${money(k.tot)}</b></div><div><span>Cobrado por OP</span><b>${money(k.pag)}</b></div><div><span>Saldo pendiente</span><b>${money(k.saldo)}</b></div>
    <div class="${k.dif < 0 ? 'neg' : 'pos'}"><span>${k.dif < 0 ? 'Faltante: pedir ampliación de embargo' : 'Excedente sobre planilla'}</span><b>${money(Math.abs(k.dif))}</b></div></div></div>`;
 }
@@ -421,10 +449,11 @@ function notaHtml() {
 
 function renderDrawer(entra = false) {
   const c = S.open, d = $('#drawer'); d.hidden = false; document.body.style.overflow = 'hidden';
+  if (c.liquidacion) liqNormal(c.liquidacion);
   const hist = (c.historial || []).map((h, i) => ({ ...h, i })).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '') || b.i - a.i);
   const meta = !S.isNew && c.actualizado ? ` · último cambio ${cuando(new Date(c.actualizado))}${c.actualizado_por ? ' (' + esc(c.actualizado_por) + ')' : ''}` : '';
-  d.innerHTML = `<div class="scrim" data-act="close"></div><aside class="panel${entra ? ' entra' : ''}" role="dialog" aria-modal="true" aria-label="Ficha de la causa">
-  <div class="phead"><div><div class="hint">${S.isNew ? 'Nueva causa' : 'Expte. ' + esc(c.expte) + meta}</div><h2>${esc(S.isNew && !c.demandado ? 'Nueva causa' : caratula(c))}</h2></div><button class="btn small" data-act="close">Cerrar</button></div>
+  d.innerHTML = `<div class="scrim" data-act="close"></div><aside class="panel${entra ? ' entra' : ''}${S.maxi ? ' max' : ''}" role="dialog" aria-modal="true" aria-label="Ficha de la causa">
+  <div class="phead"><div><div class="hint">${S.isNew ? 'Nueva causa' : 'Expte. ' + esc(c.expte) + meta}</div><h2>${esc(S.isNew && !c.demandado ? 'Nueva causa' : caratula(c))}</h2></div><div class="btns"><button class="btn small" data-act="maxi" aria-pressed="${!!S.maxi}">${S.maxi ? 'Restaurar' : 'Maximizar'}</button><button class="btn small" data-act="close">Cerrar</button></div></div>
   <div id="nota">${notaHtml()}</div>
 
   <div class="sec"><h4>Datos de la causa</h4><div class="grid2">
@@ -484,6 +513,14 @@ function readForm() {
   if (c.liquidacion) {
     const l = c.liquidacion; l.fecha = $('#l_fecha').value; l.embargo = +$('#l_emb').value || 0;
     document.querySelectorAll('.liq input[data-f]').forEach((el) => { const r = l.rubros[+el.dataset.i]; r[el.dataset.f] = el.dataset.f === 'rubro' ? el.value : (+el.value || 0); });
+    l.pagos.forEach((p, j) => {
+      const f = $('#lp_f' + j), o = $('#lp_o' + j);
+      if (f) p.fecha = f.value;
+      if (o) p.op = o.value.trim();
+      p.imp = {};
+      l.rubros.forEach((r, i) => { const v = $('#li_' + j + '_' + i); if (v) { const n = Math.max(0, +v.value || 0); if (n) p.imp[r.id] = n; } });
+    });
+    l.rubros.forEach((r) => { r.pagado = cobradoRubro(l, r.id); });
   }
   return c;
 }
@@ -724,9 +761,12 @@ document.addEventListener('click', async (e) => {
   if (act === 'demdel') { c.demandados.splice(+a.dataset.i, 1); }
   if (act === 'titadd') { c.titulos = [...(c.titulos || []), TIT_VACIO(a.dataset.t)]; }
   if (act === 'titdel') { c.titulos.splice(+a.dataset.i, 1); }
-  if (act === 'liqnew') { c.liquidacion = { fecha: iso(today()), embargo: 0, rubros: RUBROS.map((r) => ({ rubro: r, monto: 0, pagado: 0 })) }; }
-  if (act === 'rubadd') { c.liquidacion.rubros.push({ rubro: '', monto: 0, pagado: 0 }); }
-  if (act === 'rubdel') { c.liquidacion.rubros.splice(+a.dataset.i, 1); }
+  if (act === 'liqnew') { c.liquidacion = { fecha: iso(today()), embargo: 0, rubros: RUBROS.map((r) => ({ id: idNuevo(), rubro: r, monto: 0, pagado: 0 })), pagos: [] }; }
+  if (act === 'rubadd') { c.liquidacion.rubros.push({ id: idNuevo(), rubro: '', monto: 0, pagado: 0 }); }
+  if (act === 'rubdel') { const [quitado] = c.liquidacion.rubros.splice(+a.dataset.i, 1); c.liquidacion.pagos.forEach((p) => delete p.imp[quitado.id]); }
+  if (act === 'pagadd') { c.liquidacion.pagos.push({ id: idNuevo(), fecha: iso(today()), op: '', imp: {} }); }
+  if (act === 'pagdel') { c.liquidacion.pagos.splice(+a.dataset.i, 1); }
+  if (act === 'maxi') { S.maxi = !S.maxi; try { localStorage.setItem('gj.maxi', S.maxi ? '1' : '0'); } catch { /* sin almacenamiento */ } }
   if (act === 'done') { if (!applyDone(c)) { toast('No hay próxima acción anotada'); return; } $('#c_proxima').value = ''; $('#c_vence').value = ''; await save(); return; }
   if (act === 'del') { S.confirmDel = true; }
   if (act === 'delno') { S.confirmDel = false; }

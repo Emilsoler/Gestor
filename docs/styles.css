@@ -145,6 +145,8 @@ tbody tr:last-child td{border-bottom:0}
   padding:calc(var(--arriba) + 16px) 18px 0;display:flex;flex-direction:column;gap:16px;overscroll-behavior:contain}
 .panel h2{font:600 20px/1.2 var(--f-display);margin:0;text-wrap:balance;overflow-wrap:anywhere}
 .phead{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.btns{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;flex-shrink:0}
+.panel.max{width:100%}
 .sec{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px;display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
 .sec h4{margin:0;font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:500}
 .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
@@ -163,6 +165,9 @@ label.f input,label.f select,label.f textarea{padding:7px 9px;border:1px solid v
 .liq input{width:100%;min-width:0;padding:5px 6px;border:1px solid var(--line);border-radius:4px;background:var(--bg);text-align:right;font-family:var(--f-mono);font-size:12.5px}
 .liq input.lbl{text-align:left;font-family:var(--f-body)}
 .liq .num,.cuo .num{text-align:right}
+.pago{border:1px solid var(--line);border-radius:6px;padding:8px;display:grid;gap:8px}
+.pagotot{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.pagotot b{font:500 14px var(--f-mono);font-variant-numeric:tabular-nums;margin-right:auto}
 .liq .num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
 .tarjeta{border:1px solid var(--line);border-radius:6px;padding:10px;display:grid;grid-template-columns:minmax(0,1fr);gap:8px;background:var(--bg)}
 .resumen{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-size:12.5px;color:var(--muted)}
