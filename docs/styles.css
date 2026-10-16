@@ -270,6 +270,7 @@ label.f input,label.f select,label.f textarea{padding:7px 9px;border:1px solid v
   .btn.small{padding:6px 11px}
   label.f input,label.f select,label.f textarea,.addrow input{font-size:16px}  /* evita el zoom de iOS al enfocar */
   .panel{border-left:0;padding-left:14px;padding-right:14px}
+  .panel [data-act=maxi]{display:none}  /* en el celular la ficha ya ocupa todo */
   .ppie{margin:0 -14px;padding-left:14px;padding-right:14px}
   .ppie .hint{display:none}
   .fab{display:inline-flex;position:fixed;right:16px;bottom:calc(var(--abajo) + 18px);z-index:9;border-radius:999px;padding:13px 18px;
