@@ -170,9 +170,10 @@ test('causa sin demandado: se guarda, se nombra por el actor y se puede editar',
   assert.equal(await page.textContent('.panel h2'), 'PEREZ PABLO – DECLARATORIA DE HEREDEROS');
   await page.selectOption('#tp_sel', 'aprobacion');
   assert.equal(await page.inputValue('#tp_cue'), 'En autos PEREZ PABLO – DECLARATORIA DE HEREDEROS, expediente 3001 de la 1° nominación.');
-  await page.evaluate(() => { window.open = (u) => { window.__abierta = u; }; });
-  await page.click('.ppie [data-act=claude]');
-  assert.equal(new URL(await page.evaluate(() => window.__abierta)).searchParams.get('q'), 'Sobre el gestor de juicios, causa 3001 (PEREZ PABLO): ');
+  await page.click('.ppie [data-act=claude]'); // el chat se abre encima, con la causa nombrada
+  assert.equal(await page.inputValue('#chatTexto'), 'Sobre la causa 3001 (PEREZ PABLO): ');
+  await page.fill('#chatTexto', '');
+  await page.keyboard.press('Escape'); await page.waitForSelector('#chat', { state: 'hidden' });
   await page.fill('#c_notas', 'sin contraparte');
   await page.click('.ppie [data-act=save]'); await toast(page, 'Cambios guardados'); await cerrado(page);
   assert.equal(sql(`select demandado || '|' || notas from public.causas where expte='3001'`), '|sin contraparte');
@@ -524,6 +525,146 @@ test('con tiempo real el cambio de Claude llega al instante; si se corta, sigue 
   await c.close();
 });
 
+// ───────── Chat con Claude y escritos para el SAC ─────────
+// La función `chat` corre en local (stack.sh) contra un doble de la API de Claude que contesta
+// lo que cada prueba le guiona (dev/claude-falso.mjs).
+const FALSO = 'http://127.0.0.1:54340';
+const guion = (pasos) => fetch(`${FALSO}/__guion`, { method: 'POST', body: JSON.stringify(pasos) });
+const pedidosAClaude = async () => (await fetch(`${FALSO}/__pedidos`)).json();
+const habil = () => sql(`select d::date from generate_series(gestor.hoy() + 1, gestor.hoy() + 7, '1 day') d where extract(isodow from d) < 6 limit 1`);
+const respuestaDeClaude = (p, texto) => p.waitForFunction((t) => [...document.querySelectorAll('#charla .msj.claude')].some((m) => m.textContent.includes(t)), texto, { timeout: 15000 });
+
+test('chat: Claude responde dentro de la app y lo que cambia se ve al toque', async () => {
+  await fetch(`${FALSO}/__pedidos`, { method: 'DELETE' });
+  await guion([
+    { herramientas: [{ name: 'registrar_movimiento', input: { expte: '1002', texto: 'Decreto: autos (desde el chat)' } }] },
+    { texto: 'Anotado en **Beta**.\n\nQuedó así:\n- uno\n- dos <img src=x onerror="window.__xss2=1">' },
+  ]);
+  await page.click('#btnChat'); await page.waitForSelector('#charla .bienvenida');
+  await page.fill('#chatTexto', 'Anotá el decreto en Beta');
+  await page.keyboard.press('Enter'); // en la computadora, Enter envía
+  await respuestaDeClaude(page, 'Anotado en');
+  assert.equal(await page.textContent('#charla .msj.yo'), 'Anotá el decreto en Beta', 'la fecha que agrega la función no se ve');
+  assert.equal(await page.locator('#charla .msj.claude b').first().textContent(), 'Beta');
+  assert.equal(await page.locator('#charla .msj.claude li').count(), 2);
+  assert.equal(await page.locator('#charla img').count(), 0, 'lo que escribe Claude se muestra como texto');
+  assert.equal(await page.evaluate(() => window.__xss2), undefined);
+  assert.match(await page.textContent('#charla .hecho'), /Causa 1002: movimiento anotado/);
+  assert.equal(sql(`select actualizado_por from public.causas where expte='1002'`), 'Claude');
+  // queda guardada en el dispositivo: al cerrar y abrir sigue ahí
+  await page.keyboard.press('Escape'); await page.waitForSelector('#chat', { state: 'hidden' });
+  await page.click('#btnChat');
+  assert.equal(await page.locator('#charla .msj.yo').count(), 1);
+  await page.keyboard.press('Escape');
+  // la ficha ya tiene el movimiento, sin recargar
+  await abrir(page, '1002');
+  await page.waitForFunction(() => /desde el chat/.test(document.querySelector('.hist')?.textContent || ''));
+  await page.keyboard.press('Escape'); await cerrado(page);
+  await page.click('#btnChat');
+});
+
+test('chat: un escrito para el SAC queda en borrador hasta tocar Agendar, con lo que corrija la persona', async () => {
+  const dia = habil();
+  sql(`select gestor.proxima('1001', 'Solicitar aprobación', gestor.hoy() + 1)`);
+  await guion([
+    { herramientas: [{ name: 'preparar_presentacion', input: { expte: '1001', fecha: dia, plantilla_id: 'aprobacion', dar_por_realizada: true } }] },
+    { texto: 'Te dejé el escrito: revisalo y tocá Agendar.' },
+  ]);
+  await page.fill('#chatTexto', `Presentá la aprobación en Alfa el ${dia} y marcá la acción como realizada`);
+  await page.click('#chatEnviar');
+  const tarjeta = page.locator('#charla .agcard.borrador');
+  await tarjeta.waitFor();
+  assert.equal(sql(`select estado from public.agenda`), 'borrador', 'todavía no está agendado');
+  assert.match(await tarjeta.textContent(), /Al presentarlo, dar por realizada la próxima acción: Solicitar aprobación/);
+  assert.match(await tarjeta.locator('textarea').inputValue(), /En autos AMB c\/ ALFA ANA – EJECUTIVO, expediente 1001/);
+  assert.match(await fila(page, '1001').textContent(), /Escrito sin confirmar/);
+  await tarjeta.locator('textarea').fill('Texto corregido por Emi.');
+  await tarjeta.locator('[data-ag=agendar]').click();
+  await page.waitForSelector('#charla .agcard.pendiente');
+  assert.equal(sql(`select estado || '|' || cuerpo || '|' || fecha || '|' || realizar || '|' || actualizado_por from public.agenda`),
+    `pendiente|Texto corregido por Emi.|${dia}|Solicitar aprobación|Emi`);
+  // la confirmación viaja con el próximo mensaje, para que Claude sepa qué pasó
+  await guion([{ texto: 'Perfecto.' }]);
+  await page.fill('#chatTexto', 'Gracias'); await page.click('#chatEnviar');
+  await respuestaDeClaude(page, 'Perfecto.');
+  const ultimo = (await pedidosAClaude()).at(-1).cuerpo.messages.at(-1).content[0].text;
+  assert.match(ultimo, /\[Nota del gestor: Confirmaste y quedó agendado "Solicita aprobación \(v2\)" en la causa 1001 para el .+ \(con cambios tuyos en el texto\)\.\]\nGracias$/);
+  // en el listado y en la ficha
+  await page.keyboard.press('Escape');
+  assert.match(await fila(page, '1001').textContent(), /SAC \d\d\/\d\d/);
+  await abrir(page, '1001');
+  assert.match(await page.textContent('#agendaFicha'), /Agendado.*Se presenta el/);
+  // la tarea del SAC lo presenta (acá, a mano): la ficha y el listado lo muestran solos
+  sql(`update public.agenda set fecha = gestor.hoy()`);
+  sql(`select gestor.agenda_presentada((select id from public.agenda))`);
+  await page.waitForFunction(() => /Presentado en el SAC/.test(document.querySelector('#agendaFicha')?.textContent || ''), null, { timeout: 8000 });
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => /A despacho/.test(document.querySelector('#main tr[data-id="1001"]')?.textContent || ''));
+  assert.equal(sql(`select proxima from public.causas where expte='1001'`), '');
+});
+
+test('escritos para el SAC: uno que no se pudo presentar se ve, se vuelve a agendar o se cancela', async () => {
+  sql(`delete from public.agenda`);
+  const id = sql(`insert into public.agenda (expte, titulo, cuerpo, fecha, estado) values ('1002', 'Acompaña cédula', 'Texto', gestor.hoy(), 'pendiente') returning id`);
+  sql(`select gestor.agenda_fallida('${id}', 'La compu del estudio estaba apagada')`);
+  await page.waitForFunction(() => /SAC: no se presentó/.test(document.querySelector('#main tr[data-id="1002"]')?.textContent || ''), null, { timeout: 8000 });
+  assert.equal(await page.textContent('.stat[data-q="sac"] b'), '1');
+  assert.match(await page.getAttribute('.stat[data-q="sac"]', 'class'), /alert/);
+  await abrir(page, '1002');
+  assert.match(await page.textContent('#agendaFicha'), /La compu del estudio estaba apagada/);
+  await page.click('#agendaFicha [data-ag=reagendar]');
+  await toast(page, 'Agendado de nuevo');
+  assert.equal(sql(`select estado || '|' || resultado from public.agenda where id='${id}'`), 'pendiente|');
+  await page.click('#agendaFicha [data-ag=cancelar]');
+  await toast(page, 'Escrito cancelado');
+  assert.equal(sql(`select estado from public.agenda where id='${id}'`), 'cancelado');
+  assert.equal(await page.locator('#agendaFicha .agcard').count(), 0);
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('.stat[data-q="sac"]').count(), 0, 'sin escritos pendientes, el resumen no lo muestra');
+});
+
+test('chat: si falla, el mensaje no se pierde y se puede reintentar', async () => {
+  await guion([{ error: { status: 529, type: 'overloaded_error', message: 'Overloaded' } }, { error: { status: 529, type: 'overloaded_error', message: 'Overloaded' } }, { texto: 'Ahora sí.' }]);
+  await page.click('#btnChat');
+  await page.fill('#chatTexto', 'Hola de nuevo'); await page.click('#chatEnviar');
+  await page.waitForSelector('#charla .aviso-chat');
+  assert.match(await page.textContent('#charla .aviso-chat'), /saturado/);
+  assert.match(await page.locator('#charla .msj.yo').last().textContent(), /Hola de nuevo/);
+  // para lo que el chat no puede, queda la app de Claude a mano
+  await page.evaluate(() => { window.open = (u) => { window.__abierta = u; }; });
+  await page.click('#charla [data-chat=claudeai]');
+  assert.equal(new URL(await page.evaluate(() => window.__abierta)).searchParams.get('q'), 'Sobre el gestor de juicios: ');
+  await page.click('#charla [data-chat=reintentar]');
+  await respuestaDeClaude(page, 'Ahora sí.');
+  assert.equal(await page.locator('#charla .aviso-chat').count(), 0);
+  assert.equal(await page.locator('#charla .msj.yo', { hasText: 'Hola de nuevo' }).count(), 1, 'no queda repetido');
+  await page.click('[data-chat=nueva]');
+  await page.waitForSelector('#charla .bienvenida');
+  await page.keyboard.press('Escape');
+});
+
+test('chat desde la ficha: se abre encima, con la causa nombrada, sin perder lo que se estaba editando', async () => {
+  await abrir(page, '1002');
+  await page.fill('#c_notas', 'nota sin guardar');
+  await page.click('.ppie [data-act=claude]');
+  await page.waitForSelector('#charla');
+  assert.equal(await page.inputValue('#chatTexto'), 'Sobre la causa 1002 (AMB c/ BETA BRUNO): ');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.inputValue('#c_notas'), 'nota sin guardar');
+  await page.keyboard.press('Escape');
+  await cerrado(page);
+});
+
+test('cheques: la ficha los muestra y los guarda como cheque', async () => {
+  sql(`select gestor.agregar_titulo('1002', 'cheque', 250000, null, 'Cheque N° 123')`);
+  await page.waitForTimeout(2500); // el sondeo trae el cambio
+  await abrir(page, '1002');
+  assert.equal(await page.inputValue('#t_tipo0'), 'cheque');
+  await page.fill('#c_notas', 'guardado con un cheque');
+  await page.click('.ppie [data-act=save]'); await toast(page, 'Cambios guardados');
+  assert.equal(sql(`select titulos -> 0 ->> 'tipo' from public.causas where expte='1002'`), 'cheque');
+});
+
 test('dentro de un marco de otra página la app no arranca', async () => {
   const { c, p } = await nuevoContexto({ nombre: 'marco' });
   // Una página de otro origen (otro puerto) que intenta montar el gestor adentro.
@@ -551,10 +692,12 @@ test('una cuenta sin autorización no entra', async () => {
 
 test('cerrar sesión borra del dispositivo la sesión y la copia de los datos', async () => {
   assert.ok(await page.evaluate(() => localStorage.getItem('gj.cache')));
+  assert.ok(await page.evaluate(() => localStorage.getItem('gj.chat')), 'la conversación con Claude también estaba guardada');
   await page.click('#btnCuenta'); await page.click('[data-m=salir]');
   await page.waitForSelector('#fIngreso');
   assert.equal(await page.evaluate(() => localStorage.getItem('gj.cache')), null);
   assert.equal(await page.evaluate(() => localStorage.getItem('gestor.sesion')), null);
+  assert.equal(await page.evaluate(() => localStorage.getItem('gj.chat')), null);
   assert.equal(await page.locator('#main tr').count(), 0, 'no quedan causas en la página');
 });
 

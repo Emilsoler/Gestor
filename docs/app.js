@@ -4,10 +4,11 @@ import {
   crearCausa, guardarCausa, actualizarCausa, borrarCausa,
   crearAcuerdo, actualizarAcuerdo, borrarAcuerdo,
   crearPlantilla, guardarPlantilla, borrarPlantilla,
+  actualizarAgenda, preguntarAClaude, leerChat, guardarChat,
 } from './datos.js';
 import { idNuevo, nuevaLiquidacion, cobradoRubro, totalPago, liqNormal, liqCalc, importe, pesos, enCelda, planillaExcel } from './liquidacion.js';
 
-const VERSION = '1.3';
+const VERSION = '1.4';
 
 const TAGS = [
   { k: 'En trámite', c: '' }, { k: 'Embargo de sueldo', c: 't-emb' }, { k: 'Secuestro / subasta', c: 't-sec' },
@@ -16,6 +17,9 @@ const ESTADOS = ['Iniciar', 'Notificando', 'Casillero', 'A despacho', 'Sentencia
 const STALE = 30; // días sin movimiento para marcar una causa
 const GRACIA = 5; // días después del vencimiento de una cuota antes de preguntar si se pagó
 const CLAVE_MIN = 10;
+// A qué hora corre, de lunes a viernes, la tarea de Claude que presenta en el SAC. Está también en
+// supabase/functions/chat/instrucciones.ts y en la tarea programada: si cambia, cambia en los tres.
+const HORA_SAC = '10:15';
 
 const S = {
   pantalla: 'arranque',
@@ -25,6 +29,7 @@ const S = {
   tpl: false, tpSel: '', tplDel: '', clave: false, // otros paneles
   na: { deudor: '', expte: '', n: '', monto: '', fecha: '', cada: 'mes', notas: '' }, acDel: '',
   menu: false, instalar: null, ocupado: false,
+  chat: null, // la conversación con Claude (ver "Chat con Claude")
 };
 try { S.view = localStorage.getItem('gj.view') || 'lista'; } catch { /* sin almacenamiento */ }
 try { S.maxi = localStorage.getItem('gj.maxi') === '1'; } catch { /* sin almacenamiento */ }
@@ -71,7 +76,7 @@ function mostrar(pantalla) {
   $('#vApp').hidden = !enApp;
   $('#vIngreso').hidden = enApp;
   if (enApp) { $('#ingresoCuerpo').innerHTML = ''; render(); return; } // no dejar el formulario (ni la clave) en la página
-  closeDrawer(); S.menu = false; renderMenu();
+  closeDrawer(); cerrarChat(); S.chat = null; S.menu = false; renderMenu();
   for (const k of ['#main', '#stats', '#chips', '#avisos', '#franja', '#fEstado', '#fNom']) $(k).innerHTML = ''; // ni los datos, al salir
   $('#sub').textContent = ''; $('#q').value = ''; S.q = '';
   renderIngreso();
@@ -143,6 +148,7 @@ async function conBoton(boton, textoOcupado, tarea) { // evita dobles envíos y 
 
 document.addEventListener('submit', async (e) => {
   e.preventDefault();
+  if (e.target.id === 'fChat') { const t = $('#chatTexto'), texto = t.value; if (texto.trim() && !S.chat?.enviando) { t.value = ''; ajustarAlto(t); await enviarChat(texto); } return; }
   const boton = e.target.querySelector('[type=submit]');
   if (e.target.id === 'fIngreso') {
     const email = $('#i_email').value.trim(), clave = $('#i_clave').value;
@@ -187,6 +193,7 @@ function filtered() {
     if (S.quick !== 'arch' && !S.estado && c.estado === 'Archivada') return false;
     if (S.quick === 'arch' && c.estado !== 'Archivada') return false;
     if (S.quick === 'acu' && !isAcu(c)) return false;
+    if (S.quick === 'sac' && !agendaAbierta(c.expte).length) return false;
     if (S.quick !== 'acu' && S.estado !== 'Acuerdo' && S.tag !== 'Acuerdo' && isAcu(c)) return false;
     if (q) { const h = [c.actor, c.demandado, c.tipo, c.expte, c.ultima, c.proxima, c.oficina, c.notas, ...(c.etiquetas || [])].join(' ').toLowerCase(); if (!h.includes(q)) return false; }
     return true;
@@ -206,6 +213,9 @@ function renderStats() {
     { id: 'next', n: act.filter((c) => c.proxima).length, l: 'Con próxima acción anotada' },
     { id: 'acu', n: acu.length, l: 'Con acuerdo' },
     { id: 'arch', n: D.causas.filter((c) => c.estado === 'Archivada').length, l: 'Archivadas' }];
+  // Escritos para el SAC: solo aparece si hay alguno, y en rojo si alguno no se pudo presentar.
+  const sac = D.causas.filter((c) => agendaAbierta(c.expte).length);
+  if (sac.length || S.quick === 'sac') items.push({ id: 'sac', n: sac.length, l: 'Con escritos para el SAC', cls: D.agenda.some((a) => a.estado === 'error') ? 'alert' : '' });
   $('#stats').innerHTML = items.map((i) => `<button class="stat ${i.cls || ''}" data-q="${i.id}" aria-pressed="${S.quick === i.id}"><b>${i.n}</b><span>${i.l}</span></button>`).join('');
 }
 
@@ -224,7 +234,15 @@ function renderFilters() {
 }
 
 function ageHtml(c) { const n = days(c.fecha); if (n === null) return '<span class="age old">sin fecha</span>'; return `<span class="age ${n > STALE ? 'old' : ''}">${fmt(c.fecha)} · hace ${n} d</span>`; }
-function tagsHtml(c) { return (c.etiquetas || []).length ? `<div class="tags">${c.etiquetas.map((t) => `<span class="tag ${tagClass(t)}">${esc(t)}</span>`).join('')}</div>` : ''; }
+function tagsHtml(c) {
+  const ts = (c.etiquetas || []).map((t) => `<span class="tag ${tagClass(t)}">${esc(t)}</span>`);
+  for (const a of agendaAbierta(c.expte)) {
+    ts.push(a.estado === 'error' ? '<span class="tag t-sacerr">SAC: no se presentó</span>'
+      : a.estado === 'borrador' ? '<span class="tag">Escrito sin confirmar</span>'
+        : `<span class="tag t-sac">SAC ${esc(fmtDia(a.fecha))}</span>`);
+  }
+  return ts.length ? `<div class="tags">${ts.join('')}</div>` : '';
+}
 
 function renderList(rows) {
   if (movil.matches) return renderFilas(rows);
@@ -517,16 +535,16 @@ function titulosHtml(c) {
   return `<div class="sec"><h4>Títulos y monto reclamado</h4>
    ${lista.length ? lista.map((t, i) => { const f = k.filas[i]; return `<div class="tarjeta" data-i="${i}">
      <div class="grid2">
-      <label class="f">Tipo<select id="t_tipo${i}" data-i="${i}"><option value="pagare" ${t.tipo === 'pagare' ? 'selected' : ''}>Pagaré</option><option value="prenda" ${t.tipo === 'prenda' ? 'selected' : ''}>Prenda</option></select></label>
+      <label class="f">Tipo<select id="t_tipo${i}" data-i="${i}"><option value="pagare" ${t.tipo === 'pagare' ? 'selected' : ''}>Pagaré</option><option value="cheque" ${t.tipo === 'cheque' ? 'selected' : ''}>Cheque</option><option value="prenda" ${t.tipo === 'prenda' ? 'selected' : ''}>Prenda</option></select></label>
       <label class="f">Monto ($)<input type="number" min="0" id="t_monto${i}" value="${+t.monto || 0}"></label>
       <label class="f">Vencimiento<input type="date" id="t_vence${i}" value="${esc(t.vence)}"></label>
-      <label class="f">Detalle<input id="t_descripcion${i}" value="${esc(t.descripcion)}" placeholder="${t.tipo === 'prenda' ? 'Ej.: Prenda N° …' : 'Ej.: Pagaré N° 1'}"></label>
+      <label class="f">Detalle<input id="t_descripcion${i}" value="${esc(t.descripcion)}" placeholder="${t.tipo === 'prenda' ? 'Ej.: Prenda N° …' : t.tipo === 'cheque' ? 'Ej.: Cheque N° …, Banco …' : 'Ej.: Pagaré N° 1'}"></label>
       ${t.tipo === 'prenda' ? `<label class="f ancho">Vehículo<input id="t_vehiculo${i}" value="${esc(t.vehiculo)}" placeholder="Marca, modelo, dominio"></label>` : ''}
      </div>
      <div class="resumen"><span>${f.dias ? f.dias + ' días de mora' : t.vence ? 'No vencido' : 'Sin vencimiento'}</span><span>Interés <b>${money(f.interes)}</b></span><span>Con interés <b>${money(f.total)}</b></span>
       <button class="btn small danger" data-act="titdel" data-i="${i}">Quitar</button></div>
     </div>`; }).join('') : '<p class="hint m0">Sin títulos cargados.</p>'}
-   <div class="actions"><button class="btn small" data-act="titadd" data-t="pagare">+ Pagaré</button><button class="btn small" data-act="titadd" data-t="prenda">+ Prenda</button></div>
+   <div class="actions"><button class="btn small" data-act="titadd" data-t="pagare">+ Pagaré</button><button class="btn small" data-act="titadd" data-t="cheque">+ Cheque</button><button class="btn small" data-act="titadd" data-t="prenda">+ Prenda</button></div>
    ${lista.length ? `<div class="totals"><div><span>Capital</span><b>${money(k.capital)}</b></div><div><span>Intereses al ${fmt(iso(today()))} (${Math.round(TASA_MENSUAL * 100)}% mensual simple)</span><b>${money(k.interes)}</b></div><div><span>Total reclamado</span><b>${money(k.total)}</b></div></div>` : ''}</div>`;
 }
 
@@ -590,6 +608,8 @@ function renderDrawer(entra = false) {
   ${liqHtml(c)}
 
   ${S.isNew ? '' : tplHtml(c)}
+
+  <div id="agendaFicha">${agendaFichaHtml(c)}</div>
 
   <div class="sec"><h4>Notas</h4><label class="f"><textarea id="c_notas" rows="3" placeholder="Datos del martillero, montos del acuerdo, teléfonos…" aria-label="Notas">${esc(c.notas)}</textarea></label></div>
 
@@ -759,6 +779,288 @@ async function tplAct(b) {
   } catch (e) { toast(mensaje(e)); }
 }
 
+// ───────────────────────── Escritos para el SAC (agenda) ─────────────────────────
+// El chat deja cada escrito como borrador; la persona lo revisa y toca "Agendar" (es la única
+// aprobación que vale), y la tarea programada de Claude lo presenta ese día desde la compu del
+// estudio. Ver supabase/migrations/0005.
+
+const ESTADO_AG = {
+  borrador: ['Sin confirmar', 's-notificando'], pendiente: ['Agendado', 's-despacho'], presentado: ['Presentado', 's-sentencia'],
+  error: ['No se presentó', 's-subasta'], cancelado: ['Cancelado', ''],
+};
+const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const fmtDia = (s) => { const d = parse(s); return d ? d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) : ''; };
+const fmtLargo = (s) => { const d = parse(s); return d ? `${DIAS[d.getDay()]} ${fmtDia(s)}` : ''; };
+/** Escritos que todavía piden algo: confirmarlos, esperar a que se presenten o resolver un error. */
+const agendaAbierta = (expte) => D.agenda.filter((a) => a.expte === expte && ['borrador', 'pendiente', 'error'].includes(a.estado));
+/** Cuándo corre la próxima tarea del SAC: hoy si es día hábil y todavía no son las 10:15; si no, el próximo día hábil. */
+function proximaCorrida() {
+  const d = today(), ahora = hora(new Date());
+  if (d.getDay() % 6 === 0 || ahora >= HORA_SAC) do d.setDate(d.getDate() + 1); while (d.getDay() % 6 === 0);
+  return iso(d);
+}
+/** La corrida que toma un escrito agendado para `fecha`: ese día si es hábil y no pasó; si no, la siguiente. */
+function corridaPara(fecha) {
+  const p = proximaCorrida(); if (fecha <= p) return p;
+  const d = parse(fecha); while (d.getDay() % 6 === 0) d.setDate(d.getDate() + 1);
+  return iso(d);
+}
+
+/** Copias de los borradores que trajo el chat, por si la lectura de la base todavía no los trae. */
+function escritoDe(id) {
+  const base = D.agenda.find((a) => a.id === id), copia = Object.values(S.chat?.extras || {}).map((x) => x.copias?.[id]).find(Boolean);
+  return base ? { ...copia, ...base } : copia || null; // de la copia quedan los avisos del chat, que la base no guarda
+}
+
+function tarjetaAgenda(a, donde) {
+  const c = D.causas.find((x) => x.expte === a.expte), [estado, clase] = ESTADO_AG[a.estado] || [a.estado, ''], k = esc(a.id);
+  const cab = `<div class="agcab"><span class="pill ${clase}">${esc(estado)}</span><span class="hint">Expte. ${esc(a.expte)}${c ? ' · ' + esc(caratula(c)) : ''}</span></div>`;
+  const id = (campo) => `ag_${donde}_${campo}_${k}`;
+  if (a.estado === 'borrador') {
+    return `<div class="sec agcard borrador" data-ag-id="${k}">${cab}
+     <label class="f">Título<input id="${id('t')}" value="${esc(a.titulo)}"></label>
+     <label class="f">Texto del escrito<textarea id="${id('c')}" rows="8">${esc(a.cuerpo)}</textarea></label>
+     <label class="f">Presentarlo el<input type="date" id="${id('f')}" value="${esc(a.fecha)}" min="${iso(today())}"></label>
+     ${a.realizar ? `<label class="chk"><input type="checkbox" id="${id('r')}" checked><span>Al presentarlo, dar por realizada la próxima acción: <b>${esc(a.realizar)}</b></span></label>` : ''}
+     ${(a.avisos || []).map((t) => `<p class="sucio m0">${esc(t)}</p>`).join('')}
+     <p class="hint m0">Cuando lo agendes, la tarea de Claude lo presenta en el SAC ese día desde las ${HORA_SAC}, desde la compu del estudio, y deja la causa “A despacho”. Si la compu está apagada, te avisa y queda para reintentar.</p>
+     <div class="actions"><button class="btn small primary" data-ag="agendar" data-id="${k}" data-donde="${donde}">Agendar</button><button class="btn small" data-ag="descartar" data-id="${k}" data-donde="${donde}">Descartar</button></div>
+    </div>`;
+  }
+  const sale = a.estado === 'pendiente' ? corridaPara(a.fecha) : '';
+  const detalle = a.estado === 'pendiente' ? `Se presenta el ${esc(fmtLargo(sale))} desde las ${HORA_SAC}${sale !== a.fecha ? ` (estaba para el ${esc(fmtDia(a.fecha))})` : ''}${a.realizar ? `; da por realizada “${esc(a.realizar)}”` : ''}.`
+    : a.estado === 'presentado' ? `${esc(a.resultado || 'Presentado en el SAC')}${a.presentado ? ` · ${esc(cuando(new Date(a.presentado)))}` : ''}`
+      : a.estado === 'error' ? esc(a.resultado || 'No se pudo presentar.')
+        : 'No se va a presentar.';
+  const botones = a.estado === 'pendiente' ? `<button class="btn small danger" data-ag="cancelar" data-id="${k}">Cancelar</button>`
+    : a.estado === 'error' ? `<button class="btn small primary" data-ag="reagendar" data-id="${k}">Volver a agendar</button><button class="btn small danger" data-ag="cancelar" data-id="${k}">Cancelar</button>` : '';
+  return `<div class="sec agcard ${esc(a.estado)}" data-ag-id="${k}">${cab}<b>${esc(a.titulo)}</b><p class="m0 ${a.estado === 'error' ? 'malo' : 'hint'}">${detalle}</p>${botones ? `<div class="actions">${botones}</div>` : ''}</div>`;
+}
+
+function agendaFichaHtml(c) {
+  if (S.isNew) return '';
+  const abiertos = agendaAbierta(c.expte);
+  const hechos = D.agenda.filter((a) => a.expte === c.expte && a.estado === 'presentado').sort((a, b) => (b.presentado || '').localeCompare(a.presentado || '')).slice(0, 3);
+  if (!abiertos.length && !hechos.length) return '';
+  return `<div class="sec"><h4>Escritos para el SAC</h4>${[...abiertos, ...hechos].map((a) => tarjetaAgenda(a, 'ficha')).join('')}</div>`;
+}
+
+/** Lo escrito en las tarjetas (y en el chat) que todavía no se guardó, para no perderlo al redibujar. */
+function guardarEscrito(raiz) {
+  return [...(raiz?.querySelectorAll('input[id^="ag_"], textarea[id^="ag_"], #chatTexto') || [])]
+    .filter((el) => (el.type === 'checkbox' ? el.checked !== el.defaultChecked : el.value !== el.defaultValue))
+    .map((el) => [el.id, el.type === 'checkbox' ? el.checked : el.value]);
+}
+function devolverEscrito(lista) {
+  for (const [id, v] of lista) { const el = document.getElementById(id); if (el) { if (el.type === 'checkbox') el.checked = v; else el.value = v; } }
+}
+
+function refrescarAgendaFicha() {
+  const caja = $('#agendaFicha'); if (!caja || !S.open) return;
+  const escrito = guardarEscrito(caja);
+  caja.innerHTML = agendaFichaHtml(S.open);
+  devolverEscrito(escrito);
+}
+
+async function agAct(b) {
+  const id = b.dataset.id, a = escritoDe(id);
+  if (!a) { toast('Ese escrito ya no está en la agenda'); return; }
+  const campo = (k) => document.getElementById(`ag_${b.dataset.donde}_${k}_${id}`);
+  const anotar = (texto) => { if (S.chat) { S.chat.notas.push(texto); guardarEstadoChat(); } };
+  try {
+    let r;
+    if (b.dataset.ag === 'agendar') {
+      const titulo = campo('t').value.trim(), cuerpo = campo('c').value.replace(/\s+$/, ''), fecha = campo('f').value;
+      if (!titulo || !cuerpo.trim()) { toast('Completá el título y el texto del escrito'); return; }
+      if (!fecha) { toast('Elegí el día en que se presenta'); return; }
+      if (fecha < iso(today())) { toast('Ese día ya pasó: elegí hoy o más adelante'); return; }
+      const realizar = campo('r')?.checked ? a.realizar : '';
+      r = await actualizarAgenda(id, a.rev, { titulo, cuerpo, fecha, realizar, estado: 'pendiente' });
+      if (!r.conflicto) {
+        anotar(`Confirmaste y quedó agendado "${titulo}" en la causa ${a.expte} para el ${fmt(fecha)}${titulo !== a.titulo || cuerpo !== a.cuerpo ? ' (con cambios tuyos en el texto)' : ''}.`);
+        const sale = corridaPara(fecha);
+        toast(sale === fecha ? `Agendado: se presenta el ${fmtLargo(fecha)} desde las ${HORA_SAC}` : `Agendado: sale en la corrida del ${fmtLargo(sale)}, a las ${HORA_SAC}`);
+      }
+    } else if (b.dataset.ag === 'descartar') {
+      r = await actualizarAgenda(id, a.rev, { estado: 'cancelado' });
+      if (!r.conflicto) { anotar(`Descartaste el borrador "${a.titulo}" de la causa ${a.expte}: no se presenta.`); toast('Borrador descartado'); }
+    } else if (b.dataset.ag === 'cancelar') {
+      r = await actualizarAgenda(id, a.rev, { estado: 'cancelado' });
+      if (!r.conflicto) { anotar(`Cancelaste "${a.titulo}" de la causa ${a.expte}: no se presenta.`); toast('Escrito cancelado: no se presenta'); }
+    } else if (b.dataset.ag === 'reagendar') {
+      const fecha = proximaCorrida();
+      r = await actualizarAgenda(id, a.rev, { estado: 'pendiente', fecha, resultado: '' });
+      if (!r.conflicto) { anotar(`Volviste a agendar "${a.titulo}" de la causa ${a.expte} para el ${fmt(fecha)}.`); toast(`Agendado de nuevo: sale el ${fmtLargo(fecha)} desde las ${HORA_SAC}`); }
+    }
+    if (r?.conflicto) toast('El escrito cambió recién. Revisalo y probá de nuevo');
+  } catch (e) { toast(mensaje(e)); }
+}
+
+// ───────────────────────── Chat con Claude ─────────────────────────
+// La conversación va y viene entera (supabase/functions/chat): la app guarda lo que devuelve la
+// función tal cual, sin tocarlo, porque la API de Claude rechaza una conversación alterada.
+
+const chatVacio = () => ({ abierto: false, cargado: false, mensajes: [], extras: {}, notas: [], enviando: false, pendiente: null, error: null });
+
+function estadoChat() {
+  if (!S.chat) S.chat = chatVacio();
+  if (!S.chat.cargado && D.usuario) {
+    const g = leerChat();
+    if (g) Object.assign(S.chat, { mensajes: g.mensajes, extras: g.extras || {}, notas: g.notas || [] });
+    S.chat.cargado = true;
+  }
+  return S.chat;
+}
+function guardarEstadoChat() {
+  const c = S.chat; if (!c) return;
+  guardarChat({ mensajes: c.mensajes, extras: c.extras, notas: c.notas });
+}
+
+/** El texto que se ve de un mensaje (sin la fecha ni las notas que agrega la función, sin herramientas). */
+function textoVisible(m) {
+  const textos = (m.content || []).filter((b) => b.type === 'text').map((b) => b.text || '');
+  if (!textos.length) return '';
+  return m.role === 'user' ? textos.join('\n').replace(/^(\[[^\]\n]*\]\n)+/, '') : textos.join('\n\n').trim();
+}
+
+/** Lo que escribe Claude, con negritas y listas. Se escapa todo antes: se muestra, nunca se ejecuta. */
+function enriquecer(t) {
+  const linea = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  let html = '', lista = '', parrafo = [];
+  const cerrarParrafo = () => { if (parrafo.length) html += `<p>${parrafo.map(linea).join('<br>')}</p>`; parrafo = []; };
+  const cerrarLista = () => { if (lista) html += `</${lista}>`; lista = ''; };
+  for (const l of t.split('\n')) {
+    const item = /^\s*(?:([-•*])|\d+[.)])\s+(.*)$/.exec(l);
+    if (item) {
+      cerrarParrafo();
+      const tipo = item[1] ? 'ul' : 'ol';
+      if (lista !== tipo) { cerrarLista(); html += `<${tipo}>`; lista = tipo; }
+      html += `<li>${linea(item[2])}</li>`;
+    } else if (!l.trim()) { cerrarParrafo(); cerrarLista(); } else { cerrarLista(); parrafo.push(l); }
+  }
+  cerrarParrafo(); cerrarLista();
+  return html;
+}
+
+function bienvenidaHtml() {
+  const ejemplos = ['¿Qué tengo pendiente esta semana?', '¿Qué causas están a despacho?', 'Presentá la aprobación de planilla en la causa … el día … y marcá la acción como realizada'];
+  return `<div class="bienvenida">
+   <p class="m0"><b>Pedile a Claude lo que necesites del gestor.</b> Lee y actualiza las causas, te dice qué hay pendiente y deja escritos de la biblioteca listos para presentar en el SAC.</p>
+   <div class="sugerencias">${ejemplos.map((e) => `<button class="chip" data-chat="ejemplo">${esc(e)}</button>`).join('')}</div>
+   <p class="hint m0">Cada escrito lo confirmás vos en una tarjeta. Después, una tarea de Claude lo presenta el día indicado desde las ${HORA_SAC} (de lunes a viernes), desde la compu del estudio.</p>
+  </div>`;
+}
+
+function charlaHtml() {
+  const c = S.chat;
+  if (!c.mensajes.length && !c.pendiente) return bienvenidaHtml();
+  let h = '';
+  c.mensajes.forEach((m, i) => {
+    const t = textoVisible(m);
+    if (t) h += m.role === 'user' ? `<div class="msj yo">${esc(t).replace(/\n/g, '<br>')}</div>` : `<div class="msj claude">${enriquecer(t)}</div>`;
+    const x = c.extras[i];
+    if (x?.acciones?.length) h += `<ul class="hecho" aria-label="Cambios en el gestor">${x.acciones.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>`;
+    for (const id of x?.borradores || []) { const a = escritoDe(id); if (a) h += tarjetaAgenda(a, 'chat'); }
+  });
+  if (c.pendiente) h += `<div class="msj yo${c.error ? ' fallido' : ''}">${esc(c.pendiente).replace(/\n/g, '<br>')}</div>`;
+  if (c.enviando) h += '<div class="msj claude pensando" role="status">Claude está trabajando…</div>';
+  if (c.error) {
+    h += `<div class="msj aviso-chat" role="alert"><p class="m0">${esc(c.error.mensaje)}</p><div class="actions">
+      ${c.error.reintentar ? '<button class="btn small primary" data-chat="reintentar">Reintentar</button>' : ''}
+      ${c.error.codigo === 'larga' ? '<button class="btn small" data-chat="nueva">Nueva conversación</button>' : ''}
+      ${['sin_clave', 'claude'].includes(c.error.codigo) ? '<button class="btn small" data-chat="claudeai">Abrir en la app de Claude</button>' : ''}</div></div>`;
+  }
+  return h;
+}
+
+function chatHtml() {
+  return `<div class="scrim" data-chat="cerrar"></div>
+  <aside class="panel chat entra" role="dialog" aria-modal="true" aria-label="Chat con Claude">
+   <div class="phead"><div><div class="hint">Asistente del gestor</div><h2>Claude</h2></div>
+    <div class="btns"><button class="btn small" data-chat="nueva" id="chatNueva">Nueva conversación</button><button class="btn small" data-chat="cerrar">Cerrar</button></div></div>
+   <div class="charla" id="charla" aria-live="polite"></div>
+   <form class="chatpie" id="fChat" novalidate>
+    <textarea id="chatTexto" rows="1" placeholder="Escribile a Claude…" aria-label="Mensaje para Claude" enterkeyhint="send"></textarea>
+    <button class="btn primary" type="submit" id="chatEnviar">Enviar</button>
+   </form>
+  </aside>`;
+}
+
+/** Redibuja la conversación sin tocar lo que se está escribiendo; baja al final si ya estaba abajo. */
+function refrescarCharla(bajar = false) {
+  const ch = $('#charla'); if (!ch || !S.chat) return;
+  const abajo = bajar || ch.scrollHeight - ch.scrollTop - ch.clientHeight < 60, pos = ch.scrollTop;
+  const escrito = guardarEscrito(ch);
+  ch.innerHTML = charlaHtml();
+  devolverEscrito(escrito);
+  ch.scrollTop = abajo ? ch.scrollHeight : pos;
+  $('#chatNueva').hidden = !S.chat.mensajes.length;
+  $('#chatEnviar').disabled = S.chat.enviando;
+}
+
+function abrirChat(causa) {
+  const c = estadoChat();
+  if (!c.abierto) {
+    c.abierto = true; S.menu = false; renderMenu();
+    const caja = $('#chat'); caja.hidden = false; caja.innerHTML = chatHtml();
+    document.body.style.overflow = 'hidden'; document.body.classList.add('con-chat');
+  }
+  refrescarCharla(true);
+  const t = $('#chatTexto');
+  if (causa?.expte && !t.value.trim()) t.value = `Sobre la causa ${causa.expte} (${partes(causa)}): `;
+  ajustarAlto(t);
+  if (!movil.matches || causa) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); }
+}
+function cerrarChat() {
+  if (S.chat) S.chat.abierto = false;
+  const caja = $('#chat'); if (!caja || caja.hidden) return;
+  caja.hidden = true; caja.innerHTML = ''; document.body.classList.remove('con-chat');
+  if ($('#drawer').hidden) document.body.style.overflow = '';
+}
+function ajustarAlto(t) { if (!t) return; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight + 2, 168) + 'px'; }
+
+async function enviarChat(texto) {
+  const c = S.chat;
+  texto = String(texto || '').trim();
+  if (!c || c.enviando || !texto) return;
+  const notas = c.notas.splice(0);
+  Object.assign(c, { enviando: true, error: null, pendiente: texto });
+  refrescarCharla(true);
+  try {
+    const r = await preguntarAClaude({ historial: c.mensajes, texto, notas });
+    c.mensajes.push(...r.nuevos);
+    if (r.acciones?.length || r.borradores?.length) {
+      c.extras[c.mensajes.length - 1] = {
+        acciones: r.acciones || [], borradores: (r.borradores || []).map((b) => b.id),
+        copias: Object.fromEntries((r.borradores || []).map((b) => [b.id, b])),
+      };
+    }
+    c.pendiente = null;
+  } catch (e) {
+    c.notas.unshift(...notas); // no llegaron: van con el próximo mensaje
+    const final = ['larga', 'sin_clave', 'sin_acceso', 'clave_temporal', 'pedido'].includes(e.codigo);
+    c.error = { mensaje: e.sinSesion ? 'La sesión venció: volvé a ingresar.' : e.message || 'No se pudo enviar el mensaje', codigo: e.codigo, reintentar: !final && !e.sinSesion };
+    if (final) { $('#chatTexto').value = $('#chatTexto').value || texto; c.pendiente = null; }
+  } finally {
+    c.enviando = false;
+    guardarEstadoChat();
+    if (c.abierto) refrescarCharla(true);
+  }
+}
+
+function chatAct(b) {
+  const a = b.dataset.chat, c = S.chat;
+  if (a === 'cerrar') { cerrarChat(); return; }
+  if (a === 'nueva') {
+    if (c.enviando) return;
+    Object.assign(c, { mensajes: [], extras: {}, pendiente: null, error: null });
+    guardarEstadoChat(); refrescarCharla(true); $('#chatTexto').focus(); return;
+  }
+  if (a === 'ejemplo') { const t = $('#chatTexto'); t.value = b.textContent.replace(/…/g, '').replace(/\s{2,}/g, ' '); ajustarAlto(t); t.focus(); return; }
+  if (a === 'reintentar') { const t = c.pendiente; c.pendiente = null; c.error = null; enviarChat(t); return; }
+  if (a === 'claudeai') hablarConClaude(S.open);
+}
+
 // ───────────────────────── Cuenta ─────────────────────────
 
 const instalada = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
@@ -832,6 +1134,8 @@ document.addEventListener('click', async (e) => {
   if (ing) { if (ing.dataset.ing === 'salir') { await salir(); mostrar('ingreso'); } else await reintentar(ing); return; }
   if (e.target.closest('#btnReintentar')) { await reintentar(e.target.closest('#btnReintentar')); if (D.enLinea) toast('Conexión recuperada'); return; }
   const mn = e.target.closest('[data-m]'); if (mn) { if (mn.dataset.m === 'cerrar') { S.menu = false; renderMenu(); } else await menuAct(mn); return; }
+  const cb = e.target.closest('[data-chat]'); if (cb) { chatAct(cb); return; }
+  const ag = e.target.closest('[data-ag]'); if (ag) { await unaVez(ag, agAct); return; }
   const tp = e.target.closest('[data-tp]'); if (tp) { await unaVez(tp, tplAct); return; }
   const acb = e.target.closest('[data-ac]'); if (acb) { await unaVez(acb, acAct); return; }
   const st = e.target.closest('.stat'); if (st) { S.quick = S.quick === st.dataset.q ? '' : st.dataset.q; render(); return; }
@@ -842,7 +1146,7 @@ document.addEventListener('click', async (e) => {
   const a = e.target.closest('[data-act]'); if (!a) return;
   const act = a.dataset.act, c = S.open;
   if (act === 'close') { closeDrawer(); return; }
-  if (act === 'claude') { hablarConClaude(S.open); return; }
+  if (act === 'claude') { abrirChat(S.open); return; }
   if (!c) return;
   if (act === 'choque-ver') { const actual = D.causas.find((x) => x.expte === c.expte); if (!actual) { closeDrawer(); return; } S.open = copia(actual); S.base = copia(actual); S.choque = null; S.confirmDel = false; S.liqSucia = false; renderDrawer(); return; }
   readForm();
@@ -881,6 +1185,7 @@ document.addEventListener('click', async (e) => {
 });
 
 document.addEventListener('input', (e) => {
+  if (e.target.id === 'chatTexto') { ajustarAlto(e.target); return; }
   if (/^pl_/.test(e.target.id)) { recalcPlanilla(); return; }
   if (/^t_(monto|vence)\d+$/.test(e.target.id)) { // recalcular los totales sin perder el foco
     clearTimeout(S.lt); S.lt = setTimeout(() => { if (!S.open) return; const id = document.activeElement?.id; readForm(); rerenderDrawer(); if (id) { const el = document.getElementById(id); if (el) el.focus(); } }, 700);
@@ -899,10 +1204,12 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (e.key === 'Escape') {
+    if (S.chat?.abierto) { cerrarChat(); return; }
     if (S.menu) { S.menu = false; renderMenu(); } else if (S.planilla && S.open) { readForm(); volverAFicha(); } else if (S.open || S.tpl || S.clave) closeDrawer();
   }
   if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('tr[data-id], .fila[data-id]')) { e.preventDefault(); openCausa(e.target.dataset.id); }
   if (e.key === 'Enter' && e.target.id === 'h_texto') document.querySelector('[data-act="histadd"]').click();
+  if (e.key === 'Enter' && e.target.id === 'chatTexto' && !e.shiftKey && !movil.matches && !e.isComposing) { e.preventDefault(); $('#fChat').requestSubmit(); }
 });
 document.addEventListener('change', (e) => {
   if (/^t_tipo\d+$/.test(e.target.id)) { readForm(); rerenderDrawer(); return; }
@@ -917,15 +1224,15 @@ $('#vLista').onclick = verVista('lista'); $('#vAcuerdos').onclick = verVista('ac
 $('#btnNew').onclick = $('#fabNew').onclick = () => openCausa(null);
 $('#btnTpl').onclick = abrirPlantillas;
 $('#btnExport').onclick = exportar;
-// Claude no vive dentro de la app: se abre una conversación nueva con la causa ya nombrada.
-// Los cambios los hace Claude con el conector de la base y la app los muestra en vivo.
+// Para lo que el chat de la app no hace (por ejemplo presentar algo ya mismo en el SAC): una
+// conversación nueva en la app de Claude, con la causa ya nombrada.
 function hablarConClaude(c) {
   const texto = c?.expte
     ? `Sobre el gestor de juicios, causa ${c.expte} (${partes(c)}): `
     : 'Sobre el gestor de juicios: ';
   window.open('https://claude.ai/new?q=' + encodeURIComponent(texto), '_blank', 'noopener');
 }
-$('#btnChat').onclick = () => hablarConClaude(null);
+$('#btnChat').onclick = () => abrirChat(null);
 $('#btnCuenta').onclick = () => { S.menu = !S.menu; renderMenu(); };
 $('#btnFiltros').onclick = (e) => { const abierto = $('#toolbar').classList.toggle('abierto'); e.currentTarget.setAttribute('aria-expanded', abierto); };
 movil.addEventListener('change', () => render());
@@ -937,7 +1244,8 @@ alCambiar((que, detalle) => {
   if (que === 'estado') { renderFranja(); if (D.cargado && S.view !== 'acuerdos') subtitulo(`${filtered().length} de ${D.causas.length} causas`); if (S.menu) renderMenu(); return; }
   render();
   if (S.tpl) refrescarTpl();
-  if (S.open && !S.isNew) { const n = $('#nota'); if (n) n.innerHTML = notaHtml(); } // sin tocar lo que se está escribiendo
+  if (S.open && !S.isNew) { const n = $('#nota'); if (n) n.innerHTML = notaHtml(); refrescarAgendaFicha(); } // sin tocar lo que se está escribiendo
+  if (S.chat?.abierto) refrescarCharla();
 });
 
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); S.instalar = e; if (S.menu) renderMenu(); });

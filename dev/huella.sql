@@ -12,18 +12,18 @@ with fn as (
     from information_schema.columns c
     join pg_attribute a on a.attrelid = (quote_ident(c.table_schema) || '.' || quote_ident(c.table_name))::regclass and a.attname = c.column_name
    where (c.table_schema = 'gestor' and c.table_name in ('miembros', 'cambios'))
-      or (c.table_schema = 'public' and c.table_name in ('causas', 'acuerdos', 'plantillas'))
+      or (c.table_schema = 'public' and c.table_name in ('causas', 'acuerdos', 'plantillas', 'agenda'))
 ), res as (
   select conrelid::regclass::text || '.' || conname as objeto, pg_get_constraintdef(oid) as huella
     from pg_constraint
-   where conrelid in ('gestor.miembros'::regclass, 'gestor.cambios'::regclass, 'public.causas'::regclass, 'public.acuerdos'::regclass, 'public.plantillas'::regclass)
+   where conrelid in ('gestor.miembros'::regclass, 'gestor.cambios'::regclass, 'public.causas'::regclass, 'public.acuerdos'::regclass, 'public.plantillas'::regclass, 'public.agenda'::regclass)
 ), pol as (
   select schemaname || '.' || tablename || '.' || policyname as objeto,
          cmd || '|' || array_to_string(roles, ',') || '|' || coalesce(qual, '') || '|' || coalesce(with_check, '') as huella
     from pg_policies where schemaname in ('public', 'gestor')
 ), rls as (
   select c.oid::regclass::text as objeto, c.relrowsecurity::text || '|' || c.relforcerowsecurity::text as huella
-    from pg_class c where c.oid in ('gestor.miembros'::regclass, 'gestor.cambios'::regclass, 'public.causas'::regclass, 'public.acuerdos'::regclass, 'public.plantillas'::regclass)
+    from pg_class c where c.oid in ('gestor.miembros'::regclass, 'gestor.cambios'::regclass, 'public.causas'::regclass, 'public.acuerdos'::regclass, 'public.plantillas'::regclass, 'public.agenda'::regclass)
 ), trg as (
   select tgrelid::regclass::text || '.' || tgname as objeto, pg_get_triggerdef(oid) as huella
     from pg_trigger where not tgisinternal and tgname in ('sello', 'auditar')
@@ -35,7 +35,7 @@ with fn as (
                         case when has_table_privilege(r.rol, t.oid, 'delete') then 'delete' end,
                         case when has_table_privilege(r.rol, t.oid, 'truncate') then 'truncate' end) as huella
     from (values ('anon'), ('authenticated')) r(rol),
-         pg_class t where t.oid in ('gestor.miembros'::regclass, 'gestor.cambios'::regclass, 'gestor.usuarios'::regclass, 'public.causas'::regclass, 'public.acuerdos'::regclass, 'public.plantillas'::regclass)
+         pg_class t where t.oid in ('gestor.miembros'::regclass, 'gestor.cambios'::regclass, 'gestor.usuarios'::regclass, 'public.causas'::regclass, 'public.acuerdos'::regclass, 'public.plantillas'::regclass, 'public.agenda'::regclass)
 ), eje as (
   select r.rol || ' ejecuta ' || p.oid::regprocedure::text as objeto, has_function_privilege(r.rol, p.oid, 'execute')::text as huella
     from (values ('anon'), ('authenticated')) r(rol), pg_proc p join pg_namespace n on n.oid = p.pronamespace

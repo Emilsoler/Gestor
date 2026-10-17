@@ -26,8 +26,9 @@ export const sb = configurado && !enMarco
 const SONDEO_RAPIDO = cfg.sondeoMs || 30_000; // sin tiempo real
 const SONDEO_LENTO = 5 * 60_000; // con tiempo real, por si se perdió algún aviso
 const CACHE = 'gj.cache';
-const TABLAS = ['causas', 'acuerdos', 'plantillas'];
-const CLAVE = { causas: 'expte', acuerdos: 'id', plantillas: 'id' };
+const TABLAS = ['causas', 'acuerdos', 'plantillas', 'agenda'];
+const CLAVE = { causas: 'expte', acuerdos: 'id', plantillas: 'id', agenda: 'id' };
+const CHAT = 'gj.chat'; // la conversación con Claude, en este dispositivo
 
 /** Estado compartido con la interfaz. Se lee libremente; solo este archivo lo modifica. */
 export const D = {
@@ -36,6 +37,7 @@ export const D = {
   causas: [],
   acuerdos: [],
   plantillas: [],
+  agenda: [], // escritos para presentar en el SAC (ver supabase/migrations/0005)
   cargado: false, // hay algo para mostrar (de la base o de la copia local)
   leido: null, // Date de la última lectura buena (de la base, o de cuándo se guardó la copia)
   deCache: false, // lo que se ve es la copia del dispositivo
@@ -106,8 +108,10 @@ const DE = {
   causas: (f) => ({ ...f, vence: f.vence || '', fecha: f.fecha || '', etiquetas: f.etiquetas || [], historial: f.historial || [], demandados: f.demandados || [], titulos: f.titulos || [] }),
   acuerdos: (f) => ({ ...f, cuotas: f.cuotas || [] }),
   plantillas: (f) => ({ ...f }),
+  agenda: (f) => ({ ...f, realizar: f.realizar || '', resultado: f.resultado || '' }),
 };
 
+export const TIPOS_TITULO = ['pagare', 'cheque', 'prenda'];
 const CAMPOS_CAUSA = ['expte', 'actor', 'demandado', 'tipo', 'nom', 'oficina', 'estado', 'etiquetas', 'proxima', 'vence', 'ultima', 'fecha', 'notas', 'historial', 'liquidacion', 'demandados', 'titulos'];
 const movLimpio = (h) => (h.hecha ? { fecha: h.fecha || '', texto: h.texto || '', hecha: true } : { fecha: h.fecha || '', texto: h.texto || '' });
 
@@ -120,7 +124,7 @@ function causaAFila(c) {
   f.historial = (c.historial || []).map(movLimpio);
   f.liquidacion = c.liquidacion || null;
   f.demandados = (c.demandados || []).map((d) => ({ nombre: d.nombre || '', dni: d.dni || '', telefono: d.telefono || '', domicilio: d.domicilio || '', notas: d.notas || '' }));
-  f.titulos = (c.titulos || []).map((t) => ({ tipo: t.tipo === 'prenda' ? 'prenda' : 'pagare', monto: +t.monto || 0, vence: t.vence || '', descripcion: t.descripcion || '', vehiculo: t.tipo === 'prenda' ? (t.vehiculo || '') : '' }));
+  f.titulos = (c.titulos || []).map((t) => ({ tipo: TIPOS_TITULO.includes(t.tipo) ? t.tipo : 'pagare', monto: +t.monto || 0, vence: t.vence || '', descripcion: t.descripcion || '', vehiculo: t.tipo === 'prenda' ? (t.vehiculo || '') : '' }));
   return f;
 }
 
@@ -135,6 +139,7 @@ const ORDEN = {
   causas: (a, b) => a.expte.localeCompare(b.expte),
   acuerdos: (a, b) => (a.deudor || '').localeCompare(b.deudor || '') || a.id.localeCompare(b.id),
   plantillas: (a, b) => (a.titulo || '').localeCompare(b.titulo || '') || a.id.localeCompare(b.id),
+  agenda: (a, b) => (a.fecha || '').localeCompare(b.fecha || '') || (a.creado || '').localeCompare(b.creado || ''),
 };
 const firma = (t, filas) => JSON.stringify([...filas].sort((a, b) => String(a[CLAVE[t]]).localeCompare(String(b[CLAVE[t]]))));
 
@@ -158,7 +163,7 @@ function guardarCache() {
   try {
     localStorage.setItem(CACHE, JSON.stringify({
       uid: D.usuario.id, email: D.usuario.email, ts: (D.leido || new Date()).getTime(),
-      causas: D.causas, acuerdos: D.acuerdos, plantillas: D.plantillas,
+      causas: D.causas, acuerdos: D.acuerdos, plantillas: D.plantillas, agenda: D.agenda,
     }));
   } catch { /* sin espacio o modo privado: la app sigue andando sin copia local */ }
 }
@@ -168,15 +173,16 @@ function leerCache() {
     return c && c.uid && Array.isArray(c.causas) ? c : null;
   } catch { return null; }
 }
-function borrarCache() { try { localStorage.removeItem(CACHE); } catch { /* nada */ } }
+function borrarCache() { try { localStorage.removeItem(CACHE); localStorage.removeItem(CHAT); } catch { /* nada */ } }
 function usarCache(c) {
   D.causas = (c.causas || []).sort(ORDEN.causas);
   D.acuerdos = (c.acuerdos || []).sort(ORDEN.acuerdos);
   D.plantillas = (c.plantillas || []).sort(ORDEN.plantillas);
+  D.agenda = (c.agenda || []).sort(ORDEN.agenda);
   D.cargado = true; D.deCache = true; D.leido = new Date(c.ts);
 }
 function vaciar() {
-  D.usuario = null; D.acceso = null; D.causas = []; D.acuerdos = []; D.plantillas = [];
+  D.usuario = null; D.acceso = null; D.causas = []; D.acuerdos = []; D.plantillas = []; D.agenda = [];
   D.cargado = false; D.leido = null; D.deCache = false; D.enVivo = false;
 }
 
@@ -329,7 +335,7 @@ async function trasIngreso() {
 function sinAcceso() {
   cortar(); borrarCache();
   D.acceso = { autorizado: false };
-  D.causas = []; D.acuerdos = []; D.plantillas = []; D.cargado = false; D.leido = null; D.deCache = false;
+  D.causas = []; D.acuerdos = []; D.plantillas = []; D.agenda = []; D.cargado = false; D.leido = null; D.deCache = false;
 }
 
 async function cerrarLocal() {
@@ -434,3 +440,46 @@ export const borrarAcuerdo = (id) => eliminar('acuerdos', id);
 export const crearPlantilla = (p) => agregar('plantillas', p);
 export const guardarPlantilla = (id, rev, campos) => modificar('plantillas', id, rev, campos);
 export const borrarPlantilla = (id) => eliminar('plantillas', id);
+
+/** Un escrito de la agenda: confirmarlo, cambiarle la fecha o cancelarlo (con control de revisión). */
+export const actualizarAgenda = (id, rev, campos) => modificar('agenda', id, rev, campos);
+
+// ───────────────────────── Chat con Claude ─────────────────────────
+// La función `chat` de Supabase (supabase/functions/chat) habla con Claude con la clave de la API,
+// que vive allá y no llega nunca al navegador. Acá se le manda la conversación y el mensaje nuevo.
+
+/**
+ * Devuelve { nuevos, cambios, acciones, borradores, aviso? }. Si falla, lanza un error con
+ * `mensaje` para mostrar y `codigo` ('sin_clave', 'larga', 'red', 'claude'…).
+ */
+export async function preguntarAClaude({ historial, texto, notas }) {
+  if (!sb) throw Object.assign(new Error('La app no está conectada a su base de datos'), { codigo: 'sin_configurar' });
+  let r;
+  try { r = await sb.functions.invoke('chat', { body: { historial, texto, notas } }); } catch (e) { throw marcar(e); }
+  if (r.error) {
+    let detalle = null;
+    try { detalle = await r.error.context?.json(); } catch { /* sin cuerpo */ }
+    const status = r.error.context?.status;
+    const e = new Error(detalle?.mensaje || (r.error.name === 'FunctionsFetchError' ? 'Sin conexión: el mensaje no se envió' : 'Claude no pudo responder. Probá de nuevo.'));
+    e.codigo = detalle?.error || (r.error.name === 'FunctionsFetchError' ? 'red' : 'claude');
+    e.status = status;
+    if (e.codigo === 'red') ponerEnLinea(false);
+    if (status === 401) e.sinSesion = true;
+    throw e;
+  }
+  ponerEnLinea(true);
+  if (r.data?.cambios) sincronizar(); // por si el tiempo real no avisó
+  return r.data;
+}
+
+/** La conversación guardada en este dispositivo (se borra al cerrar sesión, con el resto de la copia). */
+export function leerChat() {
+  try {
+    const c = JSON.parse(localStorage.getItem(CHAT) || 'null');
+    return c && c.uid === D.usuario?.id && Array.isArray(c.mensajes) ? c : null;
+  } catch { return null; }
+}
+export function guardarChat(estado) {
+  if (!D.usuario) return;
+  try { localStorage.setItem(CHAT, JSON.stringify({ uid: D.usuario.id, ...estado })); } catch { /* sin espacio: sigue andando, sin guardarla */ }
+}

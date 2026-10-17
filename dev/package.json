@@ -7,7 +7,8 @@
     "stack": "./stack.sh up",
     "test:db": "node --test tests/db.test.mjs",
     "test:app": "node --test tests/app.test.mjs",
-    "vendor": "node vendor.mjs"
+    "vendor": "node vendor.mjs",
+    "test:chat": "node --test tests/chat.test.mjs"
   },
   "devDependencies": {
     "@fontsource-variable/source-serif-4": "^5.3.0",

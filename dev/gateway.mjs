@@ -14,6 +14,8 @@ const PORT = +process.env.GATEWAY_PORT || 54321;
 const ROUTES = [
   ['/auth/v1', { host: '127.0.0.1', port: +process.env.GOTRUE_PORT || 9999 }],
   ['/rest/v1', { host: '127.0.0.1', port: +process.env.PGRST_PORT || 3000 }],
+  // La función `chat`, corriendo en local con Deno (ver stack.sh).
+  ['/functions/v1', { host: '127.0.0.1', port: +process.env.FUNCIONES_PORT || 54330 }],
 ];
 const KEYS = new Set((process.env.API_KEYS || '').split(',').filter(Boolean));
 const CORS = {

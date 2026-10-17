@@ -16,6 +16,7 @@ STACK="${STACK:-/home/claude/.stack}"
 PGBIN="${PGBIN:-/usr/lib/postgresql/16/bin}"
 PGDATA="${PGDATA:-/var/lib/postgresql/gestor-test}"
 PGPORT=54322
+DENO="${DENO:-$STACK/deno/node_modules/.bin/deno}"
 JWT_SECRET="super-secret-jwt-token-with-at-least-32-characters-long"
 LOGS="$STACK/logs"
 mkdir -p "$LOGS"
@@ -41,7 +42,7 @@ stop_one() { # detiene el servicio y espera a que libere su puerto
 }
 
 down() {
-  stop_one gateway; stop_one postgrest; stop_one gotrue
+  stop_one gateway; stop_one postgrest; stop_one gotrue; stop_one chat; stop_one claude-falso
   if [ -d "$PGDATA" ]; then as_pg "$PGBIN/pg_ctl" -D "$PGDATA" -m fast stop >/dev/null 2>&1 || true; fi
 }
 
@@ -99,7 +100,7 @@ EOF
 create or replace function public._rt_local() returns trigger language plpgsql as $$
 begin perform pg_notify('gestor_rt', tg_table_name); return null; end $$;
 do $$ declare t text; begin
-  foreach t in array array['causas','acuerdos','plantillas'] loop
+  foreach t in array array['causas','acuerdos','plantillas','agenda'] loop
     if to_regclass('public.' || t) is not null and not exists
        (select 1 from pg_trigger where tgname = '_rt_local' and tgrelid = to_regclass('public.' || t)) then
       execute format('create trigger _rt_local after insert or update or delete on public.%I for each statement execute function public._rt_local()', t);
@@ -116,6 +117,20 @@ SQL
   PGRST_SERVER_HOST=127.0.0.1 PGRST_SERVER_PORT=3000 \
     nohup setsid "$STACK/bin/postgrest" > "$LOGS/postgrest.log" 2>&1 &
   echo $! > "$STACK/postgrest.pid"
+
+  # La función `chat` (supabase/functions/chat) con Deno, hablando con un doble de la API de
+  # Claude (claude-falso.mjs) en vez de la real. Sin Deno, se saltea: el resto anda igual.
+  stop_one claude-falso; stop_one chat
+  CLAUDE_FALSO_PORT=54340 nohup setsid node "$HERE/claude-falso.mjs" > "$LOGS/claude-falso.log" 2>&1 &
+  echo $! > "$STACK/claude-falso.pid"
+  if [ -x "$DENO" ]; then
+    SUPABASE_URL=http://127.0.0.1:54321 SUPABASE_ANON_KEY="$ANON_KEY" ANTHROPIC_API_KEY=clave-de-prueba \
+    ANTHROPIC_URL=http://127.0.0.1:54340 DENO_SERVE_ADDRESS=tcp:127.0.0.1:54330 \
+      nohup setsid "$DENO" run --allow-net --allow-env "$REPO/supabase/functions/chat/index.ts" > "$LOGS/chat.log" 2>&1 &
+    echo $! > "$STACK/chat.pid"
+  else
+    echo "sin Deno en $DENO: la función chat no se levanta (ver dev/README.md)" >&2
+  fi
 
   # Puerta de entrada
   stop_one gateway

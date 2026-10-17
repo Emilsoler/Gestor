@@ -3,7 +3,8 @@
 // revisiones, el historial de cambios y las funciones que usa Claude.
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { sql, sqlFalla, anon, servicio, entrar, limpiar, crearCuenta } from './helpers.mjs';
+import { createClient } from '@supabase/supabase-js';
+import { sql, sqlFalla, anon, servicio, entrar, limpiar, crearCuenta, env } from './helpers.mjs';
 
 const CLAVE_PROVISORIA = 'Provisoria-del-panel-1';
 let emi;
@@ -320,6 +321,116 @@ test('demandados y títulos: se cargan, la app los lee y el reclamado suma inter
   const id = sql(`select max(id) from gestor.cambios where tabla = 'causas' and clave = '14000001'`);
   sql(`select gestor.deshacer(${id})`);
   assert.equal(sql(`select jsonb_array_length(titulos) from public.causas where expte = '14000001'`), '1');
+});
+
+test('agenda: solo para miembros, con causa existente y estados conocidos', async () => {
+  let r = await emi.from('agenda').insert({ expte: '14000001', titulo: 'Solicita', cuerpo: 'Texto', fecha: '2026-10-20' }).select().single();
+  assert.ifError(r.error);
+  assert.equal(r.data.estado, 'borrador', 'nace como borrador: falta que la persona lo confirme');
+  assert.equal(r.data.actualizado_por, 'Emi');
+  const id = r.data.id;
+  // causa inexistente, estado desconocido, texto vacío
+  assert.equal((await emi.from('agenda').insert({ expte: '999999', titulo: 'T', cuerpo: 'C', fecha: '2026-10-20' }).select()).error?.code, '23503');
+  assert.equal((await emi.from('agenda').update({ estado: 'enviado' }).eq('id', id).select()).error?.code, '23514');
+  assert.equal((await emi.from('agenda').insert({ expte: '14000001', titulo: ' ', cuerpo: 'C', fecha: '2026-10-20' }).select()).error?.code, '23514');
+  // sin sesión, nada
+  r = await anon().from('agenda').select('*');
+  assert.ok(r.error);
+  assert.match(r.error.message, /permission denied for table agenda/);
+  // una cuenta sin autorización tampoco (la puerta de la API la frena)
+  const x = await entrar('intruso@test.local', 'Intruso-123456');
+  r = await x.from('agenda').select('*');
+  assert.equal(r.error?.code, '42501');
+  assert.equal(r.data, null);
+  // y aunque la puerta no estuviera, la política de filas no muestra nada
+  const comoIntruso = sql(`begin; set local role authenticated; select set_config('request.jwt.claims', '{"role":"authenticated","sub":"00000000-0000-0000-0000-000000000001"}', true); select count(*) from public.agenda; rollback;`);
+  assert.equal(comoIntruso.split('\n').pop(), '0');
+  sql(`analyze public.agenda`);
+  assert.equal(sql(`select count(*) from pg_stats where schemaname='public' and tablename='agenda'`), '0');
+  sql(`delete from public.agenda where id='${id}'`);
+});
+
+test('el chat de la app firma sus cambios como Claude', async () => {
+  // Es lo que hace la función `chat`: pide con la sesión de la persona y el encabezado x-gestor-via.
+  const chat = createClient(env.SUPABASE_URL, env.ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false }, global: { headers: { 'x-gestor-via': 'chat' } } });
+  const { error } = await chat.auth.signInWithPassword({ email: 'emi@test.local', password: 'Clave-definitiva-2026' });
+  assert.ifError(error);
+  let r = await chat.from('causas').update({ notas: 'anotado por el chat' }).eq('expte', '14000001').select().single();
+  assert.ifError(r.error);
+  assert.equal(r.data.actualizado_por, 'Claude');
+  assert.equal(sql(`select autor from gestor.cambios where tabla='causas' and clave='14000001' order by id desc limit 1`), 'Claude');
+  r = await chat.from('agenda').insert({ expte: '14000001', titulo: 'T', cuerpo: 'C', fecha: '2026-10-20' }).select().single();
+  assert.equal(r.data.actualizado_por, 'Claude');
+  sql(`delete from public.agenda where id='${r.data.id}'`);
+  // sin el encabezado, el mismo usuario firma con su nombre
+  r = await emi.from('causas').update({ notas: 'x' }).eq('expte', '14000001').select().single();
+  assert.equal(r.data.actualizado_por, 'Emi');
+  // y un valor cualquiera en el encabezado no cambia nada
+  const otro = createClient(env.SUPABASE_URL, env.ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false }, global: { headers: { 'x-gestor-via': 'otra cosa' } } });
+  await otro.auth.signInWithPassword({ email: 'emi@test.local', password: 'Clave-definitiva-2026' });
+  r = await otro.from('causas').update({ notas: 'y' }).eq('expte', '14000001').select().single();
+  assert.equal(r.data.actualizado_por, 'Emi');
+  sql(`update public.causas set notas = 'x' where expte = '14000001'`);
+});
+
+test('tarea del SAC: toma lo confirmado para hoy, lo anota en la causa y cierra el pedido', () => {
+  const hoy = sql(`select gestor.hoy()`);
+  sql(`insert into public.causas (expte, demandado, estado, proxima, vence, historial) values
+       ('881', 'UNO', 'Casillero', 'Solicitar aprobación de liquidación', gestor.hoy(), '[]'),
+       ('882', 'DOS', 'Casillero', 'Otra cosa', null, '[]')`);
+  const nuevo = (expte, fecha, estado, realizar = '') =>
+    sql(`insert into public.agenda (expte, titulo, cuerpo, fecha, estado, realizar) values ('${expte}', 'Solicita aprobación de liquidación', 'Que vengo…', ${fecha}, '${estado}', '${realizar}') returning id`);
+  const borrador = nuevo('881', 'gestor.hoy()', 'borrador');
+  const futuro = nuevo('881', 'gestor.hoy() + 3', 'pendiente');
+  const deHoy = nuevo('881', 'gestor.hoy()', 'pendiente', 'Solicitar aprobación de liquidación');
+  const atrasado = nuevo('882', 'gestor.hoy() - 2', 'pendiente', 'Lo que había antes');
+  // solo lo confirmado, de hoy o atrasado
+  const del = sql(`select id || '|' || caratula || '|' || atrasado from gestor.agenda_del_dia()`).split('\n');
+  assert.deepEqual(del.sort(), [`${atrasado}|AMB c/ DOS|true`, `${deHoy}|AMB c/ UNO|false`].sort());
+  assert.ok(!del.some((l) => l.startsWith(borrador) || l.startsWith(futuro)));
+
+  // presentado, con la próxima acción que se pidió dar por realizada
+  assert.match(sql(`select gestor.agenda_presentada('${deHoy}')`), /quedó A despacho/);
+  assert.equal(sql(`select estado || '|' || proxima || '|' || coalesce(vence::text, '') || '|' || ultima || '|' || fecha || '|' || actualizado_por from public.causas where expte='881'`),
+    `A despacho|||Solicitar aprobación de liquidación|${hoy}|Claude`);
+  assert.equal(sql(`select historial -> -1 ->> 'hecha' from public.causas where expte='881'`), 'true');
+  assert.equal(sql(`select estado || '|' || resultado || '|' || (presentado is not null) from public.agenda where id='${deHoy}'`), 'presentado|Presentado en el SAC|true');
+  // no se anota dos veces
+  assert.match(sqlFalla(`select gestor.agenda_presentada('${deHoy}')`), /no está pendiente/);
+
+  // atrasado y con la próxima acción cambiada: se presenta, pero no se toca la próxima acción
+  assert.match(sql(`select gestor.agenda_presentada('${atrasado}', 'Presentado 10:16')`), /había cambiado/);
+  assert.equal(sql(`select estado || '|' || proxima || '|' || ultima from public.causas where expte='882'`), 'A despacho|Otra cosa|Solicita aprobación de liquidación');
+  assert.match(sql(`select resultado from public.agenda where id='${atrasado}'`), /^Presentado 10:16 \(estaba agendado para el \d\d\/\d\d\)\. La próxima acción no se dio por realizada/);
+
+  // si falla, queda el motivo y la causa no se toca
+  const otro = nuevo('882', 'gestor.hoy()', 'pendiente');
+  const antes = sql(`select rev from public.causas where expte='882'`);
+  assert.match(sqlFalla(`select gestor.agenda_fallida('${otro}', ' ')`), /Falta el motivo/);
+  assert.match(sql(`select gestor.agenda_fallida('${otro}', 'La compu estaba apagada')`), /quedó con error/);
+  assert.equal(sql(`select estado || '|' || resultado from public.agenda where id='${otro}'`), 'error|La compu estaba apagada');
+  assert.equal(sql(`select rev from public.causas where expte='882'`), antes);
+  assert.match(sqlFalla(`select gestor.agenda_fallida('${otro}', 'otra vez')`), /No hay un pedido pendiente/);
+  assert.match(sqlFalla(`select gestor.agenda_presentada('${borrador}')`), /no está pendiente \(está "borrador"\)/);
+
+  // deshacer también sirve en la agenda
+  sql(`update public.agenda set fecha = gestor.hoy() + 10 where id='${futuro}'`);
+  sql(`select gestor.deshacer((select max(id) from gestor.cambios where tabla='agenda' and clave='${futuro}'))`);
+  assert.equal(sql(`select fecha - gestor.hoy() from public.agenda where id='${futuro}'`), '3');
+
+  // si la causa cambia de expediente, la agenda la sigue; si se elimina, se va con ella
+  sql(`update public.causas set expte = '883' where expte = '881'`);
+  assert.equal(sql(`select count(*) from public.agenda where expte = '883'`), '3');
+  sql(`delete from public.causas where expte in ('882', '883')`);
+  assert.equal(sql(`select count(*) from public.agenda`), '0');
+});
+
+test('las funciones de la tarea del SAC no se alcanzan desde la API', async () => {
+  for (const f of ['agenda_del_dia', 'agenda_presentada', 'agenda_fallida']) {
+    assert.ok((await emi.schema('gestor').rpc(f, {})).error, `gestor.${f} no debería ser accesible`);
+    assert.ok((await emi.rpc(f, {})).error, `${f} tampoco existe como función pública`);
+  }
+  assert.match(sqlFalla(`set role authenticated; select * from gestor.agenda_del_dia()`), /permission denied/);
 });
 
 test('quitar un usuario le corta el acceso en el acto, aunque su sesión siga abierta', async () => {

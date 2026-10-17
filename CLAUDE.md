@@ -1,15 +1,18 @@
 # Gestor de juicios — guía para Claude
 
 App web instalable para llevar los juicios de un estudio jurídico: causas, movimientos,
-próximas acciones con vencimiento, liquidaciones, acuerdos de pago y plantillas de escritos.
-La usa un abogado desde la PC y el celular, y le pide a Claude que la mantenga al día.
+próximas acciones con vencimiento, liquidaciones, acuerdos de pago, plantillas de escritos y
+una agenda de escritos para presentar en el SAC. La usa un abogado desde la PC y el celular,
+habla con Claude desde un chat dentro de la app, y le pide a Claude que la mantenga al día.
 
-Tiene dos piezas:
+Tiene tres piezas:
 
 - **La app**, en `docs/`: HTML, CSS y JavaScript sin compilación. GitHub Pages publica esa
   carpeta desde la rama `main`. Lo que se sube ahí queda en producción en un minuto.
 - **La base**, en Supabase (Postgres + login). El esquema está en `supabase/migrations/`.
   La dirección y la clave pública del proyecto están en `docs/config.js`.
+- **El chat**, en `supabase/functions/chat/`: una función de Supabase que habla con la API de
+  Claude (ver "Chat con Claude y escritos para el SAC").
 
 Este repositorio es **público**: acá no van datos de causas, exportaciones, claves secretas
 ni nada del estudio que no sea el código.
@@ -77,6 +80,15 @@ Después de escribir, leer la fila y contar qué quedó. La app abierta lo muest
   `{{expediente}}`, `{{actor}}`, `{{demandado}}`, `{{tipo}}`, `{{nominacion}}` y `{{oficina}}`
   se completan con la causa; la carátula es `actor c/ demandado – tipo` (sin demandado,
   `actor – tipo`).
+- **Escritos para el SAC** (`public.agenda`): ver "Chat con Claude y escritos para el SAC".
+  Para la tarea que los presenta:
+
+  ```sql
+  select * from gestor.agenda_del_dia();                       -- confirmados para hoy (o atrasados), con la carátula
+  select gestor.agenda_presentada('<id>', 'Presentado 10:16');  -- después de presentarlo: movimiento, "A despacho" y, si se pidió, realizada
+  select gestor.agenda_fallida('<id>', 'motivo');               -- si no se pudo: queda con error, la causa no se toca
+  ```
+
 - **Ver qué cambió y deshacer**: todo cambio queda en `gestor.cambios` con el estado anterior.
 
   ```sql
@@ -113,7 +125,7 @@ Después de escribir, leer la fila y contar qué quedó. La app abierta lo muest
    `liquidacion.js` cuentas de la liquidación e importes escritos a la argentina, `excel.js` el armado
    de archivos .xlsx sin librerías).
 2. Probar en local: `dev/README.md` explica cómo levantar la base y correr las pruebas.
-   `npm run test:db` y `npm run test:app` tienen que pasar; si el cambio se ve, mirar capturas
+   `npm run test:db`, `npm run test:chat` y `npm run test:app` tienen que pasar; si el cambio se ve, mirar capturas
    (`node tests/mirar.mjs`), también en ancho de celular.
 3. `git commit` y `git push` a `main`. No hay paso de compilación.
 
@@ -149,9 +161,35 @@ aplicarla con `apply_migration` y pasar `get_advisors` (seguridad).
 - **Política de seguridad** (meta CSP en `index.html`): solo scripts y estilos propios, sin
   nada en línea. Los estilos van en `styles.css` (no usar `style="…"`), y todo dato que se
   pinta pasa por `esc()`.
-- **Botón "Claude"**: no hay chat dentro de la app (haría falta una clave de API paga). El botón del encabezado y el de la ficha abren `claude.ai/new` con la causa nombrada; los cambios los hace Claude con el conector de Supabase y la app los muestra en vivo.
+- **Botón "Claude"**: abre el chat dentro de la app (el del encabezado, vacío; el de la ficha, con la causa nombrada). Para lo que el chat no hace, el aviso de error ofrece abrir la app de Claude con el pedido.
 - **Terceros**: `docs/vendor/supabase.js` y las tipografías se copian desde `dev/node_modules`
   con `node dev/vendor.mjs`; no se cargan de ningún CDN.
+
+## Chat con Claude y escritos para el SAC
+
+- **Cómo funciona**: la app (`datos.js`, `preguntarAClaude`) manda a la función `chat` la
+  conversación y el mensaje nuevo. La función le pasa todo a la API de Claude con las
+  herramientas de `herramientas.ts`, ejecuta las que Claude pida y devuelve los mensajes nuevos,
+  que la app guarda tal cual en el dispositivo (`gj.chat`, se borra al cerrar sesión). La API
+  rechaza una conversación alterada: las instrucciones (`instrucciones.ts`) son siempre iguales
+  y la fecha va en cada mensaje.
+- **Permisos**: la función usa la sesión de la persona contra la API, así que valen las mismas
+  tres barreras que la app; no usa la clave secreta. Con el encabezado `x-gestor-via: chat` lo
+  que cambia queda firmado como "Claude" (`gestor.autor`). Las herramientas no eliminan nada ni
+  presentan en el SAC.
+- **La clave de la API** es el secreto `ANTHROPIC_API_KEY` de la función (se carga desde el
+  panel de Supabase o con `create_edge_function_secret`; nunca por el chat ni en el repositorio).
+  El gasto se controla con el tope mensual de la Consola de Claude. Modelo: `claude-sonnet-5-5`
+  (`GESTOR_MODELO` para cambiarlo sin tocar el código).
+- **Publicar la función**: `deploy_edge_function` con nombre `chat`, `verify_jwt: true` y los
+  seis archivos de `supabase/functions/chat/` (entrada `index.ts`).
+- **Agenda** (`public.agenda`, migración 0005): borrador (lo arma el chat) → pendiente (la persona
+  tocó "Agendar" en la tarjeta: es la única aprobación que vale) → presentado o error; o cancelado.
+  La tarea programada de Claude "Presentar escritos agendados en el SAC" corre de lunes a viernes
+  a las 10:15 en la compu del estudio: toma `gestor.agenda_del_dia()`, presenta cada escrito y lo
+  cierra con `agenda_presentada` o `agenda_fallida`. No adjunta archivos.
+- **La hora de la tarea (10:15) está en tres lugares**: la tarea programada, `HORA_TAREA` en
+  `supabase/functions/chat/instrucciones.ts` y `HORA_SAC` en `docs/app.js`. Si cambia, en los tres.
 
 ## Estilo
 

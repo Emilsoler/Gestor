@@ -46,6 +46,6 @@ export async function entrar(email, clave) {
 
 /** Deja la base sin datos de prueba. */
 export function limpiar() {
-  sql(`delete from public.causas; delete from public.acuerdos; delete from public.plantillas;
+  sql(`delete from public.agenda; delete from public.causas; delete from public.acuerdos; delete from public.plantillas;
        delete from gestor.cambios; delete from auth.users;`);
 }
