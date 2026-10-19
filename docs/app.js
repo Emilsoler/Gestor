@@ -8,7 +8,7 @@ import {
 } from './datos.js';
 import { idNuevo, nuevaLiquidacion, cobradoRubro, totalPago, liqNormal, liqCalc, importe, pesos, enCelda, planillaExcel } from './liquidacion.js';
 
-const VERSION = '1.5';
+const VERSION = '1.6';
 
 const TAGS = [
   { k: 'En trámite', c: '' }, { k: 'Embargo de sueldo', c: 't-emb' }, { k: 'Secuestro / subasta', c: 't-sec' },
@@ -77,7 +77,7 @@ function mostrar(pantalla) {
   $('#vIngreso').hidden = enApp;
   if (enApp) { $('#ingresoCuerpo').innerHTML = ''; render(); return; } // no dejar el formulario (ni la clave) en la página
   closeDrawer(); cerrarChat(); S.chat = null; S.menu = false; renderMenu();
-  for (const k of ['#main', '#stats', '#chips', '#avisos', '#franja', '#fEstado', '#fNom']) $(k).innerHTML = ''; // ni los datos, al salir
+  for (const k of ['#main', '#stats', '#chips', '#avisos', '#franja', '#fEstado', '#fNom', '#nAgenda', '#nAcuerdos']) $(k).innerHTML = ''; // ni los datos, al salir
   $('#sub').textContent = ''; $('#q').value = ''; S.q = '';
   renderIngreso();
 }
@@ -231,6 +231,16 @@ function renderFilters() {
   const live = D.causas.filter((c) => c.estado !== 'Archivada' && !isAcu(c));
   $('#chips').innerHTML = `<button class="chip" data-t="" aria-pressed="${!S.tag}">Todas · ${live.length}</button>` + CHIPS.map((t) => `<button class="chip" data-t="${esc(t.k)}" aria-pressed="${S.tag === t.k}">${esc(t.l)} · ${live.filter((c) => chipMatch(c, t.k)).length}</button>`).join('');
   $('#vAgenda').setAttribute('aria-pressed', S.view === 'agenda'); $('#vAcuerdos').setAttribute('aria-pressed', S.view === 'acuerdos'); $('#vLista').setAttribute('aria-pressed', S.view === 'lista'); $('#vTablero').setAttribute('aria-pressed', S.view === 'tablero');
+  // Insignias de las vistas: lo de la agenda que es para hoy o venció (en coral si algo venció) y
+  // las cuotas de acuerdos que esperan confirmación. Sin búsqueda: cuentan todo, no lo filtrado.
+  const hoy = iso(today()), urgentes = itemsAgenda('').filter((x) => x.fecha && x.fecha <= hoy), cuotas = cuotasPorPreguntar().length;
+  insignia('#nAgenda', urgentes.length, urgentes.some((x) => x.fecha < hoy) ? 'urg' : '', urgentes.length === 1 ? 'para hoy o vencida' : 'para hoy o vencidas');
+  insignia('#nAcuerdos', cuotas, 'pend', cuotas === 1 ? 'cuota por confirmar' : 'cuotas por confirmar');
+}
+function insignia(sel, n, clase, texto) {
+  const b = $(sel);
+  b.hidden = !n; b.className = 'badge' + (clase ? ' ' + clase : '');
+  b.innerHTML = n ? `${n}<span class="vh"> ${texto}</span>` : '';
 }
 
 function ageHtml(c) { const n = days(c.fecha); if (n === null) return '<span class="age old">sin fecha</span>'; return `<span class="age ${n > STALE ? 'old' : ''}">${fmt(c.fecha)} · hace ${n} d</span>`; }
@@ -278,8 +288,8 @@ function renderBoard(rows) {
 
 // Agenda: todo lo que hay que hacer, de todas las causas en trámite, en orden de fecha. Junta
 // las próximas acciones (con su vencimiento) y los escritos para el SAC que siguen abiertos.
-function itemsAgenda() {
-  const q = S.q.trim().toLowerCase(), r = [];
+function itemsAgenda(q = S.q.trim().toLowerCase()) {
+  const r = [];
   for (const c of D.causas) {
     if (c.estado === 'Archivada') continue;
     if ((c.proxima || '').trim()) r.push({ c, fecha: c.vence || '', texto: c.proxima, sac: null });
@@ -331,7 +341,8 @@ function render() {
   $('#btnCuenta').textContent = inicial;
   const main = $('#main'), isAc = S.view === 'acuerdos', isAg = S.view === 'agenda';
   ['#stats', '#chips', '#btnFiltros', '#filtros', '#fabNew'].forEach((k) => { $(k).hidden = isAc || isAg; });
-  $('#q').hidden = isAc;
+  $('#toolbar').hidden = isAc; // en Acuerdos no hay qué buscar ni filtrar
+  $('#tVista').textContent = { tablero: 'Tablero', agenda: 'Agenda', acuerdos: 'Acuerdos' }[S.view] || 'Causas'; // título en la computadora, con la barra lateral
   if (!D.cargado) {
     main.innerHTML = `<div class="empty"><b>Cargando tus causas…</b>Acá vas a ver el listado de juicios con su estado, última acción y próxima acción.</div>`;
     subtitulo('Cargando causas…');

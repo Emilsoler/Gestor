@@ -356,8 +356,10 @@ test('acuerdos: plan de cuotas, pago, y aviso de cuota vencida sin confirmar', a
   // la primera cuota venció hace 6 días: el gestor pregunta
   await page.waitForSelector('#avisos .aviso');
   assert.match(await page.textContent('#avisos'), /¿Pagó ZETA ZOE su cuota del acuerdo\?/);
+  assert.equal(await page.textContent('#nAcuerdos'), '1 cuota por confirmar', 'la insignia de Acuerdos cuenta las cuotas por confirmar');
   await page.click('#avisos [data-v=pagada]'); await toast(page, 'Cuota marcada como pagada');
   await page.waitForFunction(() => !document.querySelector('#avisos .aviso'));
+  assert.equal(await page.isHidden('#nAcuerdos'), true);
   assert.equal(sql(`select cuotas -> 0 ->> 'estado' from public.acuerdos where id='${id}'`), 'pagada');
   // corregir el monto de la segunda cuota
   await page.fill(`#cq_m_${id}_1`, '45000'); await page.locator(`#cq_m_${id}_1`).blur(); await toast(page, 'Cuota actualizada');
@@ -452,7 +454,7 @@ test('sin internet: la app abre igual y muestra lo último guardado en el dispos
   await page.waitForSelector('#main .tablebox', { timeout: 15000 });
   assert.match(await page.textContent('#franja'), /Sin conexión\. Estás viendo lo guardado en este dispositivo/);
   assert.match(await fila(page, '1002').textContent(), /BETA BRUNO/);
-  assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('h1')).fontFamily.includes('Source Serif 4')), true);
+  assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('h1')).fontFamily.includes('IBM Plex Sans')), true);
   await ctx.setOffline(false); // al volver la conexión se pone al día sola, sin tocar nada
   await page.waitForFunction(() => !document.querySelector('#franja .franja'), null, { timeout: 15000 });
   assert.match(await page.textContent('#sub'), /actualizado \d\d:\d\d/);
@@ -644,9 +646,13 @@ test('agenda: próximas acciones y escritos de todas las causas, por fecha; se a
   assert.match(await page.locator('#main .agitem', { hasText: 'Solicita aprobación' }).textContent(), /SAC · Agendado/);
   assert.equal(await page.locator('#main .agitem', { hasText: 'Solicita aprobación' }).locator('[data-done]').count(), 0, 'los escritos se cierran solos al presentarse');
   assert.equal(await page.locator('#stats').isHidden(), true);
-  // la búsqueda filtra la agenda
+  // la insignia de Agenda cuenta lo que es para hoy o venció, en coral si algo venció
+  assert.equal(await page.textContent('#nAgenda'), '2 para hoy o vencidas');
+  assert.match(await page.getAttribute('#nAgenda', 'class'), /\burg\b/);
+  // la búsqueda filtra la agenda, no la insignia
   await page.fill('#q', 'beta');
   await page.waitForFunction(() => document.querySelectorAll('#main .agitem').length === 2);
+  assert.equal(await page.textContent('#nAgenda'), '2 para hoy o vencidas');
   await page.fill('#q', ''); await page.waitForFunction(() => document.querySelectorAll('#main .agitem').length === 4);
   // tocar una acción abre la ficha de su causa
   await page.locator('#main .agitem[data-id="1004"] .agcausa').click();
@@ -657,6 +663,8 @@ test('agenda: próximas acciones y escritos de todas las causas, por fecha; se a
   await toast(page, 'Acción realizada');
   await page.waitForFunction(() => document.querySelectorAll('#main .agitem').length === 3);
   assert.equal(sql(`select proxima || '|' || (historial -> -1 ->> 'texto') || '|' || (historial -> -1 ->> 'fecha') from public.causas where expte='1001'`), `|Pedir embargo|${dia(-2)}`);
+  assert.equal(await page.textContent('#nAgenda'), '1 para hoy o vencida'); // queda el escrito de hoy, que no está vencido
+  assert.doesNotMatch(await page.getAttribute('#nAgenda', 'class'), /\burg\b/);
   } finally {
     sql(`delete from public.agenda`);
     sql(`begin; select set_config('gestor.autor', 'Semilla', true); update public.causas set proxima = '', vence = null where expte in ('1002','1003','1004'); commit;`);

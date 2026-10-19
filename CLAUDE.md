@@ -195,6 +195,14 @@ aplicarla con `apply_migration` y pasar `get_advisors` (seguridad).
 
 - Textos de la interfaz en castellano rioplatense, de vos, frases cortas. Un botón dice lo que
   hace ("Guardar cambios") y el aviso posterior usa las mismas palabras ("Cambios guardados").
-- El diseño ya tiene su lenguaje (verde petróleo, IBM Plex Sans/Mono, Source Serif 4 para
-  títulos, tarjetas en el celular). Las pantallas nuevas lo siguen; no sumar librerías.
+- El diseño ya tiene su lenguaje: tema oscuro único (azul noche), un solo acento en degradado
+  azul → violeta (`--grad`: botón principal, vista y cifra elegidas, mensajes propios del chat),
+  colores de estado aclarados para leerse sobre fondo oscuro, IBM Plex Sans (300 solo para las
+  cifras grandes del resumen) y Plex Mono para expedientes e importes, tarjetas redondeadas y
+  botones píldora. Los avisos son tarjetas con una franja a la izquierda del color de lo que
+  avisan. Los íconos son SVG de trazo dentro de `styles.css`, usados como máscara (`--i-…`).
+  Las pantallas nuevas lo siguen; no sumar librerías.
+- Armado: en la computadora, barra lateral con las vistas (columna de íconos desde 721 px,
+  entera desde 1140 px); en el celular, las vistas quedan debajo del buscador. Es el mismo
+  HTML: `.lateral` y `.wrap` pasan a `display: contents` y el orden lo da `order`.
 - Comentarios en el código: por qué, no qué.

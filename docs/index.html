@@ -8,12 +8,12 @@
 <meta name="description" content="Gestor de juicios del Estudio Soler">
 <!-- Solo se cargan archivos de la propia app; lo único externo es la base de datos (Supabase). -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://udfmoxnehgoihzsyrpvy.supabase.co wss://udfmoxnehgoihzsyrpvy.supabase.co; object-src 'none'; base-uri 'none'; form-action 'none'">
-<meta name="theme-color" content="#f5f6f4" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#141917" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#1c2236">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Juicios">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -26,7 +26,7 @@
 <main id="vIngreso" class="portada" hidden>
   <section class="caratula" aria-labelledby="tIngreso">
     <div>
-      <h1 id="tIngreso">Juicios</h1>
+      <h1 id="tIngreso"><span class="j">J</span>uicios</h1>
       <div class="estudio">Estudio Soler</div>
     </div>
     <div id="ingresoCuerpo" class="caratula-cuerpo"></div>
@@ -34,50 +34,59 @@
 </main>
 
 <div id="vApp" hidden>
-  <div class="wrap">
-    <header>
-      <div>
-        <h1>Juicios</h1>
-        <div class="sub" id="sub">Cargando causas…</div>
-      </div>
-      <div class="actions">
-        <button class="btn solo-escritorio" id="btnTpl">Plantillas</button>
-        <button class="btn solo-escritorio" id="btnExport">Exportar a Excel (CSV)</button>
-        <button class="btn primary solo-escritorio" id="btnNew">+ Nueva causa</button>
-        <button class="btn" id="btnChat" aria-label="Hablar con Claude">Claude</button>
-        <button class="cuenta" id="btnCuenta" aria-haspopup="menu" aria-expanded="false" aria-label="Cuenta y opciones"></button>
-      </div>
-    </header>
-
-    <div id="franja"></div>
-    <div id="avisos"></div>
-    <div class="stats" id="stats"></div>
-
-    <div class="toolbar" id="toolbar">
-      <input type="search" id="q" placeholder="Buscar por demandado, actor, expediente o acción…" aria-label="Buscar">
-      <button class="btn solo-movil" id="btnFiltros" aria-expanded="false" aria-controls="filtros">Filtros</button>
-      <div class="filtros" id="filtros">
-      <select id="fEstado" aria-label="Estado"></select>
-      <select id="fNom" aria-label="Nominación"></select>
-      <select id="fOrden" aria-label="Orden del listado">
-        <option value="dias:-1">Más tiempo sin movimiento</option>
-        <option value="dias:1">Movimiento más reciente</option>
-        <option value="vence:1">Vencimiento más próximo</option>
-        <option value="demandado:1">Demandado (A–Z)</option>
-        <option value="estado:1">Estado</option>
-        <option value="" hidden>Otro orden</option>
-      </select>
-      </div>
-      <div class="seg" role="group" aria-label="Vista">
-        <button id="vLista" aria-pressed="true">Lista</button>
-        <button id="vTablero" aria-pressed="false">Tablero</button>
-        <button id="vAgenda" aria-pressed="false">Agenda</button>
-        <button id="vAcuerdos" aria-pressed="false">Acuerdos</button>
+  <div class="app">
+    <!-- En la computadora, la barra lateral. En el celular solo quedan las vistas, debajo del buscador. -->
+    <div class="lateral">
+      <div class="marca" aria-hidden="true"><span class="marca-j">J</span><span class="marca-txt">uicios</span><small>Estudio Soler</small></div>
+      <div class="seg" id="vistas" role="group" aria-label="Vista">
+        <button id="vLista" aria-pressed="true"><span class="vista-txt">Lista</span></button>
+        <button id="vTablero" aria-pressed="false"><span class="vista-txt">Tablero</span></button>
+        <button id="vAgenda" aria-pressed="false"><span class="vista-txt">Agenda</span><span class="badge" id="nAgenda" hidden></span></button>
+        <button id="vAcuerdos" aria-pressed="false"><span class="vista-txt">Acuerdos</span><span class="badge" id="nAcuerdos" hidden></span></button>
       </div>
     </div>
-    <div class="chips" id="chips"></div>
 
-    <main id="main"></main>
+    <div class="wrap">
+      <header>
+        <div class="titulos">
+          <h1><span class="h-marca"><span class="j">J</span>uicios</span><span class="h-vista" id="tVista">Causas</span></h1>
+          <div class="sub" id="sub">Cargando causas…</div>
+        </div>
+        <div class="actions">
+          <button class="btn" id="btnChat" aria-label="Hablar con Claude">Claude</button>
+          <button class="cuenta" id="btnCuenta" aria-haspopup="menu" aria-expanded="false" aria-label="Cuenta y opciones"></button>
+        </div>
+        <div class="pildoras solo-escritorio">
+          <button class="btn primary" id="btnNew">+ Nueva causa</button>
+          <button class="btn" id="btnTpl">Plantillas</button>
+          <button class="btn" id="btnExport">Exportar a Excel (CSV)</button>
+        </div>
+      </header>
+
+      <div id="franja"></div>
+      <div id="avisos"></div>
+      <div class="stats" id="stats"></div>
+
+      <div class="toolbar" id="toolbar">
+        <input type="search" id="q" placeholder="Buscar por demandado, actor, expediente o acción…" aria-label="Buscar">
+        <button class="btn solo-movil" id="btnFiltros" aria-expanded="false" aria-controls="filtros">Filtros</button>
+        <div class="filtros" id="filtros">
+        <select id="fEstado" aria-label="Estado"></select>
+        <select id="fNom" aria-label="Nominación"></select>
+        <select id="fOrden" aria-label="Orden del listado">
+          <option value="dias:-1">Más tiempo sin movimiento</option>
+          <option value="dias:1">Movimiento más reciente</option>
+          <option value="vence:1">Vencimiento más próximo</option>
+          <option value="demandado:1">Demandado (A–Z)</option>
+          <option value="estado:1">Estado</option>
+          <option value="" hidden>Otro orden</option>
+        </select>
+        </div>
+      </div>
+      <div class="chips" id="chips"></div>
+
+      <main id="main"></main>
+    </div>
   </div>
   <button class="btn primary fab" id="fabNew">+ Nueva causa</button>
 </div>

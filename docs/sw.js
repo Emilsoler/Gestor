@@ -6,14 +6,14 @@
 // - Todo lo que no es de este sitio (la base de datos) va directo a la red: acá no se guardan datos.
 //
 // Al cambiar la lista de archivos o una tipografía/ícono, subir VERSION para renovar la copia.
-const VERSION = 'gestor-v4';
+const VERSION = 'gestor-v5';
 const ESPERA_MS = 4000;
 
 const NUCLEO = [
   './', 'styles.css', 'app.js', 'datos.js', 'liquidacion.js', 'excel.js', 'config.js', 'manifest.webmanifest', 'vendor/supabase.js',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
-  'fonts/plex-sans-latin-400.woff2', 'fonts/plex-sans-latin-500.woff2', 'fonts/plex-sans-latin-600.woff2',
-  'fonts/plex-mono-latin-400.woff2', 'fonts/plex-mono-latin-500.woff2', 'fonts/source-serif-4-latin.woff2',
+  'fonts/plex-sans-latin-300.woff2', 'fonts/plex-sans-latin-400.woff2', 'fonts/plex-sans-latin-500.woff2', 'fonts/plex-sans-latin-600.woff2',
+  'fonts/plex-mono-latin-400.woff2', 'fonts/plex-mono-latin-500.woff2',
 ];
 
 self.addEventListener('install', (e) => {

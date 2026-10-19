@@ -11,16 +11,14 @@ const docs = join(aqui, '..', 'docs');
 
 const copias = [
   ['@supabase/supabase-js/dist/umd/supabase.js', 'vendor/supabase.js'],
-  ...['400', '500', '600'].flatMap((w) => ['latin', 'latin-ext'].map((s) => [
+  // 300: las cifras grandes del resumen; 400 a 600: todo lo demás
+  ...['300', '400', '500', '600'].flatMap((w) => ['latin', 'latin-ext'].map((s) => [
     `@fontsource/ibm-plex-sans/files/ibm-plex-sans-${s}-${w}-normal.woff2`, `fonts/plex-sans-${s}-${w}.woff2`])),
   ...['400', '500'].flatMap((w) => ['latin', 'latin-ext'].map((s) => [
     `@fontsource/ibm-plex-mono/files/ibm-plex-mono-${s}-${w}-normal.woff2`, `fonts/plex-mono-${s}-${w}.woff2`])),
-  ...['latin', 'latin-ext'].map((s) => [
-    `@fontsource-variable/source-serif-4/files/source-serif-4-${s}-opsz-normal.woff2`, `fonts/source-serif-4-${s}.woff2`]),
   // Licencias de lo que se redistribuye (las tipografías son OFL 1.1; supabase-js es MIT)
   ['@fontsource/ibm-plex-sans/LICENSE', 'fonts/LICENCIA-IBM-Plex-Sans.txt'],
   ['@fontsource/ibm-plex-mono/LICENSE', 'fonts/LICENCIA-IBM-Plex-Mono.txt'],
-  ['@fontsource-variable/source-serif-4/LICENSE', 'fonts/LICENCIA-Source-Serif-4.txt'],
   ['@supabase/supabase-js/LICENSE', 'vendor/LICENCIA-supabase-js.txt'],
 ];
 
