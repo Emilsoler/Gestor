@@ -9,12 +9,19 @@
 //                   Sin guion, contesta "Listo.".
 //   GET  /__pedidos  lo que le llegó (cuerpo y encabezados de cada pedido)
 //   DELETE /__pedidos
+//
+// También hace de la tarea programada que presenta en el SAC (botón «Ahora», ver ahora.ts):
+//   POST /v1/claude_code/routines/:id/fire   la dispara, si trae el token de prueba
+//   POST /__tarea    [respuesta, …]  lo que va a contestar, en orden: { status, demora } (sin guion, 200)
+//   GET  /__disparos lo que le llegó        DELETE /__disparos
 import http from 'node:http';
 
 const PORT = +process.env.CLAUDE_FALSO_PORT || 54340;
 let guion = [];
 let pedidos = [];
 let n = 0;
+let tarea = [];
+let disparos = [];
 
 const leer = (req) => new Promise((ok) => { let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => ok(b)); });
 const json = (res, status, cuerpo) => res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(cuerpo));
@@ -24,6 +31,20 @@ http.createServer(async (req, res) => {
   if (req.url === '/__guion' && req.method === 'POST') { guion = JSON.parse(cuerpo || '[]'); return json(res, 200, { pasos: guion.length }); }
   if (req.url === '/__pedidos' && req.method === 'GET') return json(res, 200, pedidos);
   if (req.url === '/__pedidos' && req.method === 'DELETE') { pedidos = []; guion = []; return json(res, 200, {}); }
+  if (req.url === '/__tarea' && req.method === 'POST') { tarea = JSON.parse(cuerpo || '[]'); return json(res, 200, { respuestas: tarea.length }); }
+  if (req.url === '/__disparos' && req.method === 'GET') return json(res, 200, disparos);
+  if (req.url === '/__disparos' && req.method === 'DELETE') { disparos = []; tarea = []; return json(res, 200, {}); }
+  const fire = /^\/v1\/claude_code\/routines\/([^/]+)\/fire$/.exec(req.url);
+  if (fire && req.method === 'POST') {
+    const h = req.headers;
+    disparos.push({ rutina: fire[1], cuerpo: JSON.parse(cuerpo || '{}'), headers: { authorization: h.authorization, 'anthropic-beta': h['anthropic-beta'], 'anthropic-version': h['anthropic-version'] } });
+    const r = tarea.shift() || { status: 200 };
+    if (r.demora) await new Promise((ok) => setTimeout(ok, r.demora));
+    if (h.authorization !== 'Bearer token-de-prueba') return json(res, 401, { type: 'error', error: { type: 'authentication_error', message: 'invalid token' } });
+    if (r.status !== 200) return json(res, r.status, { type: 'error', error: { type: 'error', message: `falla de prueba ${r.status}` } });
+    const sesion = `session_falsa_${++n}`;
+    return json(res, 200, { type: 'routine_fire', claude_code_session_id: sesion, claude_code_session_url: `https://claude.ai/code/${sesion}` });
+  }
   if (req.url !== '/v1/messages' || req.method !== 'POST') return json(res, 404, { type: 'error', error: { type: 'not_found_error', message: 'no' } });
 
   const pedido = JSON.parse(cuerpo);

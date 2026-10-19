@@ -3,6 +3,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import { execFileSync } from 'node:child_process';
 import { chromium } from 'playwright';
 import { sql, servicio, limpiar, env, crearCuenta } from './helpers.mjs';
 
@@ -623,6 +624,95 @@ test('escritos para el SAC: uno que no se pudo presentar se ve, se vuelve a agen
   assert.equal(await page.locator('#agendaFicha .agcard').count(), 0);
   await page.keyboard.press('Escape');
   assert.equal(await page.locator('.stat[data-q="sac"]').count(), 0, 'sin escritos pendientes, el resumen no lo muestra');
+});
+
+// Botón «Ahora»: la función dispara la tarea programada, que en las pruebas es el mismo doble.
+const disparosDeLaTarea = async () => (await fetch(`${FALSO}/__disparos`)).json();
+const guionDeLaTarea = (respuestas) => fetch(`${FALSO}/__tarea`, { method: 'POST', body: JSON.stringify(respuestas) });
+const borradorDeClaude = (expte, titulo, fecha) => sql(`begin; select set_config('gestor.autor', 'Claude', true);
+  insert into public.agenda (expte, titulo, cuerpo, fecha, estado) values ('${expte}', '${titulo}', 'Texto de Claude', ${fecha}, 'borrador') returning id; commit;`)
+  .split('\n').find((l) => /^[0-9a-f-]{36}$/.test(l));
+const enFicha = (p, re) => p.waitForFunction((r) => new RegExp(r).test(document.querySelector('#agendaFicha')?.textContent || ''), re.source, { timeout: 8000 });
+
+test('escritos para el SAC: «Ahora» en el borrador lo manda a presentar ya, con lo que corrigió la persona', async () => {
+  await fetch(`${FALSO}/__disparos`, { method: 'DELETE' });
+  sql(`delete from public.agenda`);
+  const id = borradorDeClaude('1002', 'Designa martillero', `'${habil()}'`);
+  await page.waitForFunction(() => /Escrito sin confirmar/.test(document.querySelector('#main tr[data-id="1002"]')?.textContent || ''), null, { timeout: 8000 });
+  await abrir(page, '1002');
+  const tarjeta = page.locator('#agendaFicha .agcard.borrador');
+  assert.match(await tarjeta.textContent(), /con “Ahora”, en este momento/);
+  await tarjeta.locator('textarea').fill('Texto corregido por Emi.');
+  await tarjeta.locator('.agfecha [data-ag=ahora]').click(); // al lado de la fecha
+  await toast(page, 'Listo: la tarea de Claude lo presenta en el SAC en unos minutos');
+  assert.equal(sql(`select estado || '|' || cuerpo || '|' || (fecha = gestor.hoy()) || '|' || (ahora is not null) || '|' || actualizado_por from public.agenda where id = '${id}'`),
+    'pendiente|Texto corregido por Emi.|true|true|Emi', 'confirmado por la persona, para hoy');
+  const disparos = await disparosDeLaTarea();
+  assert.equal(disparos.length, 1, 'la tarea se disparó una vez');
+  assert.equal(disparos[0].cuerpo.text, `Botón «Ahora» del gestor: Emi pidió presentar en el SAC el escrito ${id} (causa 1002).`);
+  await page.waitForSelector('#agendaFicha .agcard.ahora');
+  assert.match(await page.textContent('#agendaFicha'), /Se presenta ahora.*Pediste presentarlo ahora \(\d\d:\d\d\)/);
+  assert.match(await fila(page, '1002').textContent(), /SAC: ahora/);
+  // la corrida lo toma y lo presenta (acá, a mano): la ficha lo va mostrando sola
+  assert.equal(sql(`select id from gestor.agenda_tomar(true)`), id);
+  await enFicha(page, /Presentándose.*Claude lo está presentando en el SAC/);
+  assert.equal(await page.locator('#agendaFicha .agcard.presentando [data-ag]').count(), 0, 'lo que se está presentando ya no se cancela');
+  sql(`select gestor.agenda_presentada('${id}', 'Presentado en el SAC a las 11:40')`);
+  await enFicha(page, /Presentado en el SAC a las 11:40/);
+  await page.keyboard.press('Escape'); await cerrado(page);
+  assert.equal(sql(`select estado || '|' || (historial -> -1 ->> 'texto') from public.causas where expte = '1002'`), 'A despacho|Designa martillero');
+});
+
+test('escritos para el SAC: si «Ahora» no puede arrancar la tarea, avisa y no queda agendado', async () => {
+  await fetch(`${FALSO}/__disparos`, { method: 'DELETE' });
+  sql(`delete from public.agenda`);
+  const id = borradorDeClaude('1001', 'Solicita oficio', `'${habil()}'`);
+  await guionDeLaTarea([{ status: 500 }]);
+  await page.waitForFunction(() => /Escrito sin confirmar/.test(document.querySelector('#main tr[data-id="1001"]')?.textContent || ''), null, { timeout: 8000 });
+  await abrir(page, '1001');
+  await page.fill(`#ag_ficha_t_${id}`, 'Solicita oficio al empleador');
+  await page.click('#agendaFicha .agfecha [data-ag=ahora]');
+  await toast(page, 'no arrancó (respondió 500)');
+  assert.match(await page.textContent('#toast'), /No se agendó: sigue como borrador, con lo que corregiste\.$/);
+  assert.equal(sql(`select estado || '|' || titulo || '|' || (ahora is null) from public.agenda where id = '${id}'`), 'borrador|Solicita oficio al empleador|true');
+  await page.waitForSelector('#agendaFicha .agcard.borrador');
+  assert.equal(await page.inputValue(`#ag_ficha_t_${id}`), 'Solicita oficio al empleador', 'lo escrito no se pierde');
+  assert.equal(await page.textContent('#agendaFicha .agfecha [data-ag=ahora]'), 'Ahora', 'el botón queda listo para intentar de nuevo');
+  // agendado para otro día: «Presentar ahora» lo adelanta; si se pidió y no arrancó, se puede volver a pedir
+  await page.click('#agendaFicha [data-ag=agendar]');
+  await page.waitForSelector('#agendaFicha .agcard.pendiente:not(.ahora)');
+  await page.click('#agendaFicha [data-ag=ahora]');
+  await page.waitForSelector('#agendaFicha .agcard.ahora');
+  assert.equal(await page.locator('#agendaFicha .agcard.ahora [data-ag=ahora]').count(), 0, 'recién pedido: solo se puede cancelar');
+  sql(`update public.agenda set ahora = now() - interval '20 minutes' where id = '${id}'`); // pasaron 20 minutos y no arrancó
+  await enFicha(page, /la tarea todavía no lo tomó\. Si no arranca, sale en la corrida del/);
+  await page.click('#agendaFicha .agcard.ahora [data-ag=ahora]');
+  await toast(page, 'Listo: la tarea de Claude lo presenta');
+  assert.equal((await disparosDeLaTarea()).length, 3, 'uno que falló y dos que arrancaron');
+  await page.click('#agendaFicha [data-ag=cancelar]');
+  await toast(page, 'Escrito cancelado');
+  assert.equal(sql(`select estado from public.agenda where id = '${id}'`), 'cancelado');
+  await page.keyboard.press('Escape'); await cerrado(page);
+});
+
+test('escritos para el SAC: uno que se cortó mientras se presentaba se puede marcar como no presentado', async () => {
+  sql(`delete from public.agenda`);
+  const id = sql(`insert into public.agenda (expte, titulo, cuerpo, fecha, estado, ahora) values ('1002', 'Pide embargo', 'Texto', gestor.hoy(), 'pendiente', now()) returning id`);
+  sql(`select id from gestor.agenda_tomar(true)`);
+  await page.waitForFunction(() => /SAC: presentándose/.test(document.querySelector('#main tr[data-id="1002"]')?.textContent || ''), null, { timeout: 8000 });
+  await abrir(page, '1002');
+  assert.match(await page.textContent('#agendaFicha'), /Claude lo está presentando en el SAC \(empezó a las \d\d:\d\d\)/);
+  assert.equal(await page.locator('#agendaFicha [data-ag=nopresentado]').count(), 0, 'mientras está en curso, nada');
+  // pasó media hora sin noticias de la corrida (sin el sello, que pondría la hora de ahora)
+  execFileSync('psql', ['-X', '-q', '-h', '127.0.0.1', '-p', '54322', '-U', 'supabase_admin', '-d', 'postgres', '-c',
+    `set session_replication_role = replica; update public.agenda set actualizado = now() - interval '40 minutes' where id = '${id}'`]);
+  await enFicha(page, /no avisó cómo terminó\. Fijate en el SAC si quedó presentado/);
+  await page.click('#agendaFicha [data-ag=nopresentado]');
+  await toast(page, 'Marcado como no presentado');
+  assert.match(sql(`select estado || '|' || resultado from public.agenda where id = '${id}'`), /^error\|Se interrumpió mientras se presentaba \(empezó a las \d\d:\d\d\)\. Antes de volver a mandarlo, fijate en el SAC/);
+  await page.waitForSelector('#agendaFicha .agcard.error [data-ag=ahora]');
+  await page.keyboard.press('Escape'); await cerrado(page);
+  sql(`delete from public.agenda`);
 });
 
 test('agenda: próximas acciones y escritos de todas las causas, por fecha; se abre la causa y se marca realizada', async () => {

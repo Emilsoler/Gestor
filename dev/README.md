@@ -11,7 +11,7 @@ Nada de esta carpeta se publica con la app (GitHub Pages sirve solo `docs/`).
 | `serve.mjs` | Sirve `docs/` en `127.0.0.1:8080` apuntando al stack local. |
 | `tests/db.test.mjs` | Permisos, control de revisiones, historial de cambios, deshacer, agenda y funciones de Claude. |
 | `tests/chat.test.mjs` | La función `chat` de punta a punta: lo que manda a Claude, lo que hacen las herramientas y lo que vuelve. |
-| `claude-falso.mjs` | Un doble de la API de Claude (127.0.0.1:54340) que contesta lo que cada prueba le guiona. La función `chat` corre en local apuntando a él. |
+| `claude-falso.mjs` | Un doble de la API de Claude (127.0.0.1:54340) que contesta lo que cada prueba le guiona, y de la tarea programada que presenta en el SAC (el botón «Ahora» la dispara ahí). La función `chat` corre en local apuntando a él. |
 | `tests/app.test.mjs` | La app de punta a punta en un navegador real (Playwright). |
 | `tests/mirar.mjs`, `tests/estados.mjs` | Capturas de pantalla para revisar la app a ojo. |
 | `migrar.mjs` | Arma los lotes para pasar datos del gestor anterior y la consulta de verificación. |
@@ -41,7 +41,7 @@ npm run test:db && npm run test:chat && npm run test:app     # todo tiene que pa
 
 ## Qué no cubre
 
-La API de Claude de verdad (las pruebas usan el doble) y, de la función `chat`, lo que pone la
+La API de Claude y la tarea programada de verdad (las pruebas usan el doble) y, de la función `chat`, lo que pone la
 plataforma: el control de sesión previo (`verify_jwt`) y las variables `SUPABASE_*`. El Realtime de verdad y las particularidades de la plataforma (permisos del rol `postgres` sobre
 el esquema `auth`, pausa por inactividad) solo se ven en el proyecto real. Después de aplicar una
 migración ahí, conviene pasar los *advisors* de seguridad del conector de Supabase.

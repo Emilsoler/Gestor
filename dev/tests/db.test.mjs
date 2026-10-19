@@ -425,8 +425,85 @@ test('tarea del SAC: toma lo confirmado para hoy, lo anota en la causa y cierra 
   assert.equal(sql(`select count(*) from public.agenda`), '0');
 });
 
+test('a qué hora se puede tomar un escrito: lo de hoy desde las 10:15, lo pedido «Ahora» en el momento', () => {
+  // Córdoba es UTC−3: 12:00Z son las 9:00 y 13:15Z las 10:15. La fecha cuenta en Córdoba, no en UTC.
+  const casos = [
+    ["'2026-10-19', null, false, '2026-10-19 13:14Z'", 'f', 'de hoy, a las 10:14: todavía no'],
+    ["'2026-10-19', null, false, '2026-10-19 13:15Z'", 't', 'de hoy, a las 10:15'],
+    ["'2026-10-19', null, false, '2026-10-20 02:30Z'", 't', 'de hoy, a las 23:30 de Córdoba (ya es mañana en UTC)'],
+    ["'2026-10-18', null, false, '2026-10-19 12:00Z'", 't', 'atrasado, a las 9:00'],
+    ["'2026-10-19', now(), false, '2026-10-19 12:00Z'", 't', 'pedido «Ahora», a las 9:00'],
+    ["'2026-10-19', now(), true, '2026-10-19 12:00Z'", 't', 'pedido «Ahora», en la corrida del botón'],
+    ["'2026-10-18', null, true, '2026-10-19 16:00Z'", 'f', 'atrasado sin «Ahora»: la corrida del botón no lo toma'],
+    ["'2026-10-19', null, true, '2026-10-19 16:00Z'", 'f', 'de hoy sin «Ahora»: la corrida del botón no lo toma'],
+    ["'2026-10-20', now(), false, '2026-10-19 16:00Z'", 'f', 'con fecha futura nunca'],
+  ];
+  for (const [args, esperado, que] of casos) assert.equal(sql(`select gestor.agenda_a_tiempo(${args})`), esperado, que);
+});
+
+test('tarea del SAC: toma de a uno, primero lo pedido «Ahora», y nunca lo mismo dos veces', async () => {
+  sql(`delete from public.agenda; delete from public.causas where expte in ('891', '892')`);
+  sql(`insert into public.causas (expte, actor, demandado, tipo, estado, historial) values
+       ('891', 'AMB', 'UNO', 'EJECUTIVO', 'Casillero', '[]'), ('892', 'AMB', 'DOS', '', 'Casillero', '[]')`);
+  const nuevo = (expte, titulo, fecha, estado = 'pendiente', ahora = 'null') =>
+    sql(`insert into public.agenda (expte, titulo, cuerpo, fecha, estado, ahora) values ('${expte}', '${titulo}', 'Texto', ${fecha}, '${estado}', ${ahora}) returning id`);
+  const atrasado = nuevo('891', 'Atrasado', 'gestor.hoy() - 1');
+  const deHoy = nuevo('891', 'De hoy', 'gestor.hoy()');
+  const ahora1 = nuevo('892', 'Ahora 1', 'gestor.hoy()', 'pendiente', "now() - interval '1 minute'");
+  const ahora2 = nuevo('891', 'Ahora 2', 'gestor.hoy()', 'pendiente', 'now()');
+  nuevo('891', 'Borrador', 'gestor.hoy()', 'borrador', 'now()');
+  nuevo('891', 'Futuro', 'gestor.hoy() + 2');
+  const tomar = (soloAhora) => sql(`select id || '|' || caratula || '|' || ahora || '|' || atrasado from gestor.agenda_tomar(${soloAhora})`);
+
+  // la corrida del botón: solo lo pedido «Ahora», de a uno, y cada uno queda "presentando"
+  assert.equal(tomar(true), `${ahora1}|AMB c/ DOS|true|false`, 'el que se pidió primero');
+  assert.equal(sql(`select estado || '|' || actualizado_por from public.agenda where id = '${ahora1}'`), 'presentando|Claude');
+  assert.equal(tomar(true), `${ahora2}|AMB c/ UNO – EJECUTIVO|true|false`);
+  assert.equal(tomar(true), '', 'no queda nada pedido «Ahora»: lo atrasado y lo de hoy esperan su corrida');
+  assert.equal(sql(`select string_agg(titulo, ',' order by titulo) from public.agenda where estado = 'pendiente'`), 'Atrasado,De hoy,Futuro');
+  // lo tomado ya no figura para la tarea y no se cancela desde la agenda del día
+  assert.equal(sql(`select count(*) from gestor.agenda_del_dia() where id in ('${ahora1}', '${ahora2}')`), '0');
+
+  // la corrida de las 10:15: lo atrasado siempre; lo de hoy, solo si ya son las 10:15
+  assert.equal(tomar(false).split('|')[0], atrasado);
+  const yaEsLaHora = sql(`select (now() at time zone 'America/Argentina/Cordoba')::time >= gestor.hora_tarea()`) === 't';
+  assert.equal(tomar(false).split('|')[0], yaEsLaHora ? deHoy : '');
+  assert.equal(tomar(false), '', 'lo futuro no se toma');
+
+  // un escrito tomado se cierra igual que uno pendiente; ya cerrado, no se vuelve a cerrar
+  assert.match(sql(`select gestor.agenda_presentada('${ahora1}', 'Presentado en el SAC a las 11:40')`), /quedó A despacho/);
+  assert.match(sql(`select gestor.agenda_fallida('${ahora2}', 'El SAC pidió iniciar sesión')`), /quedó con error/);
+  assert.equal(sql(`select string_agg(estado, ',' order by titulo) from public.agenda where id in ('${ahora1}', '${ahora2}')`), 'presentado,error');
+  assert.match(sqlFalla(`select gestor.agenda_presentada('${ahora1}')`), /no está pendiente \(está "presentado"\)/);
+
+  // dos corridas a la vez nunca toman el mismo escrito: la segunda saltea el que la primera está tomando
+  sql(`delete from public.agenda`);
+  const a = nuevo('891', 'A', 'gestor.hoy()', 'pendiente', "now() - interval '1 minute'");
+  const b = nuevo('892', 'B', 'gestor.hoy()', 'pendiente', 'now()');
+  const pg = (await import('pg')).default;
+  const conectar = async () => { const c = new pg.Client({ host: '127.0.0.1', port: 54322, user: 'postgres', password: 'postgres', database: 'postgres' }); await c.connect(); return c; };
+  const [c1, c2] = await Promise.all([conectar(), conectar()]);
+  try {
+    await c1.query('begin'); await c2.query('begin');
+    const r1 = await c1.query('select id from gestor.agenda_tomar(true)');
+    const r2 = await c2.query('select id from gestor.agenda_tomar(true)'); // la primera todavía no confirmó
+    assert.deepEqual([r1.rows[0]?.id, r2.rows[0]?.id], [a, b]);
+    await c1.query('commit'); await c2.query('commit');
+  } finally { await c1.end(); await c2.end(); }
+  assert.equal(tomar(true), '');
+  assert.equal(sql(`select string_agg(estado, ',') from public.agenda`), 'presentando,presentando');
+
+  // el estado nuevo es válido; uno inventado no
+  assert.match(sqlFalla(`update public.agenda set estado = 'enviando' where id = '${a}'`), /agenda_estado_check/);
+  // deshacer restaura también la marca «Ahora»
+  sql(`update public.agenda set ahora = null, estado = 'pendiente' where id = '${b}'`);
+  sql(`select gestor.deshacer((select max(id) from gestor.cambios where tabla = 'agenda' and clave = '${b}'))`);
+  assert.equal(sql(`select estado || '|' || (ahora is not null) from public.agenda where id = '${b}'`), 'presentando|true');
+  sql(`delete from public.agenda; delete from public.causas where expte in ('891', '892')`);
+});
+
 test('las funciones de la tarea del SAC no se alcanzan desde la API', async () => {
-  for (const f of ['agenda_del_dia', 'agenda_presentada', 'agenda_fallida']) {
+  for (const f of ['agenda_del_dia', 'agenda_presentada', 'agenda_fallida', 'agenda_tomar', 'agenda_a_tiempo', 'hora_tarea']) {
     assert.ok((await emi.schema('gestor').rpc(f, {})).error, `gestor.${f} no debería ser accesible`);
     assert.ok((await emi.rpc(f, {})).error, `${f} tampoco existe como función pública`);
   }

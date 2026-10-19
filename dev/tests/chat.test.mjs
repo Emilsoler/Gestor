@@ -13,7 +13,10 @@ let token;
 
 const guion = (pasos) => fetch(`${FALSO}/__guion`, { method: 'POST', body: JSON.stringify(pasos) });
 const pedidos = async () => (await fetch(`${FALSO}/__pedidos`)).json();
-const olvidar = () => fetch(`${FALSO}/__pedidos`, { method: 'DELETE' });
+const olvidar = () => Promise.all([fetch(`${FALSO}/__pedidos`, { method: 'DELETE' }), fetch(`${FALSO}/__disparos`, { method: 'DELETE' })]);
+// La tarea programada del SAC, también en el doble (botón «Ahora»).
+const tarea = (respuestas) => fetch(`${FALSO}/__tarea`, { method: 'POST', body: JSON.stringify(respuestas) });
+const disparos = async () => (await fetch(`${FALSO}/__disparos`)).json();
 async function chat(cuerpo, { jwt = token, url = CHAT, origen = 'http://127.0.0.1:8080' } = {}) {
   const r = await fetch(url, {
     method: 'POST',
@@ -259,6 +262,169 @@ test('CORS: solo responde al origen de la app', async () => {
   r = await fetch(directo, { method: 'OPTIONS', headers: { origin: 'https://otro-sitio.example' } });
   assert.equal(r.headers.get('access-control-allow-origin'), null);
   assert.equal((await preflight('http://127.0.0.1:8080')).status, 204);
+});
+
+// ───────── Botón «Ahora» (ruta chat/ahora) ─────────
+
+const AHORA = `${CHAT}/ahora`;
+const escritoNuevo = (estado, fecha = 'gestor.hoy() + 3', realizar = '') => sql(`begin; select set_config('gestor.autor', 'Claude', true);
+  insert into public.agenda (expte, titulo, cuerpo, fecha, estado, realizar) values ('1001', 'Solicita aprobación de liquidación', 'Texto original', ${fecha}, '${estado}', '${realizar}') returning id; commit;`).split('\n').find((l) => /^[0-9a-f-]{36}$/.test(l));
+const fila = (id) => JSON.parse(sql(`select row_to_json(a) from public.agenda a where id = '${id}'`));
+
+test('«Ahora»: confirma el escrito para hoy, firmado por la persona, y dispara la tarea del SAC', async () => {
+  await olvidar();
+  sql(`delete from public.agenda`);
+  const id = escritoNuevo('borrador', `'${habil()}'`, 'Solicitar aprobación de liquidación');
+  const r = await chat({ id, rev: fila(id).rev, titulo: ' Solicita aprobación (v2) ', cuerpo: 'Texto corregido\n\n', realizar: 'Solicitar aprobación de liquidación' }, { url: AHORA });
+  assert.equal(r.status, 200);
+  const hoy = sql(`select gestor.hoy()`);
+  const f = fila(id);
+  assert.deepEqual([f.estado, f.fecha, f.titulo, f.cuerpo, f.realizar, f.actualizado_por], ['pendiente', hoy, 'Solicita aprobación (v2)', 'Texto corregido', 'Solicitar aprobación de liquidación', 'Emi']);
+  assert.ok(f.ahora && Math.abs(Date.now() - Date.parse(f.ahora)) < 60_000, 'con la hora del pedido');
+  assert.equal(r.datos.fila.rev, f.rev, 'la app recibe la fila tal como quedó');
+  assert.match(r.datos.sesion, /^https:\/\/claude\.ai\/code\/session_falsa_/);
+  const [d, ...otros] = await disparos();
+  assert.equal(otros.length, 0, 'un solo disparo');
+  assert.equal(d.rutina, 'trig_prueba');
+  assert.deepEqual(d.headers, { authorization: 'Bearer token-de-prueba', 'anthropic-beta': 'experimental-cc-routine-2026-04-01', 'anthropic-version': '2023-06-01' });
+  assert.equal(d.cuerpo.text, `Botón «Ahora» del gestor: Emi pidió presentar en el SAC el escrito ${id} (causa 1001).`);
+  assert.deepEqual(await pedidos(), [], 'no pasa por la API de Claude');
+  // la corrida que se disparó lo encuentra: es lo único pedido «Ahora»
+  assert.equal(sql(`select id from gestor.agenda_tomar(true)`), id);
+
+  // desde un escrito agendado para otro día, o uno que no se pudo presentar, también; lo
+  // escrito en la tarjeta no cuenta si ya no es un borrador (el texto ya estaba confirmado)
+  for (const estado of ['pendiente', 'error']) {
+    const otro = escritoNuevo(estado);
+    const r2 = await chat({ id: otro, rev: fila(otro).rev, titulo: 'Otro título', cuerpo: 'Otro texto' }, { url: AHORA });
+    assert.equal(r2.status, 200, estado);
+    assert.deepEqual([fila(otro).estado, fila(otro).fecha, fila(otro).titulo], ['pendiente', hoy, 'Solicita aprobación de liquidación']);
+  }
+  // desmarcar "dar por realizada" en la tarjeta la quita; no se puede poner otro texto
+  const conAccion = escritoNuevo('borrador', 'gestor.hoy()', 'Solicitar aprobación de liquidación');
+  await chat({ id: conAccion, rev: fila(conAccion).rev, realizar: 'cualquier otra cosa' }, { url: AHORA });
+  assert.equal(fila(conAccion).realizar, '');
+  sql(`delete from public.agenda`);
+});
+
+test('«Ahora»: si la tarea no arranca, el escrito queda como estaba', async () => {
+  await olvidar();
+  sql(`delete from public.agenda`);
+  const borrador = escritoNuevo('borrador');
+  const antes = fila(borrador);
+  await tarea([{ status: 500 }]);
+  let r = await chat({ id: borrador, rev: antes.rev, titulo: 'Corregido', cuerpo: 'Corregido' }, { url: AHORA });
+  assert.equal(r.status, 502);
+  assert.equal(r.datos.error, 'tarea');
+  assert.match(r.datos.mensaje, /no arrancó \(respondió 500\)\..* No se agendó: sigue como borrador, con lo que corregiste\.$/);
+  let f = fila(borrador);
+  assert.deepEqual([f.estado, f.fecha, f.ahora, f.titulo, f.cuerpo], ['borrador', antes.fecha, null, 'Corregido', 'Corregido'], 'sin agendar, y lo corregido no se pierde');
+  assert.equal(r.datos.fila.rev, f.rev, 'la app recibe cómo quedó');
+
+  const agendado = escritoNuevo('pendiente');
+  await tarea([{ status: 429 }]);
+  r = await chat({ id: agendado, rev: fila(agendado).rev }, { url: AHORA });
+  assert.equal(r.status, 429);
+  assert.match(r.datos.mensaje, /demasiadas presentaciones seguidas.* Sigue agendado como antes\.$/);
+  assert.deepEqual([fila(agendado).estado, fila(agendado).fecha, fila(agendado).ahora], ['pendiente', antes.fecha, null], 'sigue agendado para su día');
+
+  await tarea([{ status: 401 }]);
+  r = await chat({ id: agendado, rev: fila(agendado).rev }, { url: AHORA });
+  assert.match(r.datos.mensaje, /no aceptó el token: hay que generar uno nuevo y cargarlo en Supabase \(secreto TAREA_SAC_TOKEN\)/);
+
+  // si mientras tanto la corrida de las 10:15 ya lo tomó, no se vuelve atrás: se cuenta cómo quedó
+  await tarea([{ status: 500, demora: 1200 }]);
+  const enCurso = chat({ id: agendado, rev: fila(agendado).rev }, { url: AHORA });
+  await new Promise((ok) => setTimeout(ok, 500));
+  assert.equal(sql(`select id from gestor.agenda_tomar(false)`), agendado);
+  r = await enCurso;
+  assert.match(r.datos.mensaje, /Mientras tanto el escrito cambió/);
+  assert.equal(r.datos.fila.estado, 'presentando');
+  assert.equal(fila(agendado).estado, 'presentando');
+  sql(`delete from public.agenda`);
+});
+
+test('«Ahora»: lo que no corresponde no toca nada ni dispara la tarea', async () => {
+  await olvidar();
+  sql(`delete from public.agenda`);
+  const id = escritoNuevo('borrador');
+  const rev = fila(id).rev;
+  // revisión vieja: alguien lo cambió recién
+  let r = await chat({ id, rev: rev - 1 }, { url: AHORA });
+  assert.equal(r.status, 409);
+  assert.equal(r.datos.error, 'conflicto');
+  assert.equal(r.datos.fila.rev, rev);
+  // ya presentado, presentándose o cancelado
+  for (const [estado, texto] of [['presentado', /ya se presentó/], ['presentando', /ya se está presentando/], ['cancelado', /está cancelado/]]) {
+    sql(`update public.agenda set estado = '${estado}' where id = '${id}'`);
+    r = await chat({ id, rev: fila(id).rev }, { url: AHORA });
+    assert.equal(r.status, 409, estado);
+    assert.match(r.datos.mensaje, texto);
+  }
+  sql(`update public.agenda set estado = 'borrador' where id = '${id}'`);
+  // título vacío: la base no lo acepta, y no se dispara nada
+  r = await chat({ id, rev: fila(id).rev, titulo: '   ', cuerpo: 'x' }, { url: AHORA });
+  assert.equal(r.status, 400);
+  assert.match(r.datos.mensaje, /Completá el título y el texto/);
+  // sin escrito, inexistente, sin sesión, sin autorización
+  assert.equal((await chat({}, { url: AHORA })).status, 400);
+  assert.equal((await chat({ id: '00000000-0000-0000-0000-000000000000', rev: 1 }, { url: AHORA })).status, 404);
+  assert.equal((await chat({ id, rev: fila(id).rev }, { url: AHORA, jwt: null })).status, 401);
+  await crearCuenta('ajeno@test.local', 'Clave-de-prueba-2026', 'Ajeno');
+  const ajeno = (await entrar('ajeno@test.local', 'Clave-de-prueba-2026')).sesion.access_token;
+  sql(`select gestor.quitar_usuario('ajeno@test.local')`);
+  r = await chat({ id, rev: fila(id).rev }, { url: AHORA, jwt: ajeno });
+  assert.equal(r.status, 403);
+  assert.equal(r.datos.error, 'sin_acceso');
+  assert.equal(fila(id).estado, 'borrador');
+  assert.deepEqual(await disparos(), [], 'la tarea no se disparó nunca');
+  sql(`delete from public.agenda`);
+});
+
+test('desde el chat: lo pedido «Ahora» se ve como tal, y lo que se está presentando no se cancela ni se cambia', async () => {
+  await olvidar();
+  sql(`delete from public.agenda`);
+  const id = escritoNuevo('pendiente', 'gestor.hoy()');
+  sql(`update public.agenda set ahora = now() where id = '${id}'`);
+  const dia = habil();
+  await guion([{ herramientas: [{ name: 'ver_agenda', input: {} }] }, { herramientas: [{ name: 'reprogramar_presentacion', input: { id, fecha: dia } }] }, { texto: 'ok' }]);
+  await chat({ historial: [], texto: '¿qué hay en la agenda? pasalo al próximo día hábil' });
+  let ps = await pedidos();
+  const [agenda] = ps[1].cuerpo.messages.at(-1).content.map((b) => JSON.parse(b.content));
+  assert.equal(agenda.escritos[0].estado, 'agendado para presentar ahora (botón «Ahora»)');
+  assert.deepEqual([fila(id).fecha, fila(id).ahora], [dia, null], 'reprogramado: va en la corrida de ese día');
+
+  sql(`update public.agenda set estado = 'presentando' where id = '${id}'`);
+  await olvidar();
+  await guion([{ herramientas: [{ name: 'ver_agenda', input: {} }, { name: 'cancelar_presentacion', input: { id } }, { name: 'reprogramar_presentacion', input: { id, fecha: dia } }] }, { texto: 'ok' }]);
+  await chat({ historial: [], texto: 'cancelalo' });
+  const [ver, cancelar, reprogramar] = await resultados();
+  assert.equal(ver.escritos[0].estado, 'presentándose en el SAC en este momento');
+  assert.match(cancelar.error, /se está presentando en el SAC en este momento: ya no se puede cancelar/);
+  assert.match(reprogramar.error, /se está presentando en el SAC en este momento: no se puede reprogramar/);
+  assert.equal(fila(id).estado, 'presentando');
+  sql(`delete from public.agenda`);
+});
+
+test('sin el token de la tarea, «Ahora» lo dice y no toca el escrito', async () => {
+  const deno = process.env.DENO || '/home/claude/.stack/deno/node_modules/.bin/deno';
+  const p = spawn(deno, ['run', '--allow-net', '--allow-env', new URL('../../supabase/functions/chat/index.ts', import.meta.url).pathname], {
+    env: { ...process.env, SUPABASE_URL: env.SUPABASE_URL, SUPABASE_ANON_KEY: env.ANON_KEY, DENO_SERVE_ADDRESS: 'tcp:127.0.0.1:54332', ANTHROPIC_API_KEY: '', TAREA_SAC_TOKEN: '' },
+    stdio: 'ignore',
+  });
+  sql(`delete from public.agenda`);
+  const id = escritoNuevo('borrador');
+  const antes = fila(id);
+  try {
+    let r;
+    for (let i = 0; i < 40; i++) {
+      try { r = await chat({ id, rev: antes.rev }, { url: 'http://127.0.0.1:54332/chat/ahora' }); break; } catch { await new Promise((ok) => setTimeout(ok, 250)); }
+    }
+    assert.equal(r.status, 503);
+    assert.equal(r.datos.error, 'sin_token');
+    assert.match(r.datos.mensaje, /TAREA_SAC_TOKEN\)\. El escrito quedó como estaba\.$/);
+    assert.equal(fila(id).rev, antes.rev);
+  } finally { p.kill(); sql(`delete from public.agenda`); }
 });
 
 test('sin la clave de la API, el chat lo dice en vez de fallar a ciegas', async () => {

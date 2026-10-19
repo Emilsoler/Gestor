@@ -444,6 +444,33 @@ export const borrarPlantilla = (id) => eliminar('plantillas', id);
 /** Un escrito de la agenda: confirmarlo, cambiarle la fecha o cancelarlo (con control de revisión). */
 export const actualizarAgenda = (id, rev, campos) => modificar('agenda', id, rev, campos);
 
+/**
+ * Botón «Ahora»: la función `chat` (ruta `ahora`, supabase/functions/chat/ahora.ts) confirma el
+ * escrito para ya y dispara la tarea que presenta en el SAC; el token de la tarea vive allá.
+ * `pedido`: { id, rev } y, si es un borrador, { titulo, cuerpo, realizar } de la tarjeta.
+ * Devuelve { fila, sesion }. Si falla, lanza un error con `mensaje`; la fila como quedó (la
+ * función la deja como estaba si la tarea no arrancó) ya está a la vista.
+ */
+export async function presentarAhora(pedido) {
+  if (!sb) throw new Error('La app no está conectada a su base de datos');
+  let r;
+  try { r = await sb.functions.invoke('chat/ahora', { body: pedido }); } catch (e) { throw marcar(e); }
+  if (r.error) {
+    let detalle = null;
+    try { detalle = await r.error.context?.json(); } catch { /* sin cuerpo */ }
+    if (detalle?.fila) ponerLocal('agenda', DE.agenda(detalle.fila));
+    const sinRed = r.error.name === 'FunctionsFetchError';
+    const e = new Error(detalle?.mensaje || (sinRed ? 'Sin conexión: no se mandó a presentar' : 'No se pudo mandar a presentar. Probá de nuevo.'));
+    e.codigo = detalle?.error || (sinRed ? 'red' : 'ahora');
+    if (sinRed) ponerEnLinea(false);
+    if (r.error.context?.status === 401) e.sinSesion = true;
+    throw e;
+  }
+  ponerEnLinea(true);
+  if (r.data?.fila) ponerLocal('agenda', DE.agenda(r.data.fila));
+  return r.data;
+}
+
 // ───────────────────────── Chat con Claude ─────────────────────────
 // La función `chat` de Supabase (supabase/functions/chat) habla con Claude con la clave de la API,
 // que vive allá y no llega nunca al navegador. Acá se le manda la conversación y el mensaje nuevo.

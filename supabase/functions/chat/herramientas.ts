@@ -41,7 +41,7 @@ export const HERRAMIENTAS = [
   },
   {
     name: 'listar_pendientes',
-    description: 'Lo que hay que hacer: causas activas con próxima acción anotada, de la más vencida a la más lejana, y los escritos de la agenda (borradores, agendados y con error). Para "¿qué tengo pendiente?", "¿qué vence esta semana?".',
+    description: 'Lo que hay que hacer: causas activas con próxima acción anotada, de la más vencida a la más lejana, y los escritos de la agenda (borradores, agendados, presentándose y con error). Para "¿qué tengo pendiente?", "¿qué vence esta semana?".',
     input_schema: {
       type: 'object',
       properties: {
@@ -95,7 +95,7 @@ export const HERRAMIENTAS = [
   },
   {
     name: 'preparar_presentacion',
-    description: 'Arma un escrito para presentar en el SAC en una fecha y lo deja como BORRADOR en la agenda. La persona lo ve completo en una tarjeta, puede corregirlo y lo confirma con "Agendar": recién ahí queda agendado. Con plantilla_id usa esa plantilla completada con los datos de la causa; si no, mandá titulo y cuerpo. Con dar_por_realizada, al presentarlo también se da por realizada la próxima acción que la causa tenga anotada.',
+    description: `Arma un escrito para presentar en el SAC en una fecha y lo deja como BORRADOR en la agenda. La persona lo ve completo en una tarjeta, puede corregirlo y lo confirma con "Agendar" (se presenta ese día desde las ${HORA_TAREA}) o con "Ahora" (se presenta en el momento): recién ahí queda confirmado. Con plantilla_id usa esa plantilla completada con los datos de la causa; si no, mandá titulo y cuerpo. Con dar_por_realizada, al presentarlo también se da por realizada la próxima acción que la causa tenga anotada.`,
     input_schema: {
       type: 'object',
       properties: {
@@ -111,7 +111,7 @@ export const HERRAMIENTAS = [
   },
   {
     name: 'ver_agenda',
-    description: 'Escritos de la agenda: borradores, agendados para presentar y con error; con incluir_cerrados, también los presentados y los cancelados. Se puede filtrar por causa.',
+    description: 'Escritos de la agenda: borradores, agendados para presentar, presentándose y con error; con incluir_cerrados, también los presentados y los cancelados. Se puede filtrar por causa.',
     input_schema: { type: 'object', properties: { expte: EXPTE, incluir_cerrados: { type: 'boolean' } } },
   },
   {
@@ -170,7 +170,8 @@ const idValido = (x: unknown) => {
 
 const escrito = (a: any, causas?: Map<string, Causa>) => ({
   id: a.id, expte: a.expte, ...(causas?.get(a.expte) ? { caratula: caratula(causas.get(a.expte)!) } : {}),
-  titulo: a.titulo, fecha: a.fecha, estado: a.estado === 'pendiente' ? 'agendado' : a.estado,
+  titulo: a.titulo, fecha: a.fecha,
+  estado: a.estado === 'pendiente' ? (a.ahora ? 'agendado para presentar ahora (botón «Ahora»)' : 'agendado') : a.estado === 'presentando' ? 'presentándose en el SAC en este momento' : a.estado,
   ...(a.realizar ? { da_por_realizada: a.realizar } : {}), ...(a.resultado ? { resultado: a.resultado } : {}),
 });
 
@@ -242,7 +243,7 @@ const acciones: Record<string, (e: Entrada, ctx: Contexto) => Promise<unknown>> 
     const conFecha = activas.filter((c) => c.vence && (!e.hasta || c.vence <= e.hasta)).sort((a, b) => a.vence!.localeCompare(b.vence!));
     const sinFecha = e.incluir_sin_vencimiento ? activas.filter((c) => !c.vence) : [];
     const porCausa = new Map(todas.map((c) => [c.expte, c]));
-    const agenda = await db.leer('agenda', 'estado=in.(borrador,pendiente,error)&order=fecha&select=*');
+    const agenda = await db.leer('agenda', 'estado=in.(borrador,pendiente,presentando,error)&order=fecha&select=*');
     return {
       hoy: hoy.fecha,
       proximas_acciones: conFecha.map((c) => ({
@@ -354,9 +355,9 @@ const acciones: Record<string, (e: Entrada, ctx: Contexto) => Promise<unknown>> 
     if (/acompa[ñn]|adjunt/i.test(`${titulo}\n${cuerpo}`)) avisos.push('El escrito dice que acompaña documentos: la tarea que presenta en el SAC no adjunta archivos, así que no lo va a presentar (lo deja con error para que la persona lo presente o se lo pida a Claude en la app de Claude, con los archivos).');
     const dow = diaSemana(e.fecha);
     if (dow === 0 || dow === 6) avisos.push(`El ${dma(e.fecha)} es ${nombreDia(e.fecha)}: la tarea corre de lunes a viernes, así que se presentaría el lunes siguiente.`);
-    if (e.fecha === hoy.fecha && hoy.hora >= HORA_TAREA) avisos.push(`La tarea de hoy ya corrió (${HORA_TAREA}): con fecha de hoy se presentaría en la próxima corrida, el próximo día hábil.`);
-    const iguales = await db.leer('agenda', `expte=eq.${c.expte}&estado=in.(pendiente,borrador)&select=id,titulo,fecha,estado`);
-    for (const a of iguales) if (norm(a.titulo) === norm(titulo)) avisos.push(`Ya hay un escrito igual ${a.estado === 'pendiente' ? 'agendado' : 'en borrador'} para el ${dma(a.fecha)} (id ${a.id}).`);
+    if (e.fecha === hoy.fecha && hoy.hora >= HORA_TAREA) avisos.push(`La tarea de hoy ya corrió (${HORA_TAREA}): con "Agendar" se presentaría en la próxima corrida, el próximo día hábil. Para presentarlo hoy, la persona puede tocar "Ahora" en la tarjeta.`);
+    const iguales = await db.leer('agenda', `expte=eq.${c.expte}&estado=in.(pendiente,presentando,borrador)&select=id,titulo,fecha,estado`);
+    for (const a of iguales) if (norm(a.titulo) === norm(titulo)) avisos.push(`Ya hay un escrito igual ${a.estado === 'borrador' ? 'en borrador' : a.estado === 'presentando' ? 'presentándose ahora' : 'agendado'} para el ${dma(a.fecha)} (id ${a.id}).`);
 
     const [fila] = await db.insertar('agenda', { expte: c.expte, titulo, cuerpo, fecha: e.fecha, realizar, estado: 'borrador' });
     ctx.cambios = true;
@@ -364,12 +365,12 @@ const acciones: Record<string, (e: Entrada, ctx: Contexto) => Promise<unknown>> 
     return {
       tarjeta: true, id: fila.id, expte: c.expte, caratula: caratula(c), titulo, cuerpo, fecha: fila.fecha,
       dia: nombreDia(fila.fecha), da_por_realizada: realizar || null, avisos,
-      importante: 'Es un borrador: la persona tiene que revisarlo en la tarjeta y tocar "Agendar". Hasta entonces no está agendado.',
+      importante: `Es un borrador: la persona tiene que revisarlo en la tarjeta y tocar "Agendar" (ese día desde las ${HORA_TAREA}) o "Ahora" (en el momento). Hasta entonces no está agendado.`,
     };
   },
 
   async ver_agenda(e, { db }) {
-    const filtros = [e.expte ? `expte=eq.${expteValido(e.expte)}` : '', e.incluir_cerrados ? '' : 'estado=in.(borrador,pendiente,error)'].filter(Boolean);
+    const filtros = [e.expte ? `expte=eq.${expteValido(e.expte)}` : '', e.incluir_cerrados ? '' : 'estado=in.(borrador,pendiente,presentando,error)'].filter(Boolean);
     const filas = await db.leer('agenda', [...filtros, 'order=fecha.desc', 'limit=40', 'select=*'].join('&'));
     const porCausa = new Map((await todasLasCausas(db)).map((c) => [c.expte, c]));
     return { escritos: filas.map((a: any) => escrito(a, porCausa)) };
@@ -380,7 +381,8 @@ const acciones: Record<string, (e: Entrada, ctx: Contexto) => Promise<unknown>> 
     const [fila] = await ctx.db.cambiar('agenda', `id=eq.${id}&estado=in.(borrador,pendiente,error)`, { estado: 'cancelado' });
     if (!fila) {
       const [a] = await ctx.db.leer('agenda', `id=eq.${id}&select=estado`);
-      throw new Problema(!a ? 'No existe ese escrito en la agenda.' : a.estado === 'presentado' ? 'Ese escrito ya se presentó: no se puede cancelar.' : 'Ese escrito ya estaba cancelado.');
+      throw new Problema(!a ? 'No existe ese escrito en la agenda.' : a.estado === 'presentado' ? 'Ese escrito ya se presentó: no se puede cancelar.'
+        : a.estado === 'presentando' ? 'Ese escrito se está presentando en el SAC en este momento: ya no se puede cancelar.' : 'Ese escrito ya estaba cancelado.');
     }
     ctx.cambios = true;
     ctx.acciones.push(`Causa ${fila.expte}: escrito "${fila.titulo}" cancelado`);
@@ -391,12 +393,13 @@ const acciones: Record<string, (e: Entrada, ctx: Contexto) => Promise<unknown>> 
     const id = idValido(e.id);
     if (!esFecha(e.fecha)) throw new Problema('La fecha tiene que ser AAAA-MM-DD.');
     if (e.fecha < ctx.hoy.fecha) throw new Problema('La fecha ya pasó.');
-    const [fila] = await ctx.db.cambiar('agenda', `id=eq.${id}&estado=in.(pendiente,error)`, { fecha: e.fecha, estado: 'pendiente', resultado: '' });
+    const [fila] = await ctx.db.cambiar('agenda', `id=eq.${id}&estado=in.(pendiente,error)`, { fecha: e.fecha, estado: 'pendiente', resultado: '', ahora: null });
     if (!fila) {
       const [a] = await ctx.db.leer('agenda', `id=eq.${id}&select=estado`);
       throw new Problema(!a ? 'No existe ese escrito en la agenda.'
         : a.estado === 'borrador' ? 'Ese escrito todavía es un borrador: la persona tiene que confirmarlo en la tarjeta (ahí puede cambiar la fecha).'
-          : `Ese escrito está ${a.estado}: no se puede reprogramar.`);
+          : a.estado === 'presentando' ? 'Ese escrito se está presentando en el SAC en este momento: no se puede reprogramar.'
+            : `Ese escrito está ${a.estado}: no se puede reprogramar.`);
     }
     ctx.cambios = true;
     ctx.acciones.push(`Causa ${fila.expte}: "${fila.titulo}" agendado para el ${dma(fila.fecha)}`);

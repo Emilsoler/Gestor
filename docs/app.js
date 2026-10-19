@@ -4,11 +4,11 @@ import {
   crearCausa, guardarCausa, actualizarCausa, borrarCausa,
   crearAcuerdo, actualizarAcuerdo, borrarAcuerdo,
   crearPlantilla, guardarPlantilla, borrarPlantilla,
-  actualizarAgenda, preguntarAClaude, leerChat, guardarChat,
+  actualizarAgenda, presentarAhora, preguntarAClaude, leerChat, guardarChat,
 } from './datos.js';
 import { idNuevo, nuevaLiquidacion, cobradoRubro, totalPago, liqNormal, liqCalc, importe, pesos, enCelda, planillaExcel } from './liquidacion.js';
 
-const VERSION = '1.6';
+const VERSION = '1.7';
 
 const TAGS = [
   { k: 'En trámite', c: '' }, { k: 'Embargo de sueldo', c: 't-emb' }, { k: 'Secuestro / subasta', c: 't-sec' },
@@ -60,7 +60,8 @@ const movil = window.matchMedia('(max-width: 720px)');
 function toast(msg) {
   const t = $('#toast');
   t.textContent = msg; t.hidden = false;
-  clearTimeout(toast.h); toast.h = setTimeout(() => { t.hidden = true; }, 3200);
+  // los avisos largos (por ejemplo, por qué no se pudo presentar ahora) quedan más tiempo a la vista
+  clearTimeout(toast.h); toast.h = setTimeout(() => { t.hidden = true; }, Math.min(12000, Math.max(3200, msg.length * 55)));
 }
 
 function dueState(c) { const d = parse(c.vence); if (!d || !(c.proxima || '').trim()) return ''; const n = Math.round((d - today()) / 864e5); return n < 0 ? 'late' : n <= 7 ? 'soon' : ''; }
@@ -249,7 +250,9 @@ function tagsHtml(c) {
   for (const a of agendaAbierta(c.expte)) {
     ts.push(a.estado === 'error' ? '<span class="tag t-sacerr">SAC: no se presentó</span>'
       : a.estado === 'borrador' ? '<span class="tag">Escrito sin confirmar</span>'
-        : `<span class="tag t-sac">SAC ${esc(fmtDia(a.fecha))}</span>`);
+        : a.estado === 'presentando' ? '<span class="tag t-sac">SAC: presentándose</span>'
+          : a.ahora ? '<span class="tag t-sac">SAC: ahora</span>'
+            : `<span class="tag t-sac">SAC ${esc(fmtDia(a.fecha))}</span>`);
   }
   return ts.length ? `<div class="tags">${ts.join('')}</div>` : '';
 }
@@ -305,7 +308,7 @@ function renderAgenda(items) {
   const grupos = new Map();
   for (const x of items) { const g = grupo(x.fecha); if (!grupos.has(g)) grupos.set(g, []); grupos.get(g).push(x); }
   const fila = ({ c, fecha, texto, sac }) => {
-    const [estado, clase] = sac ? ESTADO_AG[sac.estado] || [sac.estado, ''] : [];
+    const [estado, clase] = sac ? estadoAg(sac) : [];
     const tarde = fecha && fecha < hoy;
     return `<article class="fila agitem" data-id="${esc(c.expte)}" tabindex="0" role="button" aria-label="Abrir la ficha de ${esc(titulo(c))}">
     <div class="fila-top"><span class="next">${esc(texto)}</span>${sac ? `<span class="pill ${clase}">SAC · ${esc(estado)}</span>` : ''}</div>
@@ -828,19 +831,24 @@ async function tplAct(b) {
 }
 
 // ───────────────────────── Escritos para el SAC (agenda) ─────────────────────────
-// El chat deja cada escrito como borrador; la persona lo revisa y toca "Agendar" (es la única
-// aprobación que vale), y la tarea programada de Claude lo presenta ese día desde la compu del
-// estudio. Ver supabase/migrations/0005.
+// El chat deja cada escrito como borrador; la persona lo revisa y toca "Agendar" o "Ahora" (es la
+// única aprobación que vale), y la tarea programada de Claude lo presenta desde la compu del
+// estudio: ese día desde las 10:15, o en el momento. Ver supabase/migrations/0005 y 0006.
 
 const ESTADO_AG = {
-  borrador: ['Sin confirmar', 's-notificando'], pendiente: ['Agendado', 's-despacho'], presentado: ['Presentado', 's-sentencia'],
-  error: ['No se presentó', 's-subasta'], cancelado: ['Cancelado', ''],
+  borrador: ['Sin confirmar', 's-notificando'], pendiente: ['Agendado', 's-despacho'], presentando: ['Presentándose', 's-casillero'],
+  presentado: ['Presentado', 's-sentencia'], error: ['No se presentó', 's-subasta'], cancelado: ['Cancelado', ''],
 };
+/** El estado que se muestra: lo pedido «Ahora» que la tarea todavía no tomó tiene el suyo. */
+const estadoAg = (a) => (a.estado === 'pendiente' && a.ahora ? ['Se presenta ahora', 's-casillero'] : ESTADO_AG[a.estado] || [a.estado, '']);
+const DEMORA_AHORA = 15; // minutos: lo pedido «Ahora» que no arrancó en ese tiempo se puede volver a pedir
+const DEMORA_PRESENTANDO = 30; // minutos sin noticias de la corrida que lo tomó: se puede dejar como no presentado
+const minutosDesde = (s) => (Date.now() - Date.parse(s)) / 6e4;
 const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const fmtDia = (s) => { const d = parse(s); return d ? d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) : ''; };
 const fmtLargo = (s) => { const d = parse(s); return d ? `${DIAS[d.getDay()]} ${fmtDia(s)}` : ''; };
 /** Escritos que todavía piden algo: confirmarlos, esperar a que se presenten o resolver un error. */
-const agendaAbierta = (expte) => D.agenda.filter((a) => a.expte === expte && ['borrador', 'pendiente', 'error'].includes(a.estado));
+const agendaAbierta = (expte) => D.agenda.filter((a) => a.expte === expte && ['borrador', 'pendiente', 'presentando', 'error'].includes(a.estado));
 /** Cuándo corre la próxima tarea del SAC: hoy si es día hábil y todavía no son las 10:15; si no, el próximo día hábil. */
 function proximaCorrida() {
   const d = today(), ahora = hora(new Date());
@@ -861,28 +869,51 @@ function escritoDe(id) {
 }
 
 function tarjetaAgenda(a, donde) {
-  const c = D.causas.find((x) => x.expte === a.expte), [estado, clase] = ESTADO_AG[a.estado] || [a.estado, ''], k = esc(a.id);
+  const c = D.causas.find((x) => x.expte === a.expte), [estado, clase] = estadoAg(a), k = esc(a.id);
   const cab = `<div class="agcab"><span class="pill ${clase}">${esc(estado)}</span><span class="hint">Expte. ${esc(a.expte)}${c ? ' · ' + esc(caratula(c)) : ''}</span></div>`;
   const id = (campo) => `ag_${donde}_${campo}_${k}`;
   if (a.estado === 'borrador') {
     return `<div class="sec agcard borrador" data-ag-id="${k}">${cab}
      <label class="f">Título<input id="${id('t')}" value="${esc(a.titulo)}"></label>
      <label class="f">Texto del escrito<textarea id="${id('c')}" rows="8">${esc(a.cuerpo)}</textarea></label>
-     <label class="f">Presentarlo el<input type="date" id="${id('f')}" value="${esc(a.fecha)}" min="${iso(today())}"></label>
+     <div class="agfecha"><label class="f">Presentarlo el<input type="date" id="${id('f')}" value="${esc(a.fecha)}" min="${iso(today())}"></label><button class="btn" data-ag="ahora" data-id="${k}" data-donde="${donde}">Ahora</button></div>
      ${a.realizar ? `<label class="chk"><input type="checkbox" id="${id('r')}" checked><span>Al presentarlo, dar por realizada la próxima acción: <b>${esc(a.realizar)}</b></span></label>` : ''}
      ${(a.avisos || []).map((t) => `<p class="sucio m0">${esc(t)}</p>`).join('')}
-     <p class="hint m0">Cuando lo agendes, la tarea de Claude lo presenta en el SAC ese día desde las ${HORA_SAC}, desde la compu del estudio, y deja la causa “A despacho”. Si la compu está apagada, te avisa y queda para reintentar.</p>
+     <p class="hint m0">Con “Agendar”, la tarea de Claude lo presenta en el SAC ese día desde las ${HORA_SAC}; con “Ahora”, en este momento. Lo hace desde la compu del estudio y deja la causa “A despacho”. Si la compu está apagada, te avisa y queda para reintentar.</p>
      <div class="actions"><button class="btn small primary" data-ag="agendar" data-id="${k}" data-donde="${donde}">Agendar</button><button class="btn small" data-ag="descartar" data-id="${k}" data-donde="${donde}">Descartar</button></div>
     </div>`;
   }
-  const sale = a.estado === 'pendiente' ? corridaPara(a.fecha) : '';
-  const detalle = a.estado === 'pendiente' ? `Se presenta el ${esc(fmtLargo(sale))} desde las ${HORA_SAC}${sale !== a.fecha ? ` (estaba para el ${esc(fmtDia(a.fecha))})` : ''}${a.realizar ? `; da por realizada “${esc(a.realizar)}”` : ''}.`
-    : a.estado === 'presentado' ? `${esc(a.resultado || 'Presentado en el SAC')}${a.presentado ? ` · ${esc(cuando(new Date(a.presentado)))}` : ''}`
-      : a.estado === 'error' ? esc(a.resultado || 'No se pudo presentar.')
-        : 'No se va a presentar.';
-  const botones = a.estado === 'pendiente' ? `<button class="btn small danger" data-ag="cancelar" data-id="${k}">Cancelar</button>`
-    : a.estado === 'error' ? `<button class="btn small primary" data-ag="reagendar" data-id="${k}">Volver a agendar</button><button class="btn small danger" data-ag="cancelar" data-id="${k}">Cancelar</button>` : '';
-  return `<div class="sec agcard ${esc(a.estado)}" data-ag-id="${k}">${cab}<b>${esc(a.titulo)}</b><p class="m0 ${a.estado === 'error' ? 'malo' : 'hint'}">${detalle}</p>${botones ? `<div class="actions">${botones}</div>` : ''}</div>`;
+  const hhmm = (s) => (s ? hora(new Date(s)) : '');
+  const realizar = a.realizar ? `; da por realizada “${esc(a.realizar)}”` : '';
+  const ahora = `<button class="btn small" data-ag="ahora" data-id="${k}">Presentar ahora</button>`;
+  const cancelar = `<button class="btn small danger" data-ag="cancelar" data-id="${k}">Cancelar</button>`;
+  let detalle = 'No se va a presentar.', botones = '';
+  if (a.estado === 'pendiente' && a.ahora) {
+    // Pedido «Ahora»: la corrida tarda unos minutos en arrancar. Si no lo toma, lo toma la siguiente de las 10:15.
+    const demorado = minutosDesde(a.ahora) > DEMORA_AHORA;
+    detalle = demorado
+      ? `Pediste presentarlo a las ${hhmm(a.ahora)} y la tarea todavía no lo tomó. Si no arranca, sale en la corrida del ${esc(fmtLargo(corridaPara(a.fecha)))} a las ${HORA_SAC}${realizar}.`
+      : `Pediste presentarlo ahora (${hhmm(a.ahora)}): la tarea de Claude lo presenta en el SAC en unos minutos${realizar}.`;
+    botones = (demorado ? ahora : '') + cancelar;
+  } else if (a.estado === 'pendiente') {
+    const sale = corridaPara(a.fecha);
+    detalle = `Se presenta el ${esc(fmtLargo(sale))} desde las ${HORA_SAC}${sale !== a.fecha ? ` (estaba para el ${esc(fmtDia(a.fecha))})` : ''}${realizar}.`;
+    botones = ahora + cancelar;
+  } else if (a.estado === 'presentando') {
+    // Ya lo tomó una corrida: no se cancela. Si no avisa cómo terminó, se puede dejar como no presentado.
+    const colgado = minutosDesde(a.actualizado) > DEMORA_PRESENTANDO;
+    detalle = colgado
+      ? `Claude empezó a presentarlo a las ${hhmm(a.actualizado)} y no avisó cómo terminó. Fijate en el SAC si quedó presentado.`
+      : `Claude lo está presentando en el SAC (empezó a las ${hhmm(a.actualizado)}).`;
+    if (colgado) botones = `<button class="btn small" data-ag="nopresentado" data-id="${k}">Marcar como no presentado</button>`;
+  } else if (a.estado === 'presentado') {
+    detalle = `${esc(a.resultado || 'Presentado en el SAC')}${a.presentado ? ` · ${esc(cuando(new Date(a.presentado)))}` : ''}`;
+  } else if (a.estado === 'error') {
+    detalle = esc(a.resultado || 'No se pudo presentar.');
+    botones = `<button class="btn small primary" data-ag="reagendar" data-id="${k}">Volver a agendar</button>${ahora}${cancelar}`;
+  }
+  const ahoraClase = a.estado === 'pendiente' && a.ahora ? ' ahora' : '';
+  return `<div class="sec agcard ${esc(a.estado)}${ahoraClase}" data-ag-id="${k}">${cab}<b>${esc(a.titulo)}</b><p class="m0 ${a.estado === 'error' ? 'malo' : 'hint'}">${detalle}</p>${botones ? `<div class="actions">${botones}</div>` : ''}</div>`;
 }
 
 function agendaFichaHtml(c) {
@@ -929,6 +960,24 @@ async function agAct(b) {
         const sale = corridaPara(fecha);
         toast(sale === fecha ? `Agendado: se presenta el ${fmtLargo(fecha)} desde las ${HORA_SAC}` : `Agendado: sale en la corrida del ${fmtLargo(sale)}, a las ${HORA_SAC}`);
       }
+    } else if (b.dataset.ag === 'ahora') {
+      // «Ahora»: lo confirma para ya y dispara la tarea (función chat/ahora). Desde un borrador,
+      // con lo que diga la tarjeta, igual que "Agendar".
+      let pedido = { id, rev: a.rev }, cambiado = false;
+      if (a.estado === 'borrador') {
+        const titulo = campo('t').value.trim(), cuerpo = campo('c').value.replace(/\s+$/, '');
+        if (!titulo || !cuerpo.trim()) { toast('Completá el título y el texto del escrito'); return; }
+        pedido = { ...pedido, titulo, cuerpo, realizar: campo('r')?.checked ? a.realizar : '' };
+        cambiado = titulo !== a.titulo || cuerpo !== a.cuerpo;
+      }
+      const antes = b.textContent; b.textContent = 'Enviando…';
+      try { await presentarAhora(pedido); } finally { if (b.isConnected) b.textContent = antes; }
+      anotar(`${a.estado === 'borrador' ? 'Confirmaste y pediste' : 'Pediste'} presentar ahora "${pedido.titulo || a.titulo}" en la causa ${a.expte}${cambiado ? ' (con cambios tuyos en el texto)' : ''}.`);
+      toast('Listo: la tarea de Claude lo presenta en el SAC en unos minutos');
+      return;
+    } else if (b.dataset.ag === 'nopresentado') {
+      r = await actualizarAgenda(id, a.rev, { estado: 'error', resultado: `Se interrumpió mientras se presentaba (empezó a las ${a.actualizado ? hora(new Date(a.actualizado)) : '?'}). Antes de volver a mandarlo, fijate en el SAC si quedó presentado.` });
+      if (!r.conflicto) { anotar(`Marcaste como no presentado "${a.titulo}" de la causa ${a.expte}: se había interrumpido mientras se presentaba.`); toast('Marcado como no presentado'); }
     } else if (b.dataset.ag === 'descartar') {
       r = await actualizarAgenda(id, a.rev, { estado: 'cancelado' });
       if (!r.conflicto) { anotar(`Descartaste el borrador "${a.titulo}" de la causa ${a.expte}: no se presenta.`); toast('Borrador descartado'); }
@@ -937,7 +986,7 @@ async function agAct(b) {
       if (!r.conflicto) { anotar(`Cancelaste "${a.titulo}" de la causa ${a.expte}: no se presenta.`); toast('Escrito cancelado: no se presenta'); }
     } else if (b.dataset.ag === 'reagendar') {
       const fecha = proximaCorrida();
-      r = await actualizarAgenda(id, a.rev, { estado: 'pendiente', fecha, resultado: '' });
+      r = await actualizarAgenda(id, a.rev, { estado: 'pendiente', fecha, resultado: '', ahora: null });
       if (!r.conflicto) { anotar(`Volviste a agendar "${a.titulo}" de la causa ${a.expte} para el ${fmt(fecha)}.`); toast(`Agendado de nuevo: sale el ${fmtLargo(fecha)} desde las ${HORA_SAC}`); }
     }
     if (r?.conflicto) toast('El escrito cambió recién. Revisalo y probá de nuevo');
@@ -995,7 +1044,7 @@ function bienvenidaHtml() {
   return `<div class="bienvenida">
    <p class="m0"><b>Pedile a Claude lo que necesites del gestor.</b> Lee y actualiza las causas, te dice qué hay pendiente y deja escritos de la biblioteca listos para presentar en el SAC.</p>
    <div class="sugerencias">${ejemplos.map((e) => `<button class="chip" data-chat="ejemplo">${esc(e)}</button>`).join('')}</div>
-   <p class="hint m0">Cada escrito lo confirmás vos en una tarjeta. Después, una tarea de Claude lo presenta el día indicado desde las ${HORA_SAC} (de lunes a viernes), desde la compu del estudio.</p>
+   <p class="hint m0">Cada escrito lo confirmás vos en una tarjeta. Después, una tarea de Claude lo presenta desde la compu del estudio: el día indicado desde las ${HORA_SAC} (de lunes a viernes), o en el momento si tocás “Ahora”.</p>
   </div>`;
 }
 
@@ -1272,8 +1321,8 @@ $('#vLista').onclick = verVista('lista'); $('#vAgenda').onclick = verVista('agen
 $('#btnNew').onclick = $('#fabNew').onclick = () => openCausa(null);
 $('#btnTpl').onclick = abrirPlantillas;
 $('#btnExport').onclick = exportar;
-// Para lo que el chat de la app no hace (por ejemplo presentar algo ya mismo en el SAC): una
-// conversación nueva en la app de Claude, con la causa ya nombrada.
+// Para lo que el chat de la app no hace (por ejemplo presentar un escrito con archivos adjuntos):
+// una conversación nueva en la app de Claude, con la causa ya nombrada.
 function hablarConClaude(c) {
   const texto = c?.expte
     ? `Sobre el gestor de juicios, causa ${c.expte} (${partes(c)}): `

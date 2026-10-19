@@ -377,6 +377,9 @@ label.f input[readonly],label.f textarea[readonly]{color:var(--soft)}
 .agcard{align-self:stretch;gap:8px}
 .agcard.borrador{border-color:rgba(246,189,96,.55);box-shadow:inset 3px 0 0 var(--warn)}
 .agcard.error{border-color:rgba(255,142,118,.55)}
+.agcard.presentando,.agcard.ahora{border-color:rgba(184,160,255,.5);box-shadow:inset 3px 0 0 var(--violet)}  /* en camino al SAC */
+.agfecha{display:flex;gap:8px;align-items:flex-end}  /* la fecha y, al lado, «Ahora» */
+.agfecha label.f{flex:1}
 .agcab{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center}
 .chk{display:flex;gap:8px;align-items:flex-start;font-size:13px;cursor:pointer}
 .chk input{margin-top:3px;flex:none}
