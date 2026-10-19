@@ -623,6 +623,47 @@ test('escritos para el SAC: uno que no se pudo presentar se ve, se vuelve a agen
   assert.equal(await page.locator('.stat[data-q="sac"]').count(), 0, 'sin escritos pendientes, el resumen no lo muestra');
 });
 
+test('agenda: próximas acciones y escritos de todas las causas, por fecha; se abre la causa y se marca realizada', async () => {
+  sql(`delete from public.agenda`);
+  sql(`begin; select set_config('gestor.autor', 'Semilla', true);
+    update public.causas set proxima = '', vence = null where proxima <> '';
+    update public.causas set proxima = 'Pedir embargo', vence = '${dia(-2)}' where expte = '1001';
+    update public.causas set proxima = 'Enviar cédulas', vence = '${dia(5)}' where expte = '1004';
+    update public.causas set proxima = 'Ver archivo', vence = '${dia(1)}' where expte = '1003';
+    update public.causas set proxima = 'Llamar al martillero', vence = null where expte = '1002';
+    commit;`);
+  sql(`insert into public.agenda (expte, titulo, cuerpo, fecha, estado) values ('1002', 'Solicita aprobación', 'Texto', gestor.hoy(), 'pendiente')`);
+  await page.click('#vAgenda');
+  try {
+  await page.waitForFunction(() => document.querySelectorAll('#main .agitem').length === 4, null, { timeout: 8000 });
+  assert.deepEqual(await page.locator('#main .agitem .fila-top .next').allTextContents(),
+    ['Pedir embargo', 'Solicita aprobación', 'Enviar cédulas', 'Llamar al martillero'], 'en orden de fecha, sin las archivadas, lo que no tiene fecha al final');
+  const grupos = await page.locator('#main .agdia h3 span:first-child').allTextContents();
+  assert.equal(grupos.length, 4);
+  assert.equal(grupos[0], 'Vencidas'); assert.match(grupos[1], /^Hoy · /); assert.equal(grupos[3], 'Sin fecha');
+  assert.match(await page.locator('#main .agitem', { hasText: 'Solicita aprobación' }).textContent(), /SAC · Agendado/);
+  assert.equal(await page.locator('#main .agitem', { hasText: 'Solicita aprobación' }).locator('[data-done]').count(), 0, 'los escritos se cierran solos al presentarse');
+  assert.equal(await page.locator('#stats').isHidden(), true);
+  // la búsqueda filtra la agenda
+  await page.fill('#q', 'beta');
+  await page.waitForFunction(() => document.querySelectorAll('#main .agitem').length === 2);
+  await page.fill('#q', ''); await page.waitForFunction(() => document.querySelectorAll('#main .agitem').length === 4);
+  // tocar una acción abre la ficha de su causa
+  await page.locator('#main .agitem[data-id="1004"] .agcausa').click();
+  await page.waitForSelector('.panel');
+  await page.keyboard.press('Escape'); await cerrado(page);
+  // y "Realizada" la pasa a movimientos, como en el listado
+  await page.locator('#main .agitem[data-id="1001"] [data-done]').click();
+  await toast(page, 'Acción realizada');
+  await page.waitForFunction(() => document.querySelectorAll('#main .agitem').length === 3);
+  assert.equal(sql(`select proxima || '|' || (historial -> -1 ->> 'texto') || '|' || (historial -> -1 ->> 'fecha') from public.causas where expte='1001'`), `|Pedir embargo|${dia(-2)}`);
+  } finally {
+    sql(`delete from public.agenda`);
+    sql(`begin; select set_config('gestor.autor', 'Semilla', true); update public.causas set proxima = '', vence = null where expte in ('1002','1003','1004'); commit;`);
+    await page.click('#vLista');
+  }
+});
+
 test('chat: si falla, el mensaje no se pierde y se puede reintentar', async () => {
   await guion([{ error: { status: 529, type: 'overloaded_error', message: 'Overloaded' } }, { error: { status: 529, type: 'overloaded_error', message: 'Overloaded' } }, { texto: 'Ahora sí.' }]);
   await page.click('#btnChat');

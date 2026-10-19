@@ -8,7 +8,7 @@ import {
 } from './datos.js';
 import { idNuevo, nuevaLiquidacion, cobradoRubro, totalPago, liqNormal, liqCalc, importe, pesos, enCelda, planillaExcel } from './liquidacion.js';
 
-const VERSION = '1.4';
+const VERSION = '1.5';
 
 const TAGS = [
   { k: 'En trámite', c: '' }, { k: 'Embargo de sueldo', c: 't-emb' }, { k: 'Secuestro / subasta', c: 't-sec' },
@@ -230,7 +230,7 @@ function renderFilters() {
   $('#btnFiltros').textContent = usados ? `Filtros · ${usados}` : 'Filtros';
   const live = D.causas.filter((c) => c.estado !== 'Archivada' && !isAcu(c));
   $('#chips').innerHTML = `<button class="chip" data-t="" aria-pressed="${!S.tag}">Todas · ${live.length}</button>` + CHIPS.map((t) => `<button class="chip" data-t="${esc(t.k)}" aria-pressed="${S.tag === t.k}">${esc(t.l)} · ${live.filter((c) => chipMatch(c, t.k)).length}</button>`).join('');
-  $('#vAcuerdos').setAttribute('aria-pressed', S.view === 'acuerdos'); $('#vLista').setAttribute('aria-pressed', S.view === 'lista'); $('#vTablero').setAttribute('aria-pressed', S.view === 'tablero');
+  $('#vAgenda').setAttribute('aria-pressed', S.view === 'agenda'); $('#vAcuerdos').setAttribute('aria-pressed', S.view === 'acuerdos'); $('#vLista').setAttribute('aria-pressed', S.view === 'lista'); $('#vTablero').setAttribute('aria-pressed', S.view === 'tablero');
 }
 
 function ageHtml(c) { const n = days(c.fecha); if (n === null) return '<span class="age old">sin fecha</span>'; return `<span class="age ${n > STALE ? 'old' : ''}">${fmt(c.fecha)} · hace ${n} d</span>`; }
@@ -276,6 +276,36 @@ function renderBoard(rows) {
   }).join('') + `</div>`;
 }
 
+// Agenda: todo lo que hay que hacer, de todas las causas en trámite, en orden de fecha. Junta
+// las próximas acciones (con su vencimiento) y los escritos para el SAC que siguen abiertos.
+function itemsAgenda() {
+  const q = S.q.trim().toLowerCase(), r = [];
+  for (const c of D.causas) {
+    if (c.estado === 'Archivada') continue;
+    if ((c.proxima || '').trim()) r.push({ c, fecha: c.vence || '', texto: c.proxima, sac: null });
+    for (const a of agendaAbierta(c.expte)) r.push({ c, fecha: a.fecha || '', texto: a.titulo, sac: a });
+  }
+  const busca = (x) => !q || [x.texto, x.c.actor, x.c.demandado, x.c.expte, x.c.tipo].join(' ').toLowerCase().includes(q);
+  return r.filter(busca).sort((x, y) => (x.fecha || '9999').localeCompare(y.fecha || '9999') || titulo(x.c).localeCompare(titulo(y.c)));
+}
+
+function renderAgenda(items) {
+  const hoy = iso(today()), manana = iso(new Date(today().getTime() + 864e5));
+  const grupo = (f) => (!f ? 'Sin fecha' : f < hoy ? 'Vencidas' : f === hoy ? `Hoy · ${fmtLargo(f)}` : f === manana ? `Mañana · ${fmtLargo(f)}` : fmtLargo(f));
+  const grupos = new Map();
+  for (const x of items) { const g = grupo(x.fecha); if (!grupos.has(g)) grupos.set(g, []); grupos.get(g).push(x); }
+  const fila = ({ c, fecha, texto, sac }) => {
+    const [estado, clase] = sac ? ESTADO_AG[sac.estado] || [sac.estado, ''] : [];
+    const tarde = fecha && fecha < hoy;
+    return `<article class="fila agitem" data-id="${esc(c.expte)}" tabindex="0" role="button" aria-label="Abrir la ficha de ${esc(titulo(c))}">
+    <div class="fila-top"><span class="next">${esc(texto)}</span>${sac ? `<span class="pill ${clase}">SAC · ${esc(estado)}</span>` : ''}</div>
+    <div class="agcausa"><b>${esc(titulo(c))}</b> <span class="mono">${esc(c.expte)}${c.nom ? ' · ' + esc(c.nom) + '°' : ''}${c.oficina ? ' ' + esc(c.oficina) : ''}</span></div>
+    <div class="fila-ult">${fecha ? `<span class="due ${tarde ? 'late' : fecha === hoy ? 'soon' : ''}">${sac ? 'Para el' : 'Vence el'} ${fmt(fecha)}</span>` : '<span class="hint">Sin fecha</span>'}${sac ? '' : `<button class="btn small donebtn" data-done="${esc(c.expte)}">✓ Realizada</button>`}</div>
+  </article>`;
+  };
+  return `<div class="agenda">` + [...grupos].map(([g, xs]) => `<section class="agdia ${g === 'Vencidas' ? 'tarde' : ''}"><h3><span>${esc(g)}</span><span>${xs.length}</span></h3><div class="filas">${xs.map(fila).join('')}</div></section>`).join('') + `</div>`;
+}
+
 function renderFranja() {
   let h = '';
   if (!D.enLinea) {
@@ -299,13 +329,20 @@ function render() {
   renderStats(); renderFilters(); renderAvisos(); renderFranja();
   const inicial = (D.acceso?.nombre || D.usuario?.email || '?').trim().charAt(0).toUpperCase();
   $('#btnCuenta').textContent = inicial;
-  const main = $('#main'), isAc = S.view === 'acuerdos';
-  ['#stats', '#chips', '#q', '#btnFiltros', '#filtros', '#fabNew'].forEach((k) => { $(k).hidden = isAc; });
+  const main = $('#main'), isAc = S.view === 'acuerdos', isAg = S.view === 'agenda';
+  ['#stats', '#chips', '#btnFiltros', '#filtros', '#fabNew'].forEach((k) => { $(k).hidden = isAc || isAg; });
+  $('#q').hidden = isAc;
   if (!D.cargado) {
     main.innerHTML = `<div class="empty"><b>Cargando tus causas…</b>Acá vas a ver el listado de juicios con su estado, última acción y próxima acción.</div>`;
     subtitulo('Cargando causas…');
   } else if (isAc) {
     keepNa(); main.innerHTML = renderAcuerdos(); subtitulo(`${D.acuerdos.length} acuerdos con plan de cuotas`);
+  } else if (isAg) {
+    const items = itemsAgenda();
+    subtitulo(`${items.length} ${items.length === 1 ? 'acción pendiente' : 'acciones pendientes'}`);
+    main.innerHTML = items.length ? renderAgenda(items) : S.q.trim()
+      ? `<div class="empty"><b>Ninguna acción coincide con la búsqueda</b>Probá con otra palabra.</div>`
+      : `<div class="empty"><b>No hay acciones pendientes</b>Acá aparecen las próximas acciones de cada causa y los escritos para el SAC, ordenados por fecha.</div>`;
   } else if (!D.causas.length) {
     main.innerHTML = `<div class="empty"><b>Todavía no hay causas cargadas</b>Usá “+ Nueva causa” para agregar la primera.</div>`; subtitulo('0 causas');
   } else {
@@ -1220,7 +1257,7 @@ $('#fEstado').addEventListener('change', (e) => { S.estado = e.target.value; ren
 $('#fNom').addEventListener('change', (e) => { S.nom = e.target.value; render(); });
 $('#fOrden').addEventListener('change', (e) => { const [k, dir] = e.target.value.split(':'); if (k) { S.sort = { k, dir: +dir }; render(); } });
 const verVista = (v) => () => { S.view = v; try { localStorage.setItem('gj.view', v); } catch { /* sin almacenamiento */ } render(); };
-$('#vLista').onclick = verVista('lista'); $('#vAcuerdos').onclick = verVista('acuerdos'); $('#vTablero').onclick = verVista('tablero');
+$('#vLista').onclick = verVista('lista'); $('#vAgenda').onclick = verVista('agenda'); $('#vAcuerdos').onclick = verVista('acuerdos'); $('#vTablero').onclick = verVista('tablero');
 $('#btnNew').onclick = $('#fabNew').onclick = () => openCausa(null);
 $('#btnTpl').onclick = abrirPlantillas;
 $('#btnExport').onclick = exportar;
@@ -1241,7 +1278,7 @@ movil.addEventListener('change', () => render());
 alCambiar((que, detalle) => {
   if (que === 'sesion') { if (detalle !== S.pantalla) mostrar(detalle); else if (detalle === 'listo') render(); return; }
   if (S.pantalla !== 'listo') return;
-  if (que === 'estado') { renderFranja(); if (D.cargado && S.view !== 'acuerdos') subtitulo(`${filtered().length} de ${D.causas.length} causas`); if (S.menu) renderMenu(); return; }
+  if (que === 'estado') { renderFranja(); if (D.cargado && S.view !== 'acuerdos' && S.view !== 'agenda') subtitulo(`${filtered().length} de ${D.causas.length} causas`); if (S.menu) renderMenu(); return; }
   render();
   if (S.tpl) refrescarTpl();
   if (S.open && !S.isNew) { const n = $('#nota'); if (n) n.innerHTML = notaHtml(); refrescarAgendaFicha(); } // sin tocar lo que se está escribiendo
