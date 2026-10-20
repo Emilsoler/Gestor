@@ -13,6 +13,9 @@ Tiene tres piezas:
   La dirección y la clave pública del proyecto están en `docs/config.js`.
 - **El chat**, en `supabase/functions/chat/`: una función de Supabase que habla con la API de
   Claude (ver "Chat con Claude y escritos para el SAC").
+- **La app de cobranzas**, en `docs/cobranzas/`: otra app instalable (deudores en mora,
+  liquidaciones, pagos imputados por rubro, planes de pago, WhatsApp), con la misma base, el mismo
+  login y las mismas barreras de acceso. Ver "Cobranzas", al final.
 
 Este repositorio es **público**: acá no van datos de causas, exportaciones, claves secretas
 ni nada del estudio que no sea el código.
@@ -162,7 +165,8 @@ aplicarla con `apply_migration` y pasar `get_advisors` (seguridad).
   barreras independientes, y ninguna migración debe aflojar una contando con las otras:
   1. `public.gestor_puerta()`, que PostgREST ejecuta antes de cada pedido
      (`pgrst.db_pre_request` en el rol `authenticator`) y rechaza a quien no es miembro.
-  2. Las políticas de filas de `causas`, `acuerdos` y `plantillas` (`public.es_miembro()`).
+  2. Las políticas de filas de `causas`, `acuerdos`, `plantillas`, `agenda` y las de cobranzas
+     (`deudores`, `modelos_mensaje`, `ajustes_cobranzas`), todas con `public.es_miembro()`.
   3. Las estadísticas del planificador desactivadas en todas las columnas de esas tablas,
      para que los conteos estimados de la API no revelen contenido. Si una migración agrega
      columnas, termina con `select gestor.sin_estadisticas();`.
@@ -248,3 +252,65 @@ aplicarla con `apply_migration` y pasar `get_advisors` (seguridad).
   entera desde 1140 px); en el celular, las vistas quedan debajo del buscador. Es el mismo
   HTML: `.lateral` y `.wrap` pasan a `display: contents` y el orden lo da `order`.
 - Comentarios en el código: por qué, no qué.
+
+## Cobranzas (`docs/cobranzas/`)
+
+Segunda app, para la cobranza de deudores en mora (hoy, los prendarios que la Asociación Mutual
+Bell pasa a Legales). Publicada en `…/gestor/cobranzas/`, instalable aparte (ícono "C" verde).
+Comparte con el gestor la base, el login (la sesión se guarda con la misma clave: quien entra en
+una está adentro de la otra), `config.js`, `vendor/`, las tipografías, `liquidacion.js` (importes) y
+`excel.js`. La persona es la única usuaria; se manejan los dos con `gestor.miembros`.
+
+- **Tablas** (migración 0008): `public.deudores` (una fila por deudor, con sus listas en jsonb:
+  teléfonos, operaciones, cuotas, gastos, pagos, planes, gestiones; la forma de cada una está al
+  principio de la migración), `public.modelos_mensaje` (textos de WhatsApp con `{{campos}}`) y
+  `public.ajustes_cobranzas` (una sola fila). Mismas barreras, `rev`, historial y `gestor.deshacer`.
+- **Cuentas** (`calculo.js` y `gestor.liquidacion_deudor`, que dan exactamente lo mismo: las pruebas
+  lo comparan con cientos de casos al azar). Como la planilla de Excel del estudio: interés simple,
+  `tasa` % mensual por cada 30 días, cuota por cuota desde su vencimiento; honorarios `hon_pct` %
+  sobre capital + intereses; gastos y honorarios fijos como rubros propios. "Según la Mutual" es el
+  9 % mensual capitalizable del sistema de la Mutual (`ajustes_cobranzas.tasa_sistema`), solo para
+  comparar: reproduce el listado con unos pesos de diferencia.
+- **Pagos**: cada pago dice a qué rubro va cada parte (`imp`: `capital`, `intereses`,
+  `honorarios` o el id de un gasto). **La persona indica la imputación en cada pago**: no hay un
+  orden automático. Lo imputado a capital cancela las cuotas en orden de vencimiento y desde la
+  fecha del pago deja de generar interés.
+- **Planes**: uno vigente por deudor. Los pagos con `plan` = id del plan cubren anticipo y cuotas en
+  orden; una cuota está atrasada a los `gracia` días; con `caducidad` cuotas atrasadas el plan
+  "está para caer" (la persona lo da por caído). Si cae, vuelve la deuda original con sus
+  intereses, descontados los pagos (por eso cada pago también se imputa a los rubros originales).
+  Cumplido: el deudor queda Cancelado.
+- **WhatsApp**: la app arma el mensaje y abre `wa.me` con el número y el texto; **lo envía la
+  persona**. No hay envío automático: la política de WhatsApp Business (app y API) prohíbe la
+  cobranza de deudas, y las APIs no oficiales arriesgan el número. Nunca mandar mensajes masivos.
+  Los modelos cuidan el art. 8 bis de la Ley 24.240 (nada que parezca un reclamo judicial).
+
+Para Claude, por el conector (firman "Claude"):
+
+```sql
+select id, nombre, socio, estado from public.deudores where nombre ilike '%apellido%';
+select gestor.liquidacion_deudor('<id>');                        -- a hoy; o ('<id>', '2026-11-30', true) con cuotas a vencer
+select gestor.registrar_pago('<id>', '2026-10-20', '{"capital": 250000, "intereses": 50000}', 'Recibo 123', 'Transferencia');
+select gestor.registrar_pago('<id>', '2026-10-20', '{"capital": 90000}', '', 'Efectivo', '', '<id del plan>');  -- pago de un plan
+select gestor.anotar_gestion('<id>', 'Llamé, no atiende', 'Llamada');
+select gestor.anotar_gestion('<id>', 'Dice que paga el viernes', 'Promesa de pago', null, '2026-10-24', 150000);
+select gestor.proxima_deudor('<id>', 'Llamar al garante', '2026-10-27');
+```
+
+Para registrar un pago hace falta que la persona diga a qué rubros va (si no lo dice, preguntarle).
+Otros cambios (datos, cuotas, planes): `update` directo dentro de una transacción con
+`set_config('gestor.autor', 'Claude', true)`, cuidando la forma de cada lista.
+
+**Importar el listado de la Mutual** ("PRENDARIOS · DOCUMENTOS VENCIDOS", un PDF del sistema):
+`pdftotext -layout listado.pdf - | node dev/importar-listado.mjs` muestra lo que se leyó (con los
+totales del listado para controlar) y con `--sql` arma el `insert` para `execute_sql`. Solo agrega
+los socios que no están: a los que ya se gestionan no los toca (comparar a mano si cambió algo).
+El listado y los datos no se guardan en el repositorio. Con el "N de M" de cada operación también
+se cargan las cuotas que faltan vencer, mes a mes.
+
+**Cambiar la app**: `docs/cobranzas/` (`app.js` interfaz, `datos.js` la base, `calculo.js` cuentas,
+`textos.js` fechas, importes y mensajes, `styles.css`). Si se toca una cuenta, también
+`gestor.liquidacion_deudor` (migración nueva). Probar con `npm run test:cobranzas` (y las del gestor);
+capturas en ancho de PC y de celular. Su service worker es `docs/cobranzas/sw.js` (`VERSION`
+propia); el del gestor no atiende nada de `cobranzas/`. Estilo: el del gestor, con verde petróleo y
+acento esmeralda (`--grad`); la barra de los gráficos (`--barra`) está validada contra la superficie.

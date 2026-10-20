@@ -31,6 +31,8 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const pedido = e.request, url = new URL(pedido.url);
   if (pedido.method !== 'GET' || url.origin !== self.location.origin) return;
+  // La app de cobranzas (cobranzas/) tiene su propio service worker: lo suyo no se toca acá.
+  if (url.pathname.includes('/cobranzas/')) return;
   const fijo = /\/(fonts|icons)\//.test(url.pathname);
   e.respondWith(fijo ? copiaPrimero(pedido) : redPrimero(e, pedido));
 });

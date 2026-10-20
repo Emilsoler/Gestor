@@ -13,6 +13,10 @@ Nada de esta carpeta se publica con la app (GitHub Pages sirve solo `docs/`).
 | `tests/chat.test.mjs` | La función `chat` de punta a punta: lo que manda a Claude, lo que hacen las herramientas y lo que vuelve. |
 | `claude-falso.mjs` | Un doble de la API de Claude (127.0.0.1:54340) que contesta lo que cada prueba le guiona. La función `chat` corre en local apuntando a él. |
 | `tests/app.test.mjs` | La app de punta a punta en un navegador real (Playwright). |
+| `tests/cobranzas.test.mjs` | Cobranzas: las cuentas (contra la planilla de Excel y el listado de la Mutual), la liquidación de la base comparada con la de la app en cientos de casos al azar, las funciones para Claude y los permisos. |
+| `tests/cobranzas-app.test.mjs` | La app de cobranzas de punta a punta (`/cobranzas/`), en PC y en celular. |
+| `importar-listado.mjs` | Lee el listado de prendarios vencidos de la Mutual (texto de `pdftotext -layout`) y arma los deudores; con `--sql`, el `insert` para la base. |
+| `iconos-cobranzas.mjs` | Regenera los íconos de la app de cobranzas. |
 | `tests/mirar.mjs`, `tests/estados.mjs` | Capturas de pantalla para revisar la app a ojo. |
 | `migrar.mjs` | Arma los lotes para pasar datos del gestor anterior y la consulta de verificación. |
 | `vendor.mjs`, `iconos.mjs` | Regeneran lo que la app trae de terceros (librería y tipografías) y los íconos. |
@@ -35,6 +39,7 @@ cd dev && npm install
 STACK=~/.stack ./stack.sh up            # base + login + API
 node serve.mjs &                        # la app en http://127.0.0.1:8080
 npm run test:db && npm run test:chat && npm run test:app     # todo tiene que pasar antes de publicar
+npm run test:cobranzas                                       # la app de cobranzas (en http://127.0.0.1:8080/cobranzas/)
 ```
 
 `./stack.sh reset` borra la base local y la crea de nuevo. `./stack.sh psql -c "…"` corre SQL como `postgres`.

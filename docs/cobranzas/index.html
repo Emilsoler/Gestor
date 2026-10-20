@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Cobranzas · Estudio Soler</title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="description" content="Cobranzas del Estudio Soler: deudores en mora, liquidaciones, pagos y planes de pago">
+<!-- Solo se cargan archivos de la propia app; lo único externo es la base de datos (Supabase). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://udfmoxnehgoihzsyrpvy.supabase.co wss://udfmoxnehgoihzsyrpvy.supabase.co; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0f2124">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Cobranzas">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="vArranque" class="arranque">Abriendo cobranzas…</div>
+
+<main id="vIngreso" class="portada" hidden>
+  <section class="caratula" aria-labelledby="tIngreso">
+    <div>
+      <h1 id="tIngreso"><span class="j">C</span>obranzas</h1>
+      <div class="estudio">Estudio Soler</div>
+    </div>
+    <div id="ingresoCuerpo" class="caratula-cuerpo"></div>
+  </section>
+</main>
+
+<div id="vApp" hidden>
+  <div class="app">
+    <!-- En la computadora, la barra lateral. En el celular solo quedan las vistas, debajo del encabezado. -->
+    <div class="lateral">
+      <div class="marca" aria-hidden="true"><span class="marca-j">C</span><span class="marca-txt">obranzas</span><small>Estudio Soler</small></div>
+      <div class="seg" id="vistas" role="group" aria-label="Vista">
+        <button id="v_inicio" aria-pressed="true"><span class="vista-txt">Inicio</span></button>
+        <button id="v_deudores" aria-pressed="false"><span class="vista-txt">Deudores</span><span class="badge" id="nDeudores" hidden></span></button>
+        <button id="v_planes" aria-pressed="false"><span class="vista-txt">Planes</span><span class="badge" id="nPlanes" hidden></span></button>
+        <button id="v_cobros" aria-pressed="false"><span class="vista-txt">Cobros</span></button>
+      </div>
+      <a class="otra-app" href="../" target="_blank" rel="noopener"><span class="otra-j">J</span><span class="otra-txt">Juicios</span></a>
+    </div>
+
+    <div class="wrap">
+      <header>
+        <div class="titulos">
+          <h1><span class="h-marca"><span class="j">C</span>obranzas</span><span class="h-vista" id="tVista">Inicio</span></h1>
+          <div class="sub" id="sub"></div>
+        </div>
+        <div class="actions">
+          <button class="cuenta" id="btnCuenta" aria-haspopup="menu" aria-expanded="false" aria-label="Cuenta y opciones"></button>
+        </div>
+        <div class="pildoras solo-escritorio">
+          <button class="btn primary" id="btnNuevo">+ Nuevo deudor</button>
+          <button class="btn" id="btnMensajes">Modelos de mensaje</button>
+          <button class="btn" id="btnAjustes">Ajustes</button>
+        </div>
+      </header>
+
+      <div id="franja"></div>
+
+      <div class="toolbar" id="toolbar" hidden>
+        <input type="search" id="q" placeholder="Buscar por nombre, DNI, socio, teléfono o dominio…" aria-label="Buscar">
+        <select id="fOrden" aria-label="Orden del listado"></select>
+      </div>
+      <div class="chips" id="chips" hidden></div>
+
+      <main id="main"></main>
+    </div>
+  </div>
+  <button class="btn primary fab" id="fabNuevo">+ Nuevo deudor</button>
+</div>
+
+<div id="drawer" hidden></div>
+<div id="menu" hidden></div>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<noscript>La app de cobranzas necesita JavaScript para funcionar.</noscript>
+<script src="../vendor/supabase.js"></script>
+<script src="../config.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
