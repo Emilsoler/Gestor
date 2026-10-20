@@ -8,6 +8,8 @@
 //   NN-<tabla>.sql   lotes chicos para correr en orden (psql local, o el conector de Supabase)
 //   verificar.sql    consulta que devuelve una huella por tabla
 // Los datos son de clientes: la carpeta de salida NO va al repositorio.
+// El gestor anterior tenía `estado` y `etiquetas`; entran traducidos con gestor.forma_0007 a
+// ubicación, estado (etapa), etiqueta cautelar y situación.
 //
 // Cómo se verifica que no cambió nada en el camino: se cargan los mismos lotes en la base
 // local, se corre verificar.sql en las dos bases y las huellas tienen que coincidir.
@@ -61,13 +63,13 @@ function lotes(filas) {
 const SQL = {
   causas: (filas) => `begin;
 select set_config('gestor.autor', 'Traspaso inicial', true);
-insert into public.causas (expte, actor, demandado, tipo, nom, oficina, estado, etiquetas, proxima, vence, ultima, fecha, notas, historial, liquidacion)
-select x.expte, x.actor, x.demandado, x.tipo, x.nom, x.oficina, x.estado,
-       coalesce((select array_agg(e.v order by e.n) from jsonb_array_elements_text(x.etiquetas) with ordinality e(v, n)), '{}'),
+insert into public.causas (expte, actor, demandado, tipo, nom, oficina, ubicacion, estado, cautelar, situacion, proxima, vence, ultima, fecha, notas, historial, liquidacion)
+select x.expte, x.actor, x.demandado, x.tipo, x.nom, x.oficina, n ->> 'ubicacion', n ->> 'estado', n ->> 'cautelar', n ->> 'situacion',
        x.proxima, nullif(x.vence, '')::date, x.ultima, nullif(x.fecha, '')::date, x.notas, x.historial, nullif(x.liquidacion, 'null'::jsonb)
   from jsonb_to_recordset(${literal(JSON.stringify(filas))})
     as x(expte text, actor text, demandado text, tipo text, nom text, oficina text, estado text, etiquetas jsonb,
-         proxima text, vence text, ultima text, fecha text, notas text, historial jsonb, liquidacion jsonb);
+         proxima text, vence text, ultima text, fecha text, notas text, historial jsonb, liquidacion jsonb),
+       lateral gestor.forma_0007(jsonb_build_object('estado', x.estado, 'etiquetas', coalesce(x.etiquetas, '[]'::jsonb))) n;
 commit;`,
   acuerdos: (filas) => `begin;
 select set_config('gestor.autor', 'Traspaso inicial', true);
@@ -97,7 +99,7 @@ for (const [tabla, filas] of [['causas', causas], ['acuerdos', acuerdos], ['plan
 // Huella de cada tabla: cantidad de filas y un md5 de todo su contenido, en un orden fijo.
 // Los acuerdos no llevan su id (se genera en la base nueva).
 writeFileSync(join(salida, 'verificar.sql'), `select 'causas' as tabla, count(*) as filas,
-       md5(coalesce(string_agg(md5(concat_ws('|', expte, actor, demandado, tipo, nom, oficina, estado, array_to_string(etiquetas, ','),
+       md5(coalesce(string_agg(md5(concat_ws('|', expte, actor, demandado, tipo, nom, oficina, ubicacion, estado, cautelar, situacion,
            proxima, coalesce(to_char(vence, 'YYYY-MM-DD'), ''), ultima, coalesce(to_char(fecha, 'YYYY-MM-DD'), ''), notas,
            historial::text, coalesce(liquidacion::text, ''))), '' order by expte), '')) as huella
   from public.causas

@@ -38,9 +38,9 @@ before(async () => {
   await crearCuenta('emi@test.local', 'Clave-de-prueba-2026', 'Emi');
   token = (await entrar('emi@test.local', 'Clave-de-prueba-2026')).sesion.access_token;
   sql(`begin; select set_config('gestor.autor', 'Semilla', true);
-    insert into public.causas (expte, actor, demandado, tipo, nom, oficina, estado, proxima, vence, notas, historial) values
-      ('1001', 'AMB', 'ALFA ANA', 'EJECUTIVO', '2', 'OEP', 'Casillero', 'Solicitar aprobación de liquidación', gestor.hoy() + 1, 'tel 123', '[]'),
-      ('1002', 'AMB', 'BETA BRUNO', 'PRENDARIO', '1', 'OEP', 'A despacho', '', null, '', '[]');
+    insert into public.causas (expte, actor, demandado, tipo, nom, oficina, ubicacion, estado, cautelar, proxima, vence, notas, historial) values
+      ('1001', 'AMB', 'ALFA ANA', 'EJECUTIVO', '2', 'OEP', 'Casillero', '4. Ejecución de Sentencia', 'Embargo de sueldo', 'Solicitar aprobación de liquidación', gestor.hoy() + 1, 'tel 123', '[]'),
+      ('1002', 'AMB', 'BETA BRUNO', 'PRENDARIO', '1', 'OEP', 'A despacho', '2. No oposición de excepciones', 'Vehículo secuestrado', '', null, '', '[]');
     insert into public.plantillas (id, titulo, cuerpo) values
       ('aprobacion', 'Solicita aprobación de liquidación', 'En autos {{caratula}}, expediente {{expediente}}, de la {{nominacion}} nominación: solicito se apruebe la liquidación.');
     commit;`);
@@ -95,27 +95,29 @@ test('herramientas: busca, lee, cambia y anota; los cambios quedan firmados como
   await guion([
     { herramientas: [{ name: 'buscar_causas', input: { texto: 'alfa' } }, { name: 'listar_pendientes', input: {} }] },
     { herramientas: [{ name: 'ver_causa', input: { expte: '1001' } }] },
-    { herramientas: [{ name: 'editar_causa', input: { expte: '1001', estado: 'A despacho', agregar_a_notas: 'Llamó el demandado' } }] },
-    { herramientas: [{ name: 'registrar_movimiento', input: { expte: '1002', texto: 'Decreto: autos a despacho' } }] },
+    { herramientas: [{ name: 'editar_causa', input: { expte: '1001', ubicacion: 'A despacho', agregar_a_notas: 'Llamó el demandado' } }] },
+    { herramientas: [{ name: 'registrar_movimiento', input: { expte: '1002', texto: 'Sentencia de remate', estado: '3. Sentencia', ubicacion: 'Casillero' } }] },
     { texto: 'Hecho.' },
   ]);
-  const r = await chat({ historial: [], texto: 'Pasá Alfa a despacho, anotá que llamó, y en Beta anotá el decreto de hoy.' });
+  const r = await chat({ historial: [], texto: 'Pasá Alfa a despacho, anotá que llamó, y en Beta anotá la sentencia de hoy.' });
   assert.equal(r.status, 200);
   assert.equal(r.datos.nuevos.length, 10); // usuario + 4 × (asistente, resultados) + respuesta final
   assert.equal(r.datos.cambios, true);
-  assert.deepEqual(r.datos.acciones, ['Causa 1001: estado, notas actualizados', `Causa 1002: movimiento anotado (${sql(`select to_char(gestor.hoy(), 'DD/MM/YYYY')`)}: Decreto: autos a despacho)`]);
+  assert.deepEqual(r.datos.acciones, ['Causa 1001: notas, ubicación actualizados', `Causa 1002: movimiento anotado (${sql(`select to_char(gestor.hoy(), 'DD/MM/YYYY')`)}: Sentencia de remate), estado 3. Sentencia, Casillero`]);
   const ps = await pedidos();
   const res = (i) => ps[i].cuerpo.messages.at(-1).content.map((b) => JSON.parse(b.content));
   const [busqueda, pendientes] = res(1);
   assert.equal(busqueda.encontradas, 1);
   assert.equal(busqueda.causas[0].caratula, 'AMB c/ ALFA ANA – EJECUTIVO');
+  assert.deepEqual([busqueda.causas[0].ubicacion, busqueda.causas[0].estado, busqueda.causas[0].cautelar, busqueda.causas[0].situacion],
+    ['Casillero', '4. Ejecución de Sentencia', 'Embargo de sueldo', 'En trámite']);
   assert.equal(pendientes.proximas_acciones[0].expte, '1001');
-  assert.equal(pendientes.proximas_acciones[0].situacion.startsWith('vence el'), true);
+  assert.equal(pendientes.proximas_acciones[0].plazo.startsWith('vence el'), true);
   const [ficha] = res(2);
   assert.equal(ficha.notas, 'tel 123');
   assert.equal(ficha.nominacion, '2°');
-  assert.equal(sql(`select estado || '|' || notas || '|' || actualizado_por from public.causas where expte = '1001'`), 'A despacho|tel 123\nLlamó el demandado|Claude');
-  assert.equal(sql(`select ultima || '|' || (fecha = gestor.hoy()) || '|' || actualizado_por from public.causas where expte = '1002'`), 'Decreto: autos a despacho|true|Claude');
+  assert.equal(sql(`select ubicacion || '|' || estado || '|' || notas || '|' || actualizado_por from public.causas where expte = '1001'`), 'A despacho|4. Ejecución de Sentencia|tel 123\nLlamó el demandado|Claude');
+  assert.equal(sql(`select ultima || '|' || (fecha = gestor.hoy()) || '|' || estado || '|' || ubicacion || '|' || actualizado_por from public.causas where expte = '1002'`), 'Sentencia de remate|true|3. Sentencia|Casillero|Claude');
   assert.equal(sql(`select count(*) from gestor.cambios where autor = 'Claude' and clave in ('1001', '1002')`), '2');
   // el pensamiento firmado vuelve a Claude tal cual en el pedido siguiente
   assert.deepEqual(ps[1].cuerpo.messages.at(-2).content[0], { type: 'thinking', thinking: 'Voy a usar las herramientas del gestor.', signature: ps[1].cuerpo.messages.at(-2).content[0].signature });
@@ -127,10 +129,10 @@ test('lo que no se puede hacer vuelve a Claude explicado, sin tocar nada', async
   const antes = sql(`select string_agg(rev::text, ',' order by expte) from public.causas`);
   await guion([
     { herramientas: [
-      { name: 'editar_causa', input: { expte: '9999', estado: 'A despacho' } },
+      { name: 'editar_causa', input: { expte: '9999', ubicacion: 'A despacho' } },
       { name: 'editar_causa', input: { expte: '1001', estado: 'Inventado' } },
       { name: 'editar_causa', input: { expte: '1001' } },
-      { name: 'editar_causa', input: { expte: '1001', etiquetas: ['Rara'] } },
+      { name: 'editar_causa', input: { expte: '1001', cautelar: 'Rara' } },
       { name: 'registrar_movimiento', input: { expte: '1001', texto: 'Algo futuro', fecha: '2999-01-01' } },
       { name: 'ver_causa', input: { expte: '1001; drop table causas' } },
       { name: 'marcar_realizada', input: { expte: '1002' } },
@@ -138,18 +140,20 @@ test('lo que no se puede hacer vuelve a Claude explicado, sin tocar nada', async
       { name: 'preparar_presentacion', input: { expte: '1001', fecha: habil(), plantilla_id: 'no-existe' } },
       { name: 'cancelar_presentacion', input: { id: '00000000-0000-0000-0000-000000000000' } },
       { name: 'herramienta_inventada', input: {} },
+      { name: 'editar_causa', input: { expte: '1001', estado: 'A despacho' } },
+      { name: 'registrar_movimiento', input: { expte: '1001', texto: 'Archivo', ubicacion: 'Archivada' } },
     ] },
     { texto: 'No pude.' },
   ]);
   const r = await chat({ historial: [], texto: 'Probá cosas raras.' });
   assert.equal(r.status, 200);
   const rs = await resultados();
-  assert.equal(rs.length, 11);
+  assert.equal(rs.length, 13);
   assert.ok(rs.every((x) => x.es_error && x.error), 'todos vuelven como error, explicado');
   assert.match(rs[0].error, /No existe la causa con expediente 9999/);
   assert.match(rs[1].error, /Estado desconocido/);
   assert.match(rs[2].error, /No mandaste ningún cambio/);
-  assert.match(rs[3].error, /Etiquetas desconocidas: Rara/);
+  assert.match(rs[3].error, /Etiqueta cautelar desconocida: "Rara"\. Las etiquetas cautelares son: Sin Cautelar, Embargo de sueldo, Vehículo secuestrado/);
   assert.match(rs[4].error, /ya pasó/);
   assert.match(rs[5].error, /no es un N° de expediente/);
   assert.match(rs[6].error, /no tiene próxima acción/);
@@ -157,9 +161,41 @@ test('lo que no se puede hacer vuelve a Claude explicado, sin tocar nada', async
   assert.match(rs[8].error, /No existe la plantilla "no-existe".*Solicita aprobación de liquidación \(id aprobacion\)/);
   assert.match(rs[9].error, /No existe ese escrito/);
   assert.match(rs[10].error, /No existe la herramienta/);
+  assert.match(rs[11].error, /Estado desconocido: "A despacho"\. Ese valor va en ubicacion\./);
+  assert.match(rs[12].error, /Ubicación desconocida: "Archivada"\. Ese valor va en situacion\./);
   assert.equal(sql(`select string_agg(rev::text, ',' order by expte) from public.causas`), antes);
   assert.equal(sql(`select count(*) from public.agenda`), '0');
   assert.equal(r.datos.cambios, false);
+});
+
+test('buscar por ubicación, estado, cautelar o situación; las archivadas solo si se piden', async () => {
+  await olvidar();
+  sql(`begin; select set_config('gestor.autor', 'Semilla', true);
+    insert into public.causas (expte, actor, demandado, tipo, ubicacion, estado, cautelar, situacion, notas, historial) values
+      ('1003', 'AMB', 'GAMA GIL', 'PRENDARIO', 'A despacho', '5. Martillero Designado', 'Vehículo secuestrado', 'Archivada', '', '[]'),
+      ('1004', 'AMB', 'DELTA DORA', 'EJECUTIVO', 'A despacho', '5. Martillero Designado', 'Vehículo secuestrado', 'En trámite', 'el expediente pasó a despacho', '[]');
+    commit;`);
+  await guion([
+    { herramientas: [
+      { name: 'buscar_causas', input: { ubicacion: 'A despacho', cautelar: 'Vehículo secuestrado' } },
+      { name: 'buscar_causas', input: { situacion: 'Archivada' } },
+      { name: 'buscar_causas', input: { texto: 'gama' } },
+      { name: 'buscar_causas', input: { texto: 'despacho', estado: '5. Martillero Designado' } },
+      { name: 'buscar_causas', input: { estado: 'Casillero' } },
+      { name: 'buscar_causas', input: {} },
+    ] },
+    { texto: 'ok' },
+  ]);
+  await chat({ historial: [], texto: '¿Qué causas con vehículo secuestrado están a despacho?' });
+  const [despacho, archivadas, gama, conTexto, mal, vacia] = await resultados();
+  assert.deepEqual(despacho.causas.map((c) => c.expte), ['1004'], 'la archivada no aparece');
+  assert.equal(despacho.archivadas_que_coinciden, 1);
+  assert.deepEqual(archivadas.causas.map((c) => c.expte), ['1003'], 'si se pide Archivada, aparecen');
+  assert.deepEqual([gama.encontradas, gama.archivadas_que_coinciden], [0, 1]);
+  assert.deepEqual(conTexto.causas.map((c) => c.expte), ['1004']);
+  assert.match(mal.error, /Estado desconocido: "Casillero"\. Ese valor va en ubicacion\./);
+  assert.match(vacia.error, /Decime qué buscar/);
+  sql(`delete from public.causas where expte in ('1003', '1004')`);
 });
 
 test('preparar un escrito deja un borrador para confirmar en la app, no algo para presentar', async () => {

@@ -59,11 +59,11 @@ before(async () => {
   limpiar();
   await crearCuenta(EMAIL, claveTemporal, 'Emi', true); // creada con una clave provisoria: la app obliga a cambiarla
   sql(`begin; select set_config('gestor.autor', 'Semilla', true);
-    insert into public.causas (expte, actor, demandado, tipo, nom, oficina, estado, etiquetas, proxima, vence, ultima, fecha, historial) values
-     ('1001','AMB','ALFA ANA','EJECUTIVO','1','OEP','Casillero','{"En trámite"}','Pedir embargo','${dia(-2)}','Dimos cédula','${dia(-40)}','[{"fecha":"${dia(-40)}","texto":"Dimos cédula"}]'),
-     ('1002','AMB','BETA BRUNO','PRENDARIO','2','OEP','A despacho','{"Secuestro / subasta"}','',null,'Ejecutamos sentencia','${dia(-5)}','[]'),
-     ('1003','AMB','GAMA CARLA','EJECUTIVO','3','OEP VM','Archivada','{}','',null,'Archivo','${dia(-200)}','[]'),
-     ('1004','AMB','<img src=x onerror="window.__xss=1"> DELTA','EJECUTIVO','1','OEP','Casillero','{"Embargo de sueldo"}','Enviar cédulas','${dia(3)}','Solicitamos embargo','${dia(-1)}','[]');
+    insert into public.causas (expte, actor, demandado, tipo, nom, oficina, ubicacion, estado, cautelar, situacion, proxima, vence, ultima, fecha, historial) values
+     ('1001','AMB','ALFA ANA','EJECUTIVO','1','OEP','Casillero','1.1 Demanda','Sin Cautelar','En trámite','Pedir embargo','${dia(-2)}','Dimos cédula','${dia(-40)}','[{"fecha":"${dia(-40)}","texto":"Dimos cédula"}]'),
+     ('1002','AMB','BETA BRUNO','PRENDARIO','2','OEP','A despacho','4. Ejecución de Sentencia','Vehículo secuestrado','En trámite','',null,'Ejecutamos sentencia','${dia(-5)}','[]'),
+     ('1003','AMB','GAMA CARLA','EJECUTIVO','3','OEP VM','Casillero','3. Sentencia','Sin Cautelar','Archivada','',null,'Archivo','${dia(-200)}','[]'),
+     ('1004','AMB','<img src=x onerror="window.__xss=1"> DELTA','EJECUTIVO','1','OEP','Casillero','2. No oposición de excepciones','Embargo de sueldo','En trámite','Enviar cédulas','${dia(3)}','Solicitamos embargo','${dia(-1)}','[]');
     insert into public.plantillas (id, titulo, cuerpo) values ('aprobacion', 'Solicita aprobación', 'En autos {{caratula}}, expediente {{expediente}} de la {{nominacion}} nominación.');
     commit;`);
   browser = await chromium.launch();
@@ -103,9 +103,18 @@ test('listado: activas, archivadas aparte, búsqueda, filtros y vencidas', async
   await page.selectOption('#fNom', '1');
   assert.equal(await page.locator('#main tbody tr').count(), 2);
   await page.selectOption('#fNom', '');
-  await page.click('#chips .chip[data-t="e:A despacho"]');
-  assert.equal(await page.locator('#main tbody tr').count(), 1);
+  const ids = () => page.locator('#main tbody tr').evaluateAll((rs) => rs.map((r) => r.dataset.id).sort());
+  await page.click('#chips .chip[data-t="u:A despacho"]');
+  assert.deepEqual(await ids(), ['1002']);
+  await page.click('#chips .chip[data-t="u:Casillero"]');
+  assert.deepEqual(await ids(), ['1001', '1004'], 'la archivada tampoco aparece en el casillero');
+  await page.click('#chips .chip[data-t="c:Embargo de sueldo"]');
+  assert.deepEqual(await ids(), ['1004']);
+  assert.match(await page.textContent('#chips .chip[data-t="c:Vehículo secuestrado"]'), /Vehículos secuestrados · 1/);
   await page.click('#chips .chip[data-t=""]');
+  await page.selectOption('#fEstado', '1.1 Demanda');
+  assert.deepEqual(await ids(), ['1001']);
+  await page.selectOption('#fEstado', '');
   // orden por demandado
   await page.click('th[data-k="demandado"]');
   assert.match(await page.locator('#main tbody tr').first().textContent(), /DELTA/); // "<img…" ordena primero
@@ -135,11 +144,14 @@ test('nueva causa: validaciones, alta y autoría', async () => {
   await page.click('.ppie [data-act=save]'); await toast(page, 'Ya existe una causa');
   await page.fill('#c_expte', '2001'); await page.fill('#c_nom', '2');
   await page.fill('#c_proxima', 'Notificar'); await page.fill('#c_vence', dia(10));
-  await page.click('.panel .chip[data-t="Martillero"]');
+  // una causa nueva arranca en la primera etapa, en el casillero, sin cautelar y en trámite
+  assert.deepEqual([await page.inputValue('#c_ubicacion'), await page.inputValue('#c_estado'), await page.inputValue('#c_cautelar'), await page.inputValue('#c_situacion')],
+    ['Casillero', '0. Iniciamos', 'Sin Cautelar', 'En trámite']);
+  await page.selectOption('#c_cautelar', 'Embargo de sueldo');
   await page.click('.ppie [data-act=save]'); await toast(page, 'Causa creada'); await cerrado(page);
   assert.match(await fila(page, '2001').textContent(), /OMEGA OSCAR/);
-  assert.equal(sql(`select demandado || '|' || estado || '|' || array_to_string(etiquetas, ',') || '|' || proxima || '|' || vence || '|' || actualizado_por from public.causas where expte='2001'`),
-    `OMEGA OSCAR|Iniciar|En trámite,Martillero|Notificar|${dia(10)}|Emi`);
+  assert.equal(sql(`select concat_ws('|', demandado, ubicacion, estado, cautelar, situacion, proxima, vence, actualizado_por) from public.causas where expte='2001'`),
+    `OMEGA OSCAR|Casillero|0. Iniciamos|Embargo de sueldo|En trámite|Notificar|${dia(10)}|Emi`);
 });
 
 test('causa sin demandado: se guarda, se nombra por el actor y se puede editar', async () => {
@@ -192,11 +204,12 @@ test('ficha: registrar movimientos actualiza la última acción', async () => {
   await page.fill('#h_fecha', dia(-3)); await page.fill('#h_texto', 'Oficio diligenciado'); await page.keyboard.press('Enter');
   // a igual fecha, el anotado después queda arriba y es la última acción
   assert.match(await page.locator('.hist li').first().textContent(), /Oficio diligenciado/);
-  await page.selectOption('#c_estado', 'Sentencia');
+  await page.selectOption('#c_estado', '5. Martillero Designado');
+  await page.selectOption('#c_ubicacion', 'Casillero');
   await page.click('.ppie [data-act=save]'); await toast(page, 'Cambios guardados'); await cerrado(page);
   assert.match(await fila(page, '1002').textContent(), /Oficio diligenciado/);
-  assert.equal(sql(`select ultima || '|' || fecha || '|' || estado || '|' || jsonb_array_length(historial) from public.causas where expte='1002'`),
-    `Oficio diligenciado|${dia(-3)}|Sentencia|2`);
+  assert.equal(sql(`select concat_ws('|', ultima, fecha, estado, ubicacion, jsonb_array_length(historial)) from public.causas where expte='1002'`),
+    `Oficio diligenciado|${dia(-3)}|5. Martillero Designado|Casillero|2`);
 });
 
 test('acción realizada desde el listado: pasa a movimientos con su fecha de vencimiento', async () => {
@@ -373,7 +386,7 @@ test('exportar: descarga un CSV con lo que se ve', async () => {
   const [descarga] = await Promise.all([page.waitForEvent('download'), page.click('#btnExport')]);
   assert.match(descarga.suggestedFilename(), /^juicios-\d{4}-\d{2}-\d{2}\.csv$/);
   const s = await descarga.createReadStream(); let csv = ''; for await (const c of s) csv += c;
-  assert.ok(csv.startsWith('﻿Actor;Demandado;Tipo;Expediente'));
+  assert.ok(csv.startsWith('﻿Actor;Demandado;Tipo;Expediente;Nominación;Oficina;Ubicación;Estado;Etiqueta Cautelar;Situación;'));
   assert.equal(csv.trim().split('\n').length, 5); // encabezado + 4 causas activas
 });
 
@@ -386,7 +399,7 @@ test('lo que actualiza Claude aparece solo, sin recargar', async () => {
 test('si Claude cambia una causa que tengo abierta: aviso, y al guardar elijo qué hacer', async () => {
   await abrir(page, '2001');
   await page.fill('#c_notas', 'mi nota');
-  sql(`select gestor.movimiento('2001', 'Cédula diligenciada', null, 'Notificando')`);
+  sql(`select gestor.movimiento('2001', 'Cédula diligenciada', null, '1.1 Demanda')`);
   await page.waitForSelector('#nota .nota', { timeout: 10000 });
   assert.match(await page.textContent('#nota'), /Claude actualizó esta causa/);
   assert.equal(await page.inputValue('#c_notas'), 'mi nota', 'el aviso no borra lo que estaba escribiendo');
@@ -394,11 +407,11 @@ test('si Claude cambia una causa que tengo abierta: aviso, y al guardar elijo qu
   await page.click('.ppie [data-act=save]');
   await page.waitForSelector('#nota .nota.choque');
   assert.match(await page.textContent('#nota'), /No se guardó: Claude modificó esta causa/);
-  assert.equal(sql(`select notas || '|' || estado from public.causas where expte='2001'`), '|Notificando');
+  assert.equal(sql(`select notas || '|' || estado from public.causas where expte='2001'`), '|1.1 Demanda');
   // ver la versión actual descarta lo mío
   await page.click('[data-act=choque-ver]');
   assert.equal(await page.inputValue('#c_notas'), '');
-  assert.equal(await page.inputValue('#c_estado'), 'Notificando');
+  assert.equal(await page.inputValue('#c_estado'), '1.1 Demanda');
   assert.match(await page.textContent('.hist'), /Cédula diligenciada/);
   // segundo choque: guardar lo mío igual
   await page.fill('#c_notas', 'nota definitiva');
@@ -675,7 +688,7 @@ test('escritos para el SAC: «Ahora» deja el borrador listo, con lo que corrigi
   sql(`select gestor.agenda_presentada('${id}', 'Presentado en el SAC a las 11:40')`);
   await enFicha(page, /Presentado en el SAC a las 11:40/);
   await page.keyboard.press('Escape'); await cerrado(page);
-  assert.equal(sql(`select estado || '|' || (historial -> -1 ->> 'texto') from public.causas where expte = '1002'`), 'A despacho|Designa martillero');
+  assert.equal(sql(`select ubicacion || '|' || (historial -> -1 ->> 'texto') from public.causas where expte = '1002'`), 'A despacho|Designa martillero');
 });
 
 test('escritos para el SAC: «Agendar» no presenta solo; «Presentar ahora» lo deja listo; si no se pudo guardar, no abre nada', async () => {
@@ -816,6 +829,48 @@ test('cheques: la ficha los muestra y los guarda como cheque', async () => {
   await page.fill('#c_notas', 'guardado con un cheque');
   await page.click('.ppie [data-act=save]'); await toast(page, 'Cambios guardados');
   assert.equal(sql(`select titulos -> 0 ->> 'tipo' from public.causas where expte='1002'`), 'cheque');
+});
+
+test('ubicación, estado, etiqueta cautelar y situación: se ven, se filtran, se guardan, y archivar saca la causa del listado', async () => {
+  const ESTADOS = ['0. Iniciamos', '1.1 Demanda', '1.2 Contestación', '2. No oposición de excepciones', '3. Sentencia', '4. Ejecución de Sentencia', '5. Martillero Designado'];
+  sql(`begin; select set_config('gestor.autor', 'Semilla', true);
+    update public.causas set ubicacion = 'A despacho', estado = '5. Martillero Designado', cautelar = 'Vehículo secuestrado', situacion = 'En trámite' where expte = '1002';
+    update public.causas set ubicacion = 'Casillero', estado = '', cautelar = 'Sin Cautelar', situacion = 'En trámite' where expte = '1001';
+    commit;`);
+  await page.waitForFunction(() => /5\. Martillero Designado/.test(document.querySelector('#main tr[data-id="1002"]')?.textContent || ''), null, { timeout: 8000 });
+  await page.waitForFunction(() => !document.querySelector('#main tr[data-id="1001"] .tag.etapa'), null, { timeout: 8000 });
+  // en el listado: la ubicación en su columna; la etapa y la cautelar como etiquetas debajo de la carátula (sin cautelar, ninguna)
+  assert.deepEqual(await fila(page, '1002').locator('.pill').allTextContents(), ['A despacho']);
+  assert.deepEqual((await fila(page, '1002').locator('td.car .tag').allTextContents()).slice(0, 2), ['5. Martillero Designado', 'Vehículo secuestrado']);
+  assert.ok(!(await fila(page, '1001').locator('.tag').allTextContents()).some((t) => /cautelar|trámite/i.test(t)));
+  assert.equal(await page.evaluate(() => { const b = document.querySelector('.tablebox'); return b.scrollWidth <= b.clientWidth; }), true, 'la tabla entra en 1280 px, sin deslizar');
+  // tablero: una columna por etapa, en orden, y la de las causas sin estado al final
+  await page.click('#vTablero');
+  assert.deepEqual(await page.locator('#main .col h3 span:first-child').allTextContents(), [...ESTADOS, '(sin estado)']);
+  assert.equal(await page.locator('#main .col').nth(6).locator('.card[data-id="1002"]').count(), 1);
+  assert.equal(await page.textContent('#main .card[data-id="1002"] .card-top .pill'), 'A despacho');
+  assert.equal(await page.locator('#main .col').nth(7).locator('.card[data-id="1001"]').count(), 1);
+  await page.click('#vLista');
+  // la ficha: un desplegable por dato, con sus valores fijos
+  await abrir(page, '1001');
+  assert.deepEqual(await page.locator('#c_ubicacion option').allTextContents(), ['Casillero', 'A despacho']);
+  assert.deepEqual(await page.locator('#c_estado option').allTextContents(), ['(sin estado)', ...ESTADOS]);
+  assert.deepEqual(await page.locator('#c_cautelar option').allTextContents(), ['Sin Cautelar', 'Embargo de sueldo', 'Vehículo secuestrado']);
+  assert.deepEqual(await page.locator('#c_situacion option').allTextContents(), ['En trámite', 'Acuerdo', 'Archivada']);
+  assert.equal(await page.locator('.panel .chip').count(), 0, 'ya no hay etiquetas sueltas');
+  await page.selectOption('#c_ubicacion', 'A despacho');
+  await page.selectOption('#c_estado', '1.2 Contestación');
+  await page.selectOption('#c_cautelar', 'Embargo de sueldo');
+  await page.selectOption('#c_situacion', 'Archivada');
+  await page.click('.ppie [data-act=save]'); await toast(page, 'Cambios guardados'); await cerrado(page);
+  assert.equal(sql(`select concat_ws('|', ubicacion, estado, cautelar, situacion, actualizado_por) from public.causas where expte = '1001'`), 'A despacho|1.2 Contestación|Embargo de sueldo|Archivada|Emi');
+  // archivada: sale del listado y queda en Archivadas, con su etiqueta
+  assert.equal(await fila(page, '1001').count(), 0);
+  await page.click('.stat[data-q="arch"]');
+  assert.match(await fila(page, '1001').textContent(), /Archivada/);
+  await page.click('.stat[data-q="arch"]');
+  sql(`begin; select set_config('gestor.autor', 'Semilla', true); update public.causas set situacion = 'En trámite' where expte = '1001'; commit;`);
+  await page.waitForFunction(() => !!document.querySelector('#main tr[data-id="1001"]'), null, { timeout: 8000 });
 });
 
 test('dentro de un marco de otra página la app no arranca', async () => {

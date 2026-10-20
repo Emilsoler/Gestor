@@ -57,7 +57,7 @@ const ingresar = async (page) => {
 { // celular: filtros abiertos y ficha con aviso
   const { ctx, page } = await abrir({ width: 390, height: 844 }, { deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   await ingresar(page);
-  await page.tap('#btnFiltros'); await page.selectOption('#fEstado', 'Casillero'); await page.waitForTimeout(150);
+  await page.tap('#btnFiltros'); await page.selectOption('#fEstado', '4. Ejecución de Sentencia'); await page.waitForTimeout(150);
   await page.screenshot({ path: `${dir}/6-cel-filtros.png` });
   await page.tap('#vTablero'); await page.waitForTimeout(200);
   await page.screenshot({ path: `${dir}/7-cel-tablero.png` });

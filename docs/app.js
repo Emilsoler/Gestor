@@ -8,12 +8,13 @@ import {
 } from './datos.js';
 import { idNuevo, nuevaLiquidacion, cobradoRubro, totalPago, liqNormal, liqCalc, importe, pesos, enCelda, planillaExcel } from './liquidacion.js';
 
-const VERSION = '1.8.1';
+const VERSION = '1.9.0';
 
-const TAGS = [
-  { k: 'En trámite', c: '' }, { k: 'Embargo de sueldo', c: 't-emb' }, { k: 'Secuestro / subasta', c: 't-sec' },
-  { k: 'Acuerdo', c: 't-acu' }, { k: 'Martillero', c: 't-mar' }, { k: 'OP solicitada', c: 't-op' }];
-const ESTADOS = ['Iniciar', 'Notificando', 'Casillero', 'A despacho', 'Sentencia', 'Tramites p/ subasta', 'Acuerdo', 'Archivada'];
+// Cuatro datos de cada causa, con valores fijos: los mismos que acepta la base (supabase/migrations/0007).
+const UBICACIONES = ['Casillero', 'A despacho'];
+const ESTADOS = ['0. Iniciamos', '1.1 Demanda', '1.2 Contestación', '2. No oposición de excepciones', '3. Sentencia', '4. Ejecución de Sentencia', '5. Martillero Designado'];
+const CAUTELARES = ['Sin Cautelar', 'Embargo de sueldo', 'Vehículo secuestrado'];
+const SITUACIONES = ['En trámite', 'Acuerdo', 'Archivada'];
 const STALE = 30; // días sin movimiento para marcar una causa
 const GRACIA = 5; // días después del vencimiento de una cuota antes de preguntar si se pagó
 const CLAVE_MIN = 10;
@@ -55,8 +56,13 @@ const titulo = (c) => c.demandado || c.actor || '(sin carátula)';
 const partes = (c) => (c.actor && !c.demandado ? c.actor : `${c.actor || 'AMB'} c/ ${c.demandado || '…'}`);
 const bajada = (c) => (c.demandado ? `${c.actor || ''} c/ … ${c.tipo || ''}` : c.tipo || '');
 const caratula = (c) => `${partes(c)}${c.tipo ? ' – ' + c.tipo : ''}`;
-const sClass = (e) => { e = (e || '').toLowerCase(); return e.includes('casillero') ? 's-casillero' : e.includes('despacho') ? 's-despacho' : e.includes('sentencia') ? 's-sentencia' : e.includes('acuerdo') ? 's-acuerdo' : e.includes('notific') ? 's-notificando' : e.includes('subasta') ? 's-subasta' : ''; };
-const tagClass = (t) => (TAGS.find((x) => x.k === t) || {}).c || '';
+const uClass = (u) => (u === 'Casillero' ? 's-casillero' : u === 'A despacho' ? 's-despacho' : '');
+// La etapa, por tramos: en discusión (1.1 a 2) ámbar, con sentencia (3 y 4) verde, martillero designado (5) coral.
+const eClass = (e) => { const n = parseFloat(e); return !(n >= 1) ? '' : n < 3 ? 's-notificando' : n < 5 ? 's-sentencia' : 's-subasta'; };
+const CAUTELAR_CLASE = { 'Embargo de sueldo': 't-emb', 'Vehículo secuestrado': 't-sec' };
+const ubiHtml = (c) => (c.ubicacion ? `<span class="pill ${uClass(c.ubicacion)}">${esc(c.ubicacion)}</span>` : '');
+// La etapa va como etiqueta, debajo de la carátula: una columna más no entra en la pantalla de una notebook.
+const etapaHtml = (c) => (c.estado ? `<span class="tag etapa ${eClass(c.estado)}">${esc(c.estado)}</span>` : '');
 const movil = window.matchMedia('(max-width: 720px)');
 
 function toast(msg) {
@@ -67,8 +73,9 @@ function toast(msg) {
 }
 
 function dueState(c) { const d = parse(c.vence); if (!d || !(c.proxima || '').trim()) return ''; const n = Math.round((d - today()) / 864e5); return n < 0 ? 'late' : n <= 7 ? 'soon' : ''; }
-function isAcu(c) { return c.estado !== 'Archivada' && (c.estado === 'Acuerdo' || (c.etiquetas || []).includes('Acuerdo')); }
-function isStale(c) { if ((c.estado || '') === 'Archivada' || isAcu(c)) return false; const n = days(c.fecha); return n === null || n > STALE; }
+const isArch = (c) => c.situacion === 'Archivada';
+const isAcu = (c) => c.situacion === 'Acuerdo';
+function isStale(c) { if (isArch(c) || isAcu(c)) return false; const n = days(c.fecha); return n === null || n > STALE; }
 
 // ───────────────────────── Pantallas de ingreso ─────────────────────────
 
@@ -181,8 +188,9 @@ async function reintentar(boton) {
 
 // ───────────────────────── Listado ─────────────────────────
 
-const CHIPS = [{ k: 'e:Casillero', l: 'Casillero' }, { k: 'e:A despacho', l: 'A despacho' }, { k: 't:Embargo de sueldo', l: 'Embargos de sueldo' }, { k: 't:Secuestro / subasta', l: 'Secuestrados' }];
-function chipMatch(c, k) { const v = k.slice(2); return k[0] === 'e' ? (c.estado || '').trim().toLowerCase() === v.toLowerCase() : (c.etiquetas || []).includes(v); }
+// Filtros rápidos: u: ubicación, c: etiqueta cautelar.
+const CHIPS = [{ k: 'u:Casillero', l: 'Casillero' }, { k: 'u:A despacho', l: 'A despacho' }, { k: 'c:Embargo de sueldo', l: 'Embargos de sueldo' }, { k: 'c:Vehículo secuestrado', l: 'Vehículos secuestrados' }];
+function chipMatch(c, k) { const v = k.slice(2); return (k[0] === 'u' ? c.ubicacion : c.cautelar) === v; }
 
 function filtered() {
   const q = S.q.trim().toLowerCase();
@@ -193,12 +201,12 @@ function filtered() {
     if (S.quick === 'stale' && !isStale(c)) return false;
     if (S.quick === 'due' && dueState(c) !== 'late') return false;
     if (S.quick === 'next' && !c.proxima) return false;
-    if (S.quick !== 'arch' && !S.estado && c.estado === 'Archivada') return false;
-    if (S.quick === 'arch' && c.estado !== 'Archivada') return false;
+    if (S.quick !== 'arch' && isArch(c)) return false;
+    if (S.quick === 'arch' && !isArch(c)) return false;
     if (S.quick === 'acu' && !isAcu(c)) return false;
     if (S.quick === 'sac' && !agendaAbierta(c.expte).length) return false;
-    if (S.quick !== 'acu' && S.estado !== 'Acuerdo' && S.tag !== 'Acuerdo' && isAcu(c)) return false;
-    if (q) { const h = [c.actor, c.demandado, c.tipo, c.expte, c.ultima, c.proxima, c.oficina, c.notas, ...(c.etiquetas || [])].join(' ').toLowerCase(); if (!h.includes(q)) return false; }
+    if (S.quick !== 'acu' && isAcu(c)) return false;
+    if (q) { const h = [c.actor, c.demandado, c.tipo, c.expte, c.ultima, c.proxima, c.oficina, c.notas, c.ubicacion, c.estado, c.cautelar].join(' ').toLowerCase(); if (!h.includes(q)) return false; }
     return true;
   });
   const { k, dir } = S.sort;
@@ -208,14 +216,14 @@ function filtered() {
 }
 
 function renderStats() {
-  const act = D.causas.filter((c) => c.estado !== 'Archivada' && !isAcu(c)), acu = D.causas.filter(isAcu);
+  const act = D.causas.filter((c) => !isArch(c) && !isAcu(c)), acu = D.causas.filter(isAcu);
   const items = [
     { id: '', n: act.length, l: 'Causas activas' },
     { id: 'stale', n: act.filter(isStale).length, l: `Sin movimiento +${STALE} días o sin fecha`, cls: 'alert' },
     { id: 'due', n: act.filter((c) => dueState(c) === 'late').length, l: 'Vencidas', cls: 'alert' },
     { id: 'next', n: act.filter((c) => c.proxima).length, l: 'Con próxima acción anotada' },
     { id: 'acu', n: acu.length, l: 'Con acuerdo' },
-    { id: 'arch', n: D.causas.filter((c) => c.estado === 'Archivada').length, l: 'Archivadas' }];
+    { id: 'arch', n: D.causas.filter(isArch).length, l: 'Archivadas' }];
   // Escritos para el SAC: solo aparece si hay alguno, y en rojo si alguno no se pudo presentar.
   const sac = D.causas.filter((c) => agendaAbierta(c.expte).length);
   if (sac.length || S.quick === 'sac') items.push({ id: 'sac', n: sac.length, l: 'Con escritos para el SAC', cls: D.agenda.some((a) => a.estado === 'error') ? 'alert' : '' });
@@ -231,7 +239,7 @@ function renderFilters() {
   $('#fOrden').value = [...$('#fOrden').options].some((o) => o.value === orden) ? orden : '';
   const usados = (S.estado ? 1 : 0) + (S.nom ? 1 : 0) + (orden !== 'dias:-1' ? 1 : 0);
   $('#btnFiltros').textContent = usados ? `Filtros · ${usados}` : 'Filtros';
-  const live = D.causas.filter((c) => c.estado !== 'Archivada' && !isAcu(c));
+  const live = D.causas.filter((c) => !isArch(c) && !isAcu(c));
   $('#chips').innerHTML = `<button class="chip" data-t="" aria-pressed="${!S.tag}">Todas · ${live.length}</button>` + CHIPS.map((t) => `<button class="chip" data-t="${esc(t.k)}" aria-pressed="${S.tag === t.k}">${esc(t.l)} · ${live.filter((c) => chipMatch(c, t.k)).length}</button>`).join('');
   $('#vAgenda').setAttribute('aria-pressed', S.view === 'agenda'); $('#vAcuerdos').setAttribute('aria-pressed', S.view === 'acuerdos'); $('#vLista').setAttribute('aria-pressed', S.view === 'lista'); $('#vTablero').setAttribute('aria-pressed', S.view === 'tablero');
   // Insignias de las vistas: lo de la agenda que es para hoy o venció (en coral si algo venció) y
@@ -247,8 +255,12 @@ function insignia(sel, n, clase, texto) {
 }
 
 function ageHtml(c) { const n = days(c.fecha); if (n === null) return '<span class="age old">sin fecha</span>'; return `<span class="age ${n > STALE ? 'old' : ''}">${fmt(c.fecha)} · hace ${n} d</span>`; }
-function tagsHtml(c) {
-  const ts = (c.etiquetas || []).map((t) => `<span class="tag ${tagClass(t)}">${esc(t)}</span>`);
+/** Etiquetas debajo de la carátula: la cautelar (si tiene), acuerdo o archivada, y los escritos para el SAC. */
+function tagsHtml(c, antes = '') {
+  const ts = antes ? [antes] : [];
+  if (CAUTELAR_CLASE[c.cautelar]) ts.push(`<span class="tag ${CAUTELAR_CLASE[c.cautelar]}">${esc(c.cautelar)}</span>`);
+  if (isAcu(c)) ts.push('<span class="tag t-acu">Acuerdo</span>');
+  if (isArch(c)) ts.push('<span class="tag">Archivada</span>');
   for (const a of agendaAbierta(c.expte)) {
     ts.push(a.estado === 'error' ? '<span class="tag t-sacerr">SAC: no se presentó</span>'
       : a.estado === 'borrador' ? '<span class="tag">Escrito sin confirmar</span>'
@@ -262,10 +274,10 @@ function tagsHtml(c) {
 function renderList(rows) {
   if (movil.matches) return renderFilas(rows);
   const th = (k, l) => `<th data-k="${k}">${l}${S.sort.k === k ? (S.sort.dir > 0 ? ' ↑' : ' ↓') : ''}</th>`;
-  return `<div class="tablebox"><table><thead><tr>${th('demandado', 'Carátula')}${th('expte', 'Expte.')}${th('nom', 'Nom. / Oficina')}${th('estado', 'Estado')}${th('ultima', 'Última acción')}${th('dias', 'Fecha')}${th('proxima', 'Próxima acción')}${th('vence', 'Vence')}</tr></thead><tbody>` +
-    rows.map((c) => `<tr data-id="${esc(c.expte)}" tabindex="0"><td class="car"><b>${esc(titulo(c))}</b><small>${esc(bajada(c))}</small>${tagsHtml(c)}</td>
+  return `<div class="tablebox"><table><thead><tr>${th('demandado', 'Carátula')}${th('expte', 'Expte.')}${th('nom', 'Nom. / Oficina')}${th('ubicacion', 'Ubicación')}${th('ultima', 'Última acción')}${th('dias', 'Fecha')}${th('proxima', 'Próxima acción')}${th('vence', 'Vence')}</tr></thead><tbody>` +
+    rows.map((c) => `<tr data-id="${esc(c.expte)}" tabindex="0"><td class="car"><b>${esc(titulo(c))}</b><small>${esc(bajada(c))}</small>${tagsHtml(c, etapaHtml(c))}</td>
    <td class="mono">${esc(c.expte)}</td><td>${c.nom ? esc(c.nom) + '°' : ''} ${esc(c.oficina)}</td>
-   <td>${c.estado ? `<span class="pill ${sClass(c.estado)}">${esc(c.estado)}</span>` : '<span class="hint">—</span>'}</td>
+   <td>${ubiHtml(c) || '<span class="hint">—</span>'}</td>
    <td>${esc(c.ultima) || '<span class="hint">—</span>'}</td><td>${ageHtml(c)}</td>
    <td class="next ${c.proxima ? '' : 'none'}">${esc(c.proxima) || '—'}${c.proxima ? `<div><button class="btn small donebtn" data-done="${esc(c.expte)}">✓ Realizada</button></div>` : ''}</td>
    <td>${c.vence && c.proxima ? `<span class="due ${dueState(c)}">${fmt(c.vence)}</span>` : '<span class="hint">—</span>'}</td></tr>`).join('') + `</tbody></table></div>`;
@@ -274,20 +286,21 @@ function renderList(rows) {
 // En pantallas chicas, cada causa es una tarjeta: se lee de arriba abajo sin deslizar de costado.
 function renderFilas(rows) {
   return `<div class="filas">` + rows.map((c) => `<article class="fila" data-id="${esc(c.expte)}" tabindex="0" role="button" aria-label="Abrir la ficha de ${esc(titulo(c))}">
-    <div class="fila-top"><b>${esc(titulo(c))}</b>${c.estado ? `<span class="pill ${sClass(c.estado)}">${esc(c.estado)}</span>` : ''}</div>
+    <div class="fila-top"><b>${esc(titulo(c))}</b>${ubiHtml(c)}</div>
     <div class="mono">${esc(c.expte)} · ${c.nom ? esc(c.nom) + '° ' : ''}${esc(c.oficina)}${c.tipo ? ' · ' + esc(c.tipo) : ''}</div>
-    ${tagsHtml(c)}
+    ${tagsHtml(c, etapaHtml(c))}
     <div class="fila-ult"><span>${esc(c.ultima) || '<span class="hint">Sin acción cargada</span>'}</span>${ageHtml(c)}</div>
     ${c.proxima ? `<div class="fila-prox"><div><span class="next">${esc(c.proxima)}</span>${c.vence ? `<div class="due ${dueState(c)}">Vence el ${fmt(c.vence)}</div>` : ''}</div><button class="btn small donebtn" data-done="${esc(c.expte)}">✓ Realizada</button></div>` : ''}
   </article>`).join('') + `</div>`;
 }
 
 function renderBoard(rows) {
-  const cols = [...new Set([...ESTADOS.filter((e) => e !== 'Archivada' || S.quick === 'arch'), ...rows.map((c) => c.estado || '(sin estado)')])];
+  // Una columna por etapa del juicio, en orden; las causas sin estado, al final.
+  const cols = [...ESTADOS, ...(rows.some((c) => !c.estado) ? ['(sin estado)'] : [])];
   return `<div class="board">` + cols.map((e) => {
     const cs = rows.filter((c) => (c.estado || '(sin estado)') === e);
-    if (!cs.length && (movil.matches || !ESTADOS.includes(e))) return ''; // en el celular, las columnas vacías no ocupan pantalla
-    return `<section class="col"><h3><span>${esc(e)}</span><span>${cs.length}</span></h3>` + cs.map((c) => `<button class="card" data-id="${esc(c.expte)}"><b>${esc(titulo(c))}</b><div class="mono">${esc(c.expte)} · ${c.nom ? esc(c.nom) + '° ' : ''}${esc(c.oficina)}</div>${tagsHtml(c)}<p>${esc(c.ultima || 'Sin acción cargada')}</p>${ageHtml(c)}${c.proxima ? `<p><b>→</b> ${esc(c.proxima)}</p>` : ''}</button>`).join('') + `</section>`;
+    if (!cs.length && movil.matches) return ''; // en el celular, las columnas vacías no ocupan pantalla
+    return `<section class="col"><h3><span>${esc(e)}</span><span>${cs.length}</span></h3>` + cs.map((c) => `<button class="card" data-id="${esc(c.expte)}"><div class="card-top"><b>${esc(titulo(c))}</b>${ubiHtml(c)}</div><div class="mono">${esc(c.expte)} · ${c.nom ? esc(c.nom) + '° ' : ''}${esc(c.oficina)}</div>${tagsHtml(c)}<p>${esc(c.ultima || 'Sin acción cargada')}</p>${ageHtml(c)}${c.proxima ? `<p><b>→</b> ${esc(c.proxima)}</p>` : ''}</button>`).join('') + `</section>`;
   }).join('') + `</div>`;
 }
 
@@ -296,7 +309,7 @@ function renderBoard(rows) {
 function itemsAgenda(q = S.q.trim().toLowerCase()) {
   const r = [];
   for (const c of D.causas) {
-    if (c.estado === 'Archivada') continue;
+    if (isArch(c)) continue;
     if ((c.proxima || '').trim()) r.push({ c, fecha: c.vence || '', texto: c.proxima, sac: null });
     for (const a of agendaAbierta(c.expte)) r.push({ c, fecha: a.fecha || '', texto: a.titulo, sac: a });
   }
@@ -392,7 +405,7 @@ async function quickDone(id) {
 
 // ───────────────────────── Ficha ─────────────────────────
 
-function blank() { return { expte: '', actor: 'AMB', demandado: '', tipo: 'EJECUTIVO', nom: '', oficina: 'OEP', estado: 'Iniciar', proxima: '', vence: '', ultima: '', fecha: '', etiquetas: ['En trámite'], notas: '', historial: [], demandados: [], titulos: [] }; }
+function blank() { return { expte: '', actor: 'AMB', demandado: '', tipo: 'EJECUTIVO', nom: '', oficina: 'OEP', ubicacion: 'Casillero', estado: '0. Iniciamos', cautelar: 'Sin Cautelar', situacion: 'En trámite', proxima: '', vence: '', ultima: '', fecha: '', notas: '', historial: [], demandados: [], titulos: [] }; }
 function openCausa(id) {
   S.open = id ? copia(D.causas.find((c) => c.expte === id) || blank()) : blank();
   S.base = copia(S.open); // la causa como se abrió: para saber qué se cambió en la ficha
@@ -496,7 +509,7 @@ function volverAFicha() {
   $('#secLiq')?.scrollIntoView({ block: 'center' });
 }
 
-const CAMPOS_FICHA = ['actor', 'demandado', 'tipo', 'nom', 'oficina', 'estado', 'etiquetas', 'proxima', 'vence', 'ultima', 'fecha', 'notas', 'historial', 'demandados', 'titulos'];
+const CAMPOS_FICHA = ['actor', 'demandado', 'tipo', 'nom', 'oficina', 'ubicacion', 'estado', 'cautelar', 'situacion', 'proxima', 'vence', 'ultima', 'fecha', 'notas', 'historial', 'demandados', 'titulos'];
 /**
  * Guarda solo la liquidación, sin cerrar: la planilla sigue abierta para seguir cargando.
  * Con `forzar` (la persona eligió guardarla aunque la causa haya cambiado desde otro lado) pisa
@@ -637,9 +650,11 @@ function renderDrawer(entra = false) {
    <label class="f">N° de expediente<input id="c_expte" inputmode="numeric" value="${esc(c.expte)}" ${S.isNew ? '' : 'readonly'}></label>
    <label class="f">Nominación<input id="c_nom" value="${esc(c.nom)}"></label>
    <label class="f">Oficina / juzgado<input id="c_oficina" list="oficinas" value="${esc(c.oficina)}"></label>
-   <label class="f">Estado<select id="c_estado">${[...new Set([...ESTADOS, c.estado || ''])].map((e) => `<option ${e === (c.estado || '') ? 'selected' : ''} value="${esc(e)}">${esc(e || '(sin estado)')}</option>`).join('')}</select></label>
+   <label class="f">Ubicación${selector('c_ubicacion', UBICACIONES, c.ubicacion)}</label>
+   <label class="f">Estado${selector('c_estado', ESTADOS, c.estado, '(sin estado)')}</label>
+   <label class="f">Etiqueta Cautelar${selector('c_cautelar', CAUTELARES, c.cautelar)}</label>
+   <label class="f">Situación${selector('c_situacion', SITUACIONES, c.situacion)}</label>
   </div>
-  <div><div class="hint mb4">Etiquetas</div><div class="chips">${TAGS.map((t) => `<button class="chip" data-act="tag" data-t="${esc(t.k)}" aria-pressed="${(c.etiquetas || []).includes(t.k)}">${esc(t.k)}</button>`).join('')}</div></div>
   <datalist id="tipos"><option>EJECUTIVO<option>PRENDARIO<option>TERCERIA<option>ABREVIADO</datalist>
   <datalist id="oficinas"><option>OEP<option>OEP VM<option>CRUZ DEL EJE</datalist></div>
 
@@ -667,9 +682,15 @@ function renderDrawer(entra = false) {
   <div class="sec"><h4>Notas</h4><label class="f"><textarea id="c_notas" rows="3" placeholder="Datos del martillero, montos del acuerdo, teléfonos…" aria-label="Notas">${esc(c.notas)}</textarea></label></div>
 
   ${S.isNew ? '' : `<div class="actions"><button class="btn danger" data-act="del">Eliminar causa</button></div>`}
-  ${S.confirmDel ? `<div class="confirm"><span>¿Eliminar definitivamente ${esc(titulo(c))}? Si terminó, mejor pasala a “Archivada”.</span><button class="btn small danger" data-act="delyes">Sí, eliminar</button><button class="btn small" data-act="delno">Cancelar</button></div>` : ''}
+  ${S.confirmDel ? `<div class="confirm"><span>¿Eliminar definitivamente ${esc(titulo(c))}? Si terminó, mejor marcala como “Archivada” en Situación.</span><button class="btn small danger" data-act="delyes">Sí, eliminar</button><button class="btn small" data-act="delno">Cancelar</button></div>` : ''}
   <div class="ppie"><button class="btn primary" data-act="save">${S.isNew ? 'Crear causa' : 'Guardar cambios'}</button><button class="btn" data-act="close">Cancelar</button>${S.isNew ? '' : '<button class="btn" data-act="claude" aria-label="Consultar a Claude sobre esta causa">Claude</button>'}</div>
   </aside>`;
+}
+
+/** Un desplegable de valores fijos. Un valor que no está en la lista (o vacío, con `vacio`) se muestra igual, para no perderlo al guardar. */
+function selector(id, valores, actual, vacio = '') {
+  const v = actual || '', opciones = valores.includes(v) || (!v && !vacio) ? valores : [v, ...valores];
+  return `<select id="${id}">${opciones.map((x) => `<option value="${esc(x)}" ${x === v ? 'selected' : ''}>${esc(x || vacio)}</option>`).join('')}</select>`;
 }
 
 function rerenderDrawer() {
@@ -681,7 +702,7 @@ function rerenderDrawer() {
 
 function readForm() {
   const c = S.open;
-  ['actor', 'demandado', 'tipo', 'expte', 'nom', 'oficina', 'estado', 'proxima', 'vence', 'notas'].forEach((k) => { const el = $('#c_' + k); if (el) c[k] = el.value.trim(); });
+  ['actor', 'demandado', 'tipo', 'expte', 'nom', 'oficina', 'ubicacion', 'estado', 'cautelar', 'situacion', 'proxima', 'vence', 'notas'].forEach((k) => { const el = $('#c_' + k); if (el) c[k] = el.value.trim(); });
   (c.demandados || []).forEach((d, i) => ['nombre', 'dni', 'telefono', 'domicilio', 'notas'].forEach((k) => { const el = $('#d_' + k + i); if (el) d[k] = el.value.trim(); }));
   (c.titulos || []).forEach((t, i) => {
     const g = (k) => $('#t_' + k + i);
@@ -720,7 +741,7 @@ function renderAvisos() {
    <div class="actions"><button class="btn small primary" data-ac="pay" data-id="${esc(a.id)}" data-i="${i}" data-v="pagada">Sí, pagó</button><button class="btn small danger" data-ac="pay" data-id="${esc(a.id)}" data-i="${i}" data-v="impaga">No pagó</button></div></div>`).join('');
 }
 function renderAcuerdos() {
-  const n = S.na, cs = D.causas.filter((c) => c.estado !== 'Archivada').sort((a, b) => titulo(a).localeCompare(titulo(b)));
+  const n = S.na, cs = D.causas.filter((c) => !isArch(c)).sort((a, b) => titulo(a).localeCompare(titulo(b)));
   const form = `<div class="sec"><h4>Nuevo acuerdo</h4><div class="grid2">
     <label class="f">Deudor<input id="na_deudor" value="${esc(n.deudor)}" placeholder="Apellido y nombre"></label>
     <label class="f">Causa (opcional)<select id="na_expte"><option value="">Sin vincular a una causa</option>${cs.map((c) => `<option value="${esc(c.expte)}" ${n.expte === c.expte ? 'selected' : ''}>${esc(titulo(c))} · ${esc(c.expte)}</option>`).join('')}</select></label>
@@ -1203,9 +1224,9 @@ async function menuAct(b) {
 function abrirPlantillas() { S.open = null; S.clave = false; S.tpl = true; renderTpl(true); }
 
 function exportar() {
-  const cols = ['Actor', 'Demandado', 'Tipo', 'Expediente', 'Nominación', 'Oficina', 'Estado', 'Etiquetas', 'Última acción', 'Fecha última acción', 'Próxima acción', 'Vence', 'Notas', 'Capital reclamado', 'Intereses', 'Total reclamado'];
+  const cols = ['Actor', 'Demandado', 'Tipo', 'Expediente', 'Nominación', 'Oficina', 'Ubicación', 'Estado', 'Etiqueta Cautelar', 'Situación', 'Última acción', 'Fecha última acción', 'Próxima acción', 'Vence', 'Notas', 'Capital reclamado', 'Intereses', 'Total reclamado'];
   const q = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
-  const csv = '\ufeff' + cols.join(';') + '\n' + filtered().map((c) => [c.actor, c.demandado, c.tipo, c.expte, c.nom, c.oficina, c.estado, (c.etiquetas || []).join(', '), c.ultima, c.fecha, c.proxima, c.vence, c.notas, ...(() => { const k = reclamo(c); return [k.capital, k.interes, k.total]; })()].map(q).join(';')).join('\n');
+  const csv = '\ufeff' + cols.join(';') + '\n' + filtered().map((c) => [c.actor, c.demandado, c.tipo, c.expte, c.nom, c.oficina, c.ubicacion, c.estado, c.cautelar, c.situacion, c.ultima, c.fecha, c.proxima, c.vence, c.notas, ...(() => { const k = reclamo(c); return [k.capital, k.interes, k.total]; })()].map(q).join(';')).join('\n');
   try {
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const a = Object.assign(document.createElement('a'), { href: url, download: `juicios-${iso(today())}.csv` });
@@ -1253,7 +1274,6 @@ document.addEventListener('click', async (e) => {
   if (act === 'plsave') { await guardarPlanilla(a); return; }
   if (act === 'choque-pisar') { S.choque = null; await save({ forzar: true }); return; }
   if (act === 'choque-crear') { S.choque = null; await save({ recrear: true }); return; }
-  if (act === 'tag') { const t = a.dataset.t; c.etiquetas = (c.etiquetas || []).includes(t) ? c.etiquetas.filter((x) => x !== t) : [...(c.etiquetas || []), t]; }
   if (act === 'histadd') {
     const f = $('#h_fecha').value, t = $('#h_texto').value.trim(); if (!t) { toast('Escribí la acción realizada'); return; }
     c.historial = [...(c.historial || []), { fecha: f, texto: t }]; Object.assign(c, ultimaDe(c.historial));

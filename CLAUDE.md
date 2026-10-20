@@ -29,11 +29,12 @@ como "Claude":
 
 ```sql
 -- encontrar la causa (confirmar cuál es si hay más de una coincidencia)
-select expte, actor, demandado, estado, ultima, fecha, proxima, vence
+select expte, actor, demandado, ubicacion, estado, cautelar, situacion, ultima, fecha, proxima, vence
   from public.causas where demandado ilike '%apellido%' or actor ilike '%apellido%';
 
 select gestor.movimiento('14000001', 'Se libró oficio');                  -- hoy, hora de Córdoba
-select gestor.movimiento('14000001', 'Decreto', '2026-10-02', 'A despacho'); -- con fecha y estado
+select gestor.movimiento('14000001', 'Decreto', '2026-10-02', p_ubicacion => 'Casillero');  -- con fecha y ubicación
+select gestor.movimiento('14000001', 'Sentencia de remate', '2026-10-02', '3. Sentencia');  -- con fecha y etapa
 select gestor.presentacion('14000001', 'Solicita aprobación de liquidación'); -- presentación en el SAC: queda "A despacho"
 select gestor.proxima('14000001', 'Designar martillero', '2026-10-15');   -- próxima acción y vencimiento ('' la borra)
 select gestor.realizada('14000001');                                      -- la próxima acción pasa a movimientos, con la fecha en que vencía (o la de hoy si aún no venció)
@@ -67,8 +68,24 @@ commit;
 
 Después de escribir, leer la fila y contar qué quedó. La app abierta lo muestra sola, en vivo.
 
-- **Estados**: los de `gestor.estados_base()`. Un estado nuevo crea una columna en el tablero:
-  no inventarlos.
+- **Ubicación, estado, etiqueta cautelar y situación** (migración 0007): cuatro columnas de `causas`
+  con valores fijos; la base rechaza cualquier otro (y `gestor.movimiento` explica en cuál va un
+  valor puesto en el lugar equivocado).
+  - `ubicacion`: dónde está el expediente, `Casillero` o `A despacho`. Cada presentación en el SAC la
+    deja `A despacho` ("pasó a despacho", "volvió al casillero" es esto).
+  - `estado`: la etapa del juicio (`gestor.estados_base()`): `0. Iniciamos`, `1.1 Demanda`,
+    `1.2 Contestación`, `2. No oposición de excepciones`, `3. Sentencia`, `4. Ejecución de Sentencia`,
+    `5. Martillero Designado`. Cada una es una columna del tablero. Vacío: sin estado (solo en causas
+    que venían de antes).
+  - `cautelar` (en la app, "Etiqueta Cautelar"): `Sin Cautelar`, `Embargo de sueldo` o `Vehículo secuestrado`.
+  - `situacion`: `En trámite`, `Acuerdo` o `Archivada`. Las archivadas no aparecen en el listado ni
+    en la agenda; las de acuerdo se ven aparte ("Con acuerdo").
+
+  Hasta 0007, `estado` mezclaba ubicación, etapa y situación, y había una lista libre de `etiquetas`;
+  lo que había quedó en `gestor.respaldo_0007` (solo para consultar). La columna `etiquetas` sigue en
+  la tabla, sin uso, y `gestor.movimiento_anterior` solo avisa que se reemplazó: 0007 no borra nada
+  porque desde el chat las instrucciones destructivas (`drop`) quedan esperando una confirmación que
+  no llega. Se pueden quitar en una migración aparte, aplicada desde donde se pueda confirmar.
 - **Causas sin demandado**: los juicios sin contraparte (limitación de la capacidad,
   sucesiones…) van con `demandado = ''` y el interesado en `actor`; la app los nombra por el
   actor. No inventar un demandado para completar el campo.
@@ -102,6 +119,8 @@ Después de escribir, leer la fila y contar qué quedó. La app abierta lo muest
 
   Restaura el registro entero. Si después del cambio 123 hubo otros sobre el mismo registro,
   no hace nada y avisa; mirarlos y, si de verdad corresponde pisarlos, `gestor.deshacer(123, true)`.
+  Una foto de una causa anterior a 0007 se pasa a la forma actual (`gestor.forma_0007`); la etapa, que
+  no existía, queda la que la causa tiene hoy.
   Sirve para modificaciones y bajas; no elimina nunca (deshacer un alta es un `delete` aparte,
   pedido expresamente).
 

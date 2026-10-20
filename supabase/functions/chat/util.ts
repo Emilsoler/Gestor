@@ -23,8 +23,9 @@ export const dma = (iso: string) => (iso ? iso.split('-').reverse().join('/') : 
 export const nombreDia = (iso: string) => DIAS[diaSemana(iso)];
 
 export type Causa = {
-  expte: string; actor: string; demandado: string; tipo: string; nom: string; oficina: string; estado: string;
-  etiquetas: string[]; proxima: string; vence: string | null; ultima: string; fecha: string | null; notas: string;
+  expte: string; actor: string; demandado: string; tipo: string; nom: string; oficina: string;
+  ubicacion: string; estado: string; cautelar: string; situacion: string;
+  proxima: string; vence: string | null; ultima: string; fecha: string | null; notas: string;
   historial?: Mov[]; liquidacion?: Liquidacion | null; demandados?: Demandado[]; titulos?: Titulo[];
   rev: number; actualizado?: string; actualizado_por?: string;
 };
@@ -63,8 +64,12 @@ export function ultimaDe(h: Mov[]) {
   return mejor ? { ultima: mejor.texto || '', fecha: mejor.fecha || null } : { ultima: '', fecha: null };
 }
 
-export const ESTADOS = ['Iniciar', 'Notificando', 'Casillero', 'A despacho', 'Sentencia', 'Tramites p/ subasta', 'Acuerdo', 'Archivada'];
-export const ETIQUETAS = ['En trámite', 'Embargo de sueldo', 'Secuestro / subasta', 'Acuerdo', 'Martillero', 'OP solicitada'];
+// Los cuatro datos de una causa con valores fijos: los mismos que acepta la base (migración 0007)
+// y que muestra la app (docs/app.js).
+export const UBICACIONES = ['Casillero', 'A despacho'];
+export const ESTADOS = ['0. Iniciamos', '1.1 Demanda', '1.2 Contestación', '2. No oposición de excepciones', '3. Sentencia', '4. Ejecución de Sentencia', '5. Martillero Designado'];
+export const CAUTELARES = ['Sin Cautelar', 'Embargo de sueldo', 'Vehículo secuestrado'];
+export const SITUACIONES = ['En trámite', 'Acuerdo', 'Archivada'];
 
 const r2 = (n: number) => Math.round((+n || 0) * 100) / 100;
 const diasEntre = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 864e5);

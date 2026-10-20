@@ -3,7 +3,7 @@
 // tarea programada, y solo con lo que la persona confirmó en la app.
 import { Base, ErrorBase } from './base.ts';
 import {
-  Ahora, Causa, ESTADOS, ETIQUETAS, Mov, caratula, completar, dma, esFecha, nombreDia, norm,
+  Ahora, CAUTELARES, Causa, ESTADOS, Mov, SITUACIONES, UBICACIONES, caratula, completar, dma, esFecha, nombreDia, norm,
   reclamado, resumenLiquidacion, ultimaDe,
 } from './util.ts';
 
@@ -19,23 +19,27 @@ class Problema extends Error {} // un pedido que no se puede hacer: vuelve a Cla
 
 const fecha = (descripcion: string) => ({ type: 'string', description: `${descripcion} Formato AAAA-MM-DD.` });
 const EXPTE = { type: 'string', description: 'N° de expediente del SAC (solo números).' };
+const UBICACION = { type: 'string', enum: UBICACIONES, description: 'Dónde está el expediente.' };
+const ESTADO = { type: 'string', enum: ESTADOS, description: 'La etapa del juicio.' };
+const CAUTELAR = { type: 'string', enum: CAUTELARES, description: 'La etiqueta cautelar.' };
+const SITUACION = { type: 'string', enum: SITUACIONES, description: 'Archivada: no aparece en el listado de la app. Acuerdo: se ve aparte.' };
 
 export const HERRAMIENTAS = [
   {
     name: 'buscar_causas',
-    description: 'Busca causas por demandado, actor, N° de expediente, tipo, oficina, etiqueta o texto de sus acciones y notas. Devuelve hasta 20, con estado, última acción y próxima acción. Las archivadas solo si se pide.',
+    description: 'Busca causas por demandado, actor, N° de expediente, tipo, oficina o texto de sus acciones y notas, y las filtra por ubicación, estado, etiqueta cautelar o situación (por ejemplo, para "¿qué causas están a despacho?" mandá solo ubicacion). Devuelve hasta 20, con esos datos, la última acción y la próxima. Las archivadas solo si se pide o si se filtra por situación Archivada.',
     input_schema: {
       type: 'object',
       properties: {
-        texto: { type: 'string', description: 'Lo que se busca, por ejemplo "piedra" o "14036179".' },
+        texto: { type: 'string', description: 'Lo que se busca, por ejemplo "piedra" o "14036179". Puede faltar si hay algún filtro.' },
+        ubicacion: UBICACION, estado: ESTADO, cautelar: CAUTELAR, situacion: SITUACION,
         incluir_archivadas: { type: 'boolean' },
       },
-      required: ['texto'],
     },
   },
   {
     name: 'ver_causa',
-    description: 'Lee una causa completa: datos, estado, próxima acción, últimos movimientos, demandados con su contacto, títulos con el monto reclamado a hoy, liquidación y escritos de la agenda.',
+    description: 'Lee una causa completa: datos, ubicación, estado, etiqueta cautelar, situación, próxima acción, últimos movimientos, demandados con su contacto, títulos con el monto reclamado a hoy, liquidación y escritos de la agenda.',
     input_schema: { type: 'object', properties: { expte: EXPTE }, required: ['expte'] },
   },
   {
@@ -56,12 +60,11 @@ export const HERRAMIENTAS = [
       type: 'object',
       properties: {
         expte: EXPTE,
-        estado: { type: 'string', enum: ESTADOS },
+        ubicacion: UBICACION, estado: ESTADO, cautelar: CAUTELAR, situacion: SITUACION,
         proxima: { type: 'string', description: 'Qué hay que hacer.' },
         vence: { type: 'string', description: 'Vencimiento de la próxima acción, AAAA-MM-DD, o vacío para quitarlo.' },
         notas: { type: 'string', description: 'Reemplaza todas las notas.' },
         agregar_a_notas: { type: 'string', description: 'Se agrega al final de las notas, en una línea nueva.' },
-        etiquetas: { type: 'array', items: { type: 'string', enum: ETIQUETAS }, description: 'La lista completa de etiquetas que tiene que quedar.' },
         tipo: { type: 'string' }, nom: { type: 'string', description: 'Nominación (número).' }, oficina: { type: 'string' },
         actor: { type: 'string' }, demandado: { type: 'string' },
       },
@@ -70,14 +73,14 @@ export const HERRAMIENTAS = [
   },
   {
     name: 'registrar_movimiento',
-    description: 'Anota en la causa algo que ya pasó (un decreto, una cédula, un escrito presentado por otro lado). Si es lo más reciente, pasa a ser la última acción. Puede cambiar el estado a la vez.',
+    description: 'Anota en la causa algo que ya pasó (un decreto, una cédula, un escrito presentado por otro lado). Si es lo más reciente, pasa a ser la última acción. Puede cambiar a la vez el estado (la etapa) y la ubicación: un escrito presentado deja el expediente A despacho.',
     input_schema: {
       type: 'object',
       properties: {
         expte: EXPTE,
         texto: { type: 'string' },
         fecha: fecha('Cuándo pasó; si no se dice, hoy. No puede ser futura.'),
-        estado: { type: 'string', enum: ESTADOS },
+        estado: ESTADO, ubicacion: UBICACION,
       },
       required: ['expte', 'texto'],
     },
@@ -131,7 +134,7 @@ export const HERRAMIENTAS = [
 
 // ───────────────────────── Lectura ─────────────────────────
 
-const CAMPOS_LISTA = 'expte,actor,demandado,tipo,nom,oficina,estado,etiquetas,proxima,vence,ultima,fecha,notas,rev';
+const CAMPOS_LISTA = 'expte,actor,demandado,tipo,nom,oficina,ubicacion,estado,cautelar,situacion,proxima,vence,ultima,fecha,notas,rev';
 
 async function todasLasCausas(db: Base): Promise<Causa[]> {
   const filas: Causa[] = [];
@@ -156,9 +159,9 @@ async function causa(db: Base, x: unknown): Promise<Causa> {
 }
 
 const resumen = (c: Causa) => ({
-  expte: c.expte, caratula: caratula(c), estado: c.estado || '(sin estado)', nominacion: c.nom ? `${c.nom}°` : '', oficina: c.oficina,
+  expte: c.expte, caratula: caratula(c), ubicacion: c.ubicacion, estado: c.estado || '(sin estado)', cautelar: c.cautelar, situacion: c.situacion,
+  nominacion: c.nom ? `${c.nom}°` : '', oficina: c.oficina,
   ultima_accion: c.ultima || null, fecha_ultima: c.fecha, proxima: c.proxima || null, vence: c.proxima ? c.vence : null,
-  etiquetas: c.etiquetas,
 });
 
 const idValido = (x: unknown) => {
@@ -190,10 +193,20 @@ async function cambiarCausa(ctx: Contexto, expte: unknown, armar: (c: Causa) => 
   throw new Problema('La causa cambió varias veces mientras la actualizaba. Volvé a intentarlo.');
 }
 
-function validarEstado(estado: unknown) {
-  const e = String(estado ?? '').trim();
-  if (!ESTADOS.includes(e)) throw new Problema(`Estado desconocido: "${e}". Los estados son: ${ESTADOS.join(', ')}.`);
-  return e;
+const VALORES: Record<string, { lista: string[]; desconocido: string; son: string }> = {
+  ubicacion: { lista: UBICACIONES, desconocido: 'Ubicación desconocida', son: 'Las ubicaciones son' },
+  estado: { lista: ESTADOS, desconocido: 'Estado desconocido', son: 'Los estados son' },
+  cautelar: { lista: CAUTELARES, desconocido: 'Etiqueta cautelar desconocida', son: 'Las etiquetas cautelares son' },
+  situacion: { lista: SITUACIONES, desconocido: 'Situación desconocida', son: 'Las situaciones son' },
+};
+const CAMPOS_FIJOS = Object.keys(VALORES);
+
+/** Un valor de ubicación, estado, cautelar o situación; si es de otro de los cuatro, lo dice. */
+function validar(campo: string, valor: unknown) {
+  const v = String(valor ?? '').trim(), { lista, desconocido, son } = VALORES[campo];
+  if (lista.includes(v)) return v;
+  const otro = CAMPOS_FIJOS.find((k) => k !== campo && VALORES[k].lista.includes(v));
+  throw new Problema(`${desconocido}: "${v}".${otro ? ` Ese valor va en ${otro}.` : ''} ${son}: ${lista.join(', ')}.`);
 }
 
 // ───────────────────────── Herramientas ─────────────────────────
@@ -202,16 +215,22 @@ type Entrada = Record<string, any>;
 
 const acciones: Record<string, (e: Entrada, ctx: Contexto) => Promise<unknown>> = {
   async buscar_causas(e, { db }) {
-    const palabras = norm(e.texto).split(/[\s,.;:]+/).filter(Boolean);
-    if (!palabras.length) throw new Problema('Decime qué buscar.');
+    const texto = String(e.texto ?? '').trim();
+    const palabras = norm(texto).split(/[\s,.;:]+/).filter(Boolean);
+    const filtros = CAMPOS_FIJOS.filter((k) => e[k] !== undefined && e[k] !== null && e[k] !== '');
+    const pide: Record<string, string> = Object.fromEntries(filtros.map((k) => [k, validar(k, e[k])]));
+    if (!palabras.length && !filtros.length) throw new Problema('Decime qué buscar: un nombre, un expediente o un filtro.');
+    const conArchivadas = !!e.incluir_archivadas || pide.situacion === 'Archivada';
+    const coincide = (c: Causa) => filtros.every((k) => (c as any)[k] === pide[k]);
     const todas = await todasLasCausas(db);
     const hallan = todas.filter((c) => {
-      if (c.estado === 'Archivada' && !e.incluir_archivadas) return false;
-      const pajar = norm([c.expte, c.actor, c.demandado, c.tipo, c.oficina, c.nom, c.estado, c.ultima, c.proxima, c.notas, ...(c.etiquetas || [])].join(' '));
+      if (c.situacion === 'Archivada' && !conArchivadas) return false;
+      if (!coincide(c)) return false;
+      const pajar = norm([c.expte, c.actor, c.demandado, c.tipo, c.oficina, c.nom, c.ubicacion, c.estado, c.cautelar, c.situacion, c.ultima, c.proxima, c.notas].join(' '));
       return palabras.every((p) => pajar.includes(p));
     });
-    hallan.sort((a, b) => Number(b.expte === e.texto.trim()) - Number(a.expte === e.texto.trim()) || caratula(a).localeCompare(caratula(b)));
-    const archivadas = e.incluir_archivadas ? 0 : todas.filter((c) => c.estado === 'Archivada' && palabras.every((p) => norm([c.expte, c.actor, c.demandado].join(' ')).includes(p))).length;
+    hallan.sort((a, b) => Number(b.expte === texto) - Number(a.expte === texto) || caratula(a).localeCompare(caratula(b)));
+    const archivadas = conArchivadas ? 0 : todas.filter((c) => c.situacion === 'Archivada' && coincide(c) && palabras.every((p) => norm([c.expte, c.actor, c.demandado].join(' ')).includes(p))).length;
     return {
       encontradas: hallan.length, causas: hallan.slice(0, 20).map(resumen),
       ...(hallan.length > 20 ? { nota: 'Hay más: afiná la búsqueda.' } : {}),
@@ -238,7 +257,7 @@ const acciones: Record<string, (e: Entrada, ctx: Contexto) => Promise<unknown>> 
   async listar_pendientes(e, { db, hoy }) {
     if (e.hasta !== undefined && e.hasta !== '' && !esFecha(e.hasta)) throw new Problema('"hasta" tiene que ser una fecha AAAA-MM-DD.');
     const todas = await todasLasCausas(db);
-    const activas = todas.filter((c) => c.estado !== 'Archivada' && (c.proxima || '').trim());
+    const activas = todas.filter((c) => c.situacion !== 'Archivada' && (c.proxima || '').trim());
     const conFecha = activas.filter((c) => c.vence && (!e.hasta || c.vence <= e.hasta)).sort((a, b) => a.vence!.localeCompare(b.vence!));
     const sinFecha = e.incluir_sin_vencimiento ? activas.filter((c) => !c.vence) : [];
     const porCausa = new Map(todas.map((c) => [c.expte, c]));
@@ -246,8 +265,8 @@ const acciones: Record<string, (e: Entrada, ctx: Contexto) => Promise<unknown>> 
     return {
       hoy: hoy.fecha,
       proximas_acciones: conFecha.map((c) => ({
-        expte: c.expte, caratula: caratula(c), proxima: c.proxima, vence: c.vence, estado: c.estado,
-        situacion: c.vence! < hoy.fecha ? 'vencida' : c.vence === hoy.fecha ? 'vence hoy' : `vence el ${nombreDia(c.vence!)} ${dma(c.vence!)}`,
+        expte: c.expte, caratula: caratula(c), proxima: c.proxima, vence: c.vence, ubicacion: c.ubicacion, estado: c.estado,
+        plazo: c.vence! < hoy.fecha ? 'vencida' : c.vence === hoy.fecha ? 'vence hoy' : `vence el ${nombreDia(c.vence!)} ${dma(c.vence!)}`,
       })),
       ...(sinFecha.length ? { sin_vencimiento: sinFecha.map((c) => ({ expte: c.expte, caratula: caratula(c), proxima: c.proxima })) } : {}),
       ...(!e.incluir_sin_vencimiento ? { con_proxima_sin_vencimiento: activas.filter((c) => !c.vence).length } : {}),
@@ -257,23 +276,16 @@ const acciones: Record<string, (e: Entrada, ctx: Contexto) => Promise<unknown>> 
 
   async editar_causa(e, ctx) {
     const pide = (k: string) => Object.prototype.hasOwnProperty.call(e, k) && e[k] !== null && e[k] !== undefined;
-    if (pide('estado')) validarEstado(e.estado);
+    const fijos: Record<string, string> = Object.fromEntries(CAMPOS_FIJOS.filter(pide).map((k) => [k, validar(k, e[k])]));
     if (pide('vence') && e.vence !== '' && !esFecha(e.vence)) throw new Problema('El vencimiento tiene que ser una fecha AAAA-MM-DD (o vacío para quitarlo).');
-    if (pide('etiquetas')) {
-      if (!Array.isArray(e.etiquetas)) throw new Problema('Las etiquetas van como lista.');
-      const raras = e.etiquetas.filter((t: unknown) => !ETIQUETAS.includes(String(t)));
-      if (raras.length) throw new Problema(`Etiquetas desconocidas: ${raras.join(', ')}. Las del gestor son: ${ETIQUETAS.join(', ')}.`);
-    }
     if (pide('nom') && String(e.nom).trim() && !/^\d+$/.test(String(e.nom).trim().replace(/°$/, ''))) throw new Problema('La nominación es un número.');
     const { antes, despues } = await cambiarCausa(ctx, e.expte, (c) => {
-      const f: Record<string, unknown> = {};
-      if (pide('estado')) f.estado = String(e.estado).trim();
+      const f: Record<string, unknown> = { ...fijos };
       for (const k of ['tipo', 'oficina', 'actor', 'demandado']) if (pide(k)) f[k] = String(e[k]).trim();
       if (pide('nom')) f.nom = String(e.nom).trim().replace(/°$/, '');
       if (pide('proxima')) f.proxima = String(e.proxima).trim();
       if (pide('vence')) f.vence = e.vence || null;
       if (f.proxima === '') f.vence = null; // sin próxima acción no hay vencimiento (como gestor.proxima)
-      if (pide('etiquetas')) f.etiquetas = [...new Set(e.etiquetas.map(String))];
       if (pide('notas')) f.notas = String(e.notas);
       if (pide('agregar_a_notas') && String(e.agregar_a_notas).trim()) {
         const base = String(f.notas ?? c.notas ?? '').trimEnd();
@@ -296,13 +308,14 @@ const acciones: Record<string, (e: Entrada, ctx: Contexto) => Promise<unknown>> 
     const f = e.fecha ? e.fecha : ctx.hoy.fecha;
     if (!esFecha(f)) throw new Problema('La fecha tiene que ser AAAA-MM-DD.');
     if (f > ctx.hoy.fecha) throw new Problema('Un movimiento es algo que ya pasó. Para algo que hay que hacer, anotalo como próxima acción con su vencimiento.');
-    const estado = e.estado ? validarEstado(e.estado) : null;
+    const estado = e.estado ? validar('estado', e.estado) : null;
+    const ubicacion = e.ubicacion ? validar('ubicacion', e.ubicacion) : null;
     const { despues } = await cambiarCausa(ctx, e.expte, (c) => {
       const historial: Mov[] = [...(c.historial || []), { fecha: f, texto }];
-      return { historial, ...ultimaDe(historial), ...(estado ? { estado } : {}) };
+      return { historial, ...ultimaDe(historial), ...(estado ? { estado } : {}), ...(ubicacion ? { ubicacion } : {}) };
     });
-    ctx.acciones.push(`Causa ${despues.expte}: movimiento anotado (${dma(f)}: ${texto})${estado ? `, estado ${estado}` : ''}`);
-    return { listo: true, expte: despues.expte, ultima_accion: despues.ultima, fecha_ultima: despues.fecha, estado: despues.estado };
+    ctx.acciones.push(`Causa ${despues.expte}: movimiento anotado (${dma(f)}: ${texto})${estado ? `, estado ${estado}` : ''}${ubicacion ? `, ${ubicacion}` : ''}`);
+    return { listo: true, expte: despues.expte, ultima_accion: despues.ultima, fecha_ultima: despues.fecha, estado: despues.estado, ubicacion: despues.ubicacion };
   },
 
   async marcar_realizada(e, ctx) {
@@ -403,7 +416,10 @@ const acciones: Record<string, (e: Entrada, ctx: Contexto) => Promise<unknown>> 
   },
 };
 
-const NOMBRES: Record<string, string> = { proxima: 'próxima acción', vence: 'vencimiento', nom: 'nominación', ultima: 'última acción', fecha: 'fecha de la última acción' };
+const NOMBRES: Record<string, string> = {
+  proxima: 'próxima acción', vence: 'vencimiento', nom: 'nominación', ultima: 'última acción', fecha: 'fecha de la última acción',
+  ubicacion: 'ubicación', cautelar: 'etiqueta cautelar', situacion: 'situación',
+};
 const nombreCampo = (k: string) => NOMBRES[k] || k;
 
 /** Corre una herramienta y devuelve el tool_result para Claude. Nunca lanza: un error vuelve explicado. */

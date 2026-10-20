@@ -26,6 +26,9 @@ export const sb = configurado && !enMarco
 const SONDEO_RAPIDO = cfg.sondeoMs || 30_000; // sin tiempo real
 const SONDEO_LENTO = 5 * 60_000; // con tiempo real, por si se perdió algún aviso
 const CACHE = 'gj.cache';
+// Sube cuando cambia la forma de lo que se guarda en el dispositivo (2: ubicación, estado procesal,
+// etiqueta cautelar y situación, migración 0007). Una copia de otra forma no se usa: se espera a la base.
+const FORMA = 2;
 const TABLAS = ['causas', 'acuerdos', 'plantillas', 'agenda'];
 const CLAVE = { causas: 'expte', acuerdos: 'id', plantillas: 'id', agenda: 'id' };
 const CHAT = 'gj.chat'; // la conversación con Claude, en este dispositivo
@@ -105,14 +108,14 @@ function ponerEnLinea(v) {
 // La base guarda fechas vacías como null; la interfaz las maneja como ''.
 
 const DE = {
-  causas: (f) => ({ ...f, vence: f.vence || '', fecha: f.fecha || '', etiquetas: f.etiquetas || [], historial: f.historial || [], demandados: f.demandados || [], titulos: f.titulos || [] }),
+  causas: (f) => ({ ...f, vence: f.vence || '', fecha: f.fecha || '', historial: f.historial || [], demandados: f.demandados || [], titulos: f.titulos || [] }),
   acuerdos: (f) => ({ ...f, cuotas: f.cuotas || [] }),
   plantillas: (f) => ({ ...f }),
   agenda: (f) => ({ ...f, realizar: f.realizar || '', resultado: f.resultado || '' }),
 };
 
 export const TIPOS_TITULO = ['pagare', 'cheque', 'prenda'];
-const CAMPOS_CAUSA = ['expte', 'actor', 'demandado', 'tipo', 'nom', 'oficina', 'estado', 'etiquetas', 'proxima', 'vence', 'ultima', 'fecha', 'notas', 'historial', 'liquidacion', 'demandados', 'titulos'];
+const CAMPOS_CAUSA = ['expte', 'actor', 'demandado', 'tipo', 'nom', 'oficina', 'ubicacion', 'estado', 'cautelar', 'situacion', 'proxima', 'vence', 'ultima', 'fecha', 'notas', 'historial', 'liquidacion', 'demandados', 'titulos'];
 const movLimpio = (h) => (h.hecha ? { fecha: h.fecha || '', texto: h.texto || '', hecha: true } : { fecha: h.fecha || '', texto: h.texto || '' });
 
 function causaAFila(c) {
@@ -120,7 +123,6 @@ function causaAFila(c) {
   for (const k of CAMPOS_CAUSA) f[k] = c[k] ?? '';
   f.vence = c.vence || null;
   f.fecha = c.fecha || null;
-  f.etiquetas = c.etiquetas || [];
   f.historial = (c.historial || []).map(movLimpio);
   f.liquidacion = c.liquidacion || null;
   f.demandados = (c.demandados || []).map((d) => ({ nombre: d.nombre || '', dni: d.dni || '', telefono: d.telefono || '', domicilio: d.domicilio || '', notas: d.notas || '' }));
@@ -162,7 +164,7 @@ function guardarCache() {
   if (!D.usuario || !D.cargado) return;
   try {
     localStorage.setItem(CACHE, JSON.stringify({
-      uid: D.usuario.id, email: D.usuario.email, ts: (D.leido || new Date()).getTime(),
+      forma: FORMA, uid: D.usuario.id, email: D.usuario.email, ts: (D.leido || new Date()).getTime(),
       causas: D.causas, acuerdos: D.acuerdos, plantillas: D.plantillas, agenda: D.agenda,
     }));
   } catch { /* sin espacio o modo privado: la app sigue andando sin copia local */ }
@@ -170,7 +172,7 @@ function guardarCache() {
 function leerCache() {
   try {
     const c = JSON.parse(localStorage.getItem(CACHE) || 'null');
-    return c && c.uid && Array.isArray(c.causas) ? c : null;
+    return c && c.uid && c.forma === FORMA && Array.isArray(c.causas) ? c : null;
   } catch { return null; }
 }
 function borrarCache() { try { localStorage.removeItem(CACHE); localStorage.removeItem(CHAT); } catch { /* nada */ } }
@@ -476,10 +478,10 @@ export async function preguntarAClaude({ historial, texto, notas }) {
 export function leerChat() {
   try {
     const c = JSON.parse(localStorage.getItem(CHAT) || 'null');
-    return c && c.uid === D.usuario?.id && Array.isArray(c.mensajes) ? c : null;
+    return c && c.uid === D.usuario?.id && c.forma === FORMA && Array.isArray(c.mensajes) ? c : null;
   } catch { return null; }
 }
 export function guardarChat(estado) {
   if (!D.usuario) return;
-  try { localStorage.setItem(CHAT, JSON.stringify({ uid: D.usuario.id, ...estado })); } catch { /* sin espacio: sigue andando, sin guardarla */ }
+  try { localStorage.setItem(CHAT, JSON.stringify({ forma: FORMA, uid: D.usuario.id, ...estado })); } catch { /* sin espacio: sigue andando, sin guardarla */ }
 }
