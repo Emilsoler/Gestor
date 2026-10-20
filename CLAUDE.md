@@ -204,6 +204,14 @@ aplicarla con `apply_migration` y pasar `get_advisors` (seguridad).
   con "Ejecutar ahora". No apagar "Activo". Las instrucciones de la tarea se cambian con
   `update_trigger` (id `trig_01EX9sLZMbvqDtgqTNJFGTg5`). Si algún día la tarea tiene activador por
   API, el disparo desde la función está en el historial de git (commit e601d73).
+- **Tiene que correr en la compu del SAC**: manejar el Chrome es una herramienta de la
+  computadora, y una corrida solo la tiene si la tarea "requiere" esa computadora (con la app de
+  Claude de escritorio abierta ahí). Si `list_triggers` no le muestra `bound_device`, la tarea
+  corre en la nube, no llega al Chrome y el escrito queda con error ("No había un Chrome
+  conectado…"). La tarea se creó así. Lo activa la persona en la app de Claude de escritorio de
+  esa compu, en la tarea ("Require this computer" en inglés). `update_trigger` no lo cambia;
+  crearla de nuevo con `create_trigger` y `requires_local_device: true` le cambia el id (y hay que
+  actualizar `TAREA_SAC`).
 
 ## Estilo
 
