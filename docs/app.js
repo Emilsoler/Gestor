@@ -8,7 +8,7 @@ import {
 } from './datos.js';
 import { idNuevo, nuevaLiquidacion, cobradoRubro, totalPago, liqNormal, liqCalc, importe, pesos, enCelda, planillaExcel } from './liquidacion.js';
 
-const VERSION = '1.8';
+const VERSION = '1.8.1';
 
 const TAGS = [
   { k: 'En trámite', c: '' }, { k: 'Embargo de sueldo', c: 't-emb' }, { k: 'Secuestro / subasta', c: 't-sec' },
@@ -20,7 +20,8 @@ const CLAVE_MIN = 10;
 // La tarea de Claude que presenta en el SAC. No tiene horario: corre cuando la persona toca
 // "Ejecutar ahora" en esta página. Las tareas de este tipo no se pueden arrancar desde otra app
 // (no tienen activador por API), por eso «Ahora» la abre y el último toque es de la persona.
-const TAREA_SAC = 'https://claude.ai/scheduled-task/trig_01EX9sLZMbvqDtgqTNJFGTg5';
+// Requiere la compu del estudio: ahí está el Chrome con la sesión del SAC.
+const TAREA_SAC = 'https://claude.ai/scheduled-task/trig_01AFgigkwo8pfvJccpFYUx3n';
 
 const S = {
   pantalla: 'arranque',

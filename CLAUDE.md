@@ -201,17 +201,18 @@ aplicarla con `apply_migration` y pasar `get_advisors` (seguridad).
 - **Por qué no se dispara solo**: la tarea es una "tarea programada" de claude.ai y en esta cuenta
   su "Activador" solo ofrece "Programación" (no hay activador por API ni token). Por pedido de la
   persona no tiene horario: quedó activa con una sola ejecución el 31/12/2099, así que corre solo
-  con "Ejecutar ahora". No apagar "Activo". Las instrucciones de la tarea se cambian con
-  `update_trigger` (id `trig_01EX9sLZMbvqDtgqTNJFGTg5`). Si algún día la tarea tiene activador por
-  API, el disparo desde la función está en el historial de git (commit e601d73).
-- **Tiene que correr en la compu del SAC**: manejar el Chrome es una herramienta de la
-  computadora, y una corrida solo la tiene si la tarea "requiere" esa computadora (con la app de
-  Claude de escritorio abierta ahí). Si `list_triggers` no le muestra `bound_device`, la tarea
-  corre en la nube, no llega al Chrome y el escrito queda con error ("No había un Chrome
-  conectado…"). La tarea se creó así. Lo activa la persona en la app de Claude de escritorio de
-  esa compu, en la tarea ("Require this computer" en inglés). `update_trigger` no lo cambia;
-  crearla de nuevo con `create_trigger` y `requires_local_device: true` le cambia el id (y hay que
-  actualizar `TAREA_SAC`).
+  con "Ejecutar ahora". No apagar "Activo". Id: `trig_01AFgigkwo8pfvJccpFYUx3n`. Si algún día
+  la tarea tiene activador por API, el disparo desde la función está en el historial de git
+  (commit e601d73).
+- **Requiere la compu del estudio** ("emiliano", Windows): manejar el Chrome es una herramienta
+  de la computadora, y una corrida solo la tiene si la tarea requiere esa computadora. Por eso
+  la tarea se creó con `requires_local_device: true` desde una conversación vinculada a ella:
+  para presentar, esa compu tiene que estar prendida, con la app de Claude de escritorio abierta
+  y el SAC con la sesión iniciada en Chrome. Cambiar sus instrucciones con `update_trigger` solo
+  vale si la persona lo aprueba desde una conversación vinculada a esa compu (si no, devuelve
+  `needs_device_approval` y no cambia nada). No borrarla ni crearla de nuevo: pierde la compu.
+  La anterior (`trig_01EX9sLZMbvqDtgqTNJFGTg5`) se había creado sin ese requisito: corría en la
+  nube y no llegaba al Chrome. Quedó desactivada.
 
 ## Estilo
 

@@ -607,7 +607,7 @@ test('chat: un escrito para el SAC queda en borrador hasta tocar Agendar, con lo
 });
 
 // «Ahora» abre la tarea de Claude que presenta en el SAC: en las pruebas se anota en vez de abrirse.
-const TAREA = 'https://claude.ai/scheduled-task/trig_01EX9sLZMbvqDtgqTNJFGTg5';
+const TAREA = 'https://claude.ai/scheduled-task/trig_01AFgigkwo8pfvJccpFYUx3n';
 const espiarPestañas = (p) => p.evaluate(() => {
   window.__pestañas = [];
   window.open = (url, destino, opciones) => {
