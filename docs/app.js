@@ -4,11 +4,11 @@ import {
   crearCausa, guardarCausa, actualizarCausa, borrarCausa,
   crearAcuerdo, actualizarAcuerdo, borrarAcuerdo,
   crearPlantilla, guardarPlantilla, borrarPlantilla,
-  actualizarAgenda, presentarAhora, preguntarAClaude, leerChat, guardarChat,
+  actualizarAgenda, preguntarAClaude, leerChat, guardarChat,
 } from './datos.js';
 import { idNuevo, nuevaLiquidacion, cobradoRubro, totalPago, liqNormal, liqCalc, importe, pesos, enCelda, planillaExcel } from './liquidacion.js';
 
-const VERSION = '1.7';
+const VERSION = '1.8';
 
 const TAGS = [
   { k: 'En trámite', c: '' }, { k: 'Embargo de sueldo', c: 't-emb' }, { k: 'Secuestro / subasta', c: 't-sec' },
@@ -17,9 +17,10 @@ const ESTADOS = ['Iniciar', 'Notificando', 'Casillero', 'A despacho', 'Sentencia
 const STALE = 30; // días sin movimiento para marcar una causa
 const GRACIA = 5; // días después del vencimiento de una cuota antes de preguntar si se pagó
 const CLAVE_MIN = 10;
-// A qué hora corre, de lunes a viernes, la tarea de Claude que presenta en el SAC. Está también en
-// supabase/functions/chat/instrucciones.ts y en la tarea programada: si cambia, cambia en los tres.
-const HORA_SAC = '10:15';
+// La tarea de Claude que presenta en el SAC. No tiene horario: corre cuando la persona toca
+// "Ejecutar ahora" en esta página. Las tareas de este tipo no se pueden arrancar desde otra app
+// (no tienen activador por API), por eso «Ahora» la abre y el último toque es de la persona.
+const TAREA_SAC = 'https://claude.ai/scheduled-task/trig_01EX9sLZMbvqDtgqTNJFGTg5';
 
 const S = {
   pantalla: 'arranque',
@@ -251,7 +252,7 @@ function tagsHtml(c) {
     ts.push(a.estado === 'error' ? '<span class="tag t-sacerr">SAC: no se presentó</span>'
       : a.estado === 'borrador' ? '<span class="tag">Escrito sin confirmar</span>'
         : a.estado === 'presentando' ? '<span class="tag t-sac">SAC: presentándose</span>'
-          : a.ahora ? '<span class="tag t-sac">SAC: ahora</span>'
+          : a.ahora ? '<span class="tag t-sac">SAC: listo para presentar</span>'
             : `<span class="tag t-sac">SAC ${esc(fmtDia(a.fecha))}</span>`);
   }
   return ts.length ? `<div class="tags">${ts.join('')}</div>` : '';
@@ -831,17 +832,17 @@ async function tplAct(b) {
 }
 
 // ───────────────────────── Escritos para el SAC (agenda) ─────────────────────────
-// El chat deja cada escrito como borrador; la persona lo revisa y toca "Agendar" o "Ahora" (es la
-// única aprobación que vale), y la tarea programada de Claude lo presenta desde la compu del
-// estudio: ese día desde las 10:15, o en el momento. Ver supabase/migrations/0005 y 0006.
+// El chat deja cada escrito como borrador; la persona lo revisa y toca «Ahora» (es la única
+// aprobación que vale para presentar): queda listo y se abre la tarea de Claude, donde toca
+// "Ejecutar ahora". "Agendar" solo lo deja en la agenda para un día: nada se presenta solo.
+// Ver supabase/migrations/0005 y 0006.
 
 const ESTADO_AG = {
   borrador: ['Sin confirmar', 's-notificando'], pendiente: ['Agendado', 's-despacho'], presentando: ['Presentándose', 's-casillero'],
   presentado: ['Presentado', 's-sentencia'], error: ['No se presentó', 's-subasta'], cancelado: ['Cancelado', ''],
 };
 /** El estado que se muestra: lo pedido «Ahora» que la tarea todavía no tomó tiene el suyo. */
-const estadoAg = (a) => (a.estado === 'pendiente' && a.ahora ? ['Se presenta ahora', 's-casillero'] : ESTADO_AG[a.estado] || [a.estado, '']);
-const DEMORA_AHORA = 15; // minutos: lo pedido «Ahora» que no arrancó en ese tiempo se puede volver a pedir
+const estadoAg = (a) => (a.estado === 'pendiente' && a.ahora ? ['Listo para presentar', 's-casillero'] : ESTADO_AG[a.estado] || [a.estado, '']);
 const DEMORA_PRESENTANDO = 30; // minutos sin noticias de la corrida que lo tomó: se puede dejar como no presentado
 const minutosDesde = (s) => (Date.now() - Date.parse(s)) / 6e4;
 const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
@@ -849,17 +850,16 @@ const fmtDia = (s) => { const d = parse(s); return d ? d.toLocaleDateString('es-
 const fmtLargo = (s) => { const d = parse(s); return d ? `${DIAS[d.getDay()]} ${fmtDia(s)}` : ''; };
 /** Escritos que todavía piden algo: confirmarlos, esperar a que se presenten o resolver un error. */
 const agendaAbierta = (expte) => D.agenda.filter((a) => a.expte === expte && ['borrador', 'pendiente', 'presentando', 'error'].includes(a.estado));
-/** Cuándo corre la próxima tarea del SAC: hoy si es día hábil y todavía no son las 10:15; si no, el próximo día hábil. */
-function proximaCorrida() {
-  const d = today(), ahora = hora(new Date());
-  if (d.getDay() % 6 === 0 || ahora >= HORA_SAC) do d.setDate(d.getDate() + 1); while (d.getDay() % 6 === 0);
-  return iso(d);
-}
-/** La corrida que toma un escrito agendado para `fecha`: ese día si es hábil y no pasó; si no, la siguiente. */
-function corridaPara(fecha) {
-  const p = proximaCorrida(); if (fecha <= p) return p;
-  const d = parse(fecha); while (d.getDay() % 6 === 0) d.setDate(d.getDate() + 1);
-  return iso(d);
+/**
+ * Abre la tarea de Claude que presenta en el SAC. Con `vacia`, abre la pestaña ya (dentro del
+ * toque: si se abriera después de guardar, el navegador la bloquearía) y la devuelve para
+ * llevarla a la tarea cuando el escrito quedó listo.
+ */
+function abrirTarea(vacia = false) {
+  if (!vacia) { window.open(TAREA_SAC, '_blank', 'noopener'); return null; }
+  const w = window.open('about:blank', '_blank');
+  if (w) w.opener = null; // la pestaña nueva no puede tocar el gestor
+  return w;
 }
 
 /** Copias de los borradores que trajo el chat, por si la lectura de la base todavía no los trae. */
@@ -876,29 +876,25 @@ function tarjetaAgenda(a, donde) {
     return `<div class="sec agcard borrador" data-ag-id="${k}">${cab}
      <label class="f">Título<input id="${id('t')}" value="${esc(a.titulo)}"></label>
      <label class="f">Texto del escrito<textarea id="${id('c')}" rows="8">${esc(a.cuerpo)}</textarea></label>
-     <div class="agfecha"><label class="f">Presentarlo el<input type="date" id="${id('f')}" value="${esc(a.fecha)}" min="${iso(today())}"></label><button class="btn" data-ag="ahora" data-id="${k}" data-donde="${donde}">Ahora</button></div>
+     <div class="agfecha"><label class="f">Agendarlo para el<input type="date" id="${id('f')}" value="${esc(a.fecha)}" min="${iso(today())}"></label><button class="btn" data-ag="ahora" data-id="${k}" data-donde="${donde}">Ahora</button></div>
      ${a.realizar ? `<label class="chk"><input type="checkbox" id="${id('r')}" checked><span>Al presentarlo, dar por realizada la próxima acción: <b>${esc(a.realizar)}</b></span></label>` : ''}
      ${(a.avisos || []).map((t) => `<p class="sucio m0">${esc(t)}</p>`).join('')}
-     <p class="hint m0">Con “Agendar”, la tarea de Claude lo presenta en el SAC ese día desde las ${HORA_SAC}; con “Ahora”, en este momento. Lo hace desde la compu del estudio y deja la causa “A despacho”. Si la compu está apagada, te avisa y queda para reintentar.</p>
+     <p class="hint m0">Con “Ahora” se abre la tarea de Claude: tocá “Ejecutar ahora” y Claude lo presenta en el SAC con tu Chrome, donde tenés abierta la sesión, y deja la causa “A despacho”. Con “Agendar” queda en la agenda para ese día, pero no se presenta solo.</p>
      <div class="actions"><button class="btn small primary" data-ag="agendar" data-id="${k}" data-donde="${donde}">Agendar</button><button class="btn small" data-ag="descartar" data-id="${k}" data-donde="${donde}">Descartar</button></div>
     </div>`;
   }
   const hhmm = (s) => (s ? hora(new Date(s)) : '');
-  const realizar = a.realizar ? `; da por realizada “${esc(a.realizar)}”` : '';
-  const ahora = `<button class="btn small" data-ag="ahora" data-id="${k}">Presentar ahora</button>`;
+  const realizar = a.realizar ? ` Al presentarlo, da por realizada “${esc(a.realizar)}”.` : '';
+  const ahora = (clase = '') => `<button class="btn small ${clase}" data-ag="ahora" data-id="${k}">Presentar ahora</button>`;
   const cancelar = `<button class="btn small danger" data-ag="cancelar" data-id="${k}">Cancelar</button>`;
   let detalle = 'No se va a presentar.', botones = '';
   if (a.estado === 'pendiente' && a.ahora) {
-    // Pedido «Ahora»: la corrida tarda unos minutos en arrancar. Si no lo toma, lo toma la siguiente de las 10:15.
-    const demorado = minutosDesde(a.ahora) > DEMORA_AHORA;
-    detalle = demorado
-      ? `Pediste presentarlo a las ${hhmm(a.ahora)} y la tarea todavía no lo tomó. Si no arranca, sale en la corrida del ${esc(fmtLargo(corridaPara(a.fecha)))} a las ${HORA_SAC}${realizar}.`
-      : `Pediste presentarlo ahora (${hhmm(a.ahora)}): la tarea de Claude lo presenta en el SAC en unos minutos${realizar}.`;
-    botones = (demorado ? ahora : '') + cancelar;
+    // Listo para presentar: falta que la persona toque "Ejecutar ahora" en la tarea de Claude.
+    detalle = `Lo pediste a las ${hhmm(a.ahora)}. Si todavía no lo hiciste, abrí la tarea y tocá “Ejecutar ahora”: Claude lo presenta en el SAC.${realizar}`;
+    botones = `<button class="btn small primary" data-ag="tarea" data-id="${k}">Abrir la tarea en Claude</button>${cancelar}`;
   } else if (a.estado === 'pendiente') {
-    const sale = corridaPara(a.fecha);
-    detalle = `Se presenta el ${esc(fmtLargo(sale))} desde las ${HORA_SAC}${sale !== a.fecha ? ` (estaba para el ${esc(fmtDia(a.fecha))})` : ''}${realizar}.`;
-    botones = ahora + cancelar;
+    detalle = `Agendado para el ${esc(fmtLargo(a.fecha))}. No se presenta solo: cuando quieras presentarlo, tocá “Presentar ahora”.${realizar}`;
+    botones = ahora() + cancelar;
   } else if (a.estado === 'presentando') {
     // Ya lo tomó una corrida: no se cancela. Si no avisa cómo terminó, se puede dejar como no presentado.
     const colgado = minutosDesde(a.actualizado) > DEMORA_PRESENTANDO;
@@ -910,7 +906,7 @@ function tarjetaAgenda(a, donde) {
     detalle = `${esc(a.resultado || 'Presentado en el SAC')}${a.presentado ? ` · ${esc(cuando(new Date(a.presentado)))}` : ''}`;
   } else if (a.estado === 'error') {
     detalle = esc(a.resultado || 'No se pudo presentar.');
-    botones = `<button class="btn small primary" data-ag="reagendar" data-id="${k}">Volver a agendar</button>${ahora}${cancelar}`;
+    botones = ahora('primary') + cancelar;
   }
   const ahoraClase = a.estado === 'pendiente' && a.ahora ? ' ahora' : '';
   return `<div class="sec agcard ${esc(a.estado)}${ahoraClase}" data-ag-id="${k}">${cab}<b>${esc(a.titulo)}</b><p class="m0 ${a.estado === 'error' ? 'malo' : 'hint'}">${detalle}</p>${botones ? `<div class="actions">${botones}</div>` : ''}</div>`;
@@ -951,29 +947,35 @@ async function agAct(b) {
     if (b.dataset.ag === 'agendar') {
       const titulo = campo('t').value.trim(), cuerpo = campo('c').value.replace(/\s+$/, ''), fecha = campo('f').value;
       if (!titulo || !cuerpo.trim()) { toast('Completá el título y el texto del escrito'); return; }
-      if (!fecha) { toast('Elegí el día en que se presenta'); return; }
+      if (!fecha) { toast('Elegí el día para agendarlo'); return; }
       if (fecha < iso(today())) { toast('Ese día ya pasó: elegí hoy o más adelante'); return; }
       const realizar = campo('r')?.checked ? a.realizar : '';
       r = await actualizarAgenda(id, a.rev, { titulo, cuerpo, fecha, realizar, estado: 'pendiente' });
       if (!r.conflicto) {
-        anotar(`Confirmaste y quedó agendado "${titulo}" en la causa ${a.expte} para el ${fmt(fecha)}${titulo !== a.titulo || cuerpo !== a.cuerpo ? ' (con cambios tuyos en el texto)' : ''}.`);
-        const sale = corridaPara(fecha);
-        toast(sale === fecha ? `Agendado: se presenta el ${fmtLargo(fecha)} desde las ${HORA_SAC}` : `Agendado: sale en la corrida del ${fmtLargo(sale)}, a las ${HORA_SAC}`);
+        anotar(`Confirmaste y quedó agendado "${titulo}" en la causa ${a.expte} para el ${fmt(fecha)}${titulo !== a.titulo || cuerpo !== a.cuerpo ? ' (con cambios tuyos en el texto)' : ''}. No se presenta solo.`);
+        toast(`Agendado para el ${fmtLargo(fecha)}. Ese día tocá “Presentar ahora”`);
       }
     } else if (b.dataset.ag === 'ahora') {
-      // «Ahora»: lo confirma para ya y dispara la tarea (función chat/ahora). Desde un borrador,
-      // con lo que diga la tarjeta, igual que "Agendar".
-      let pedido = { id, rev: a.rev }, cambiado = false;
+      // «Ahora»: el escrito queda listo para presentar (con lo que diga la tarjeta, si era un
+      // borrador) y se abre la tarea de Claude, donde la persona toca "Ejecutar ahora".
+      let campos = {}, cambiado = false;
       if (a.estado === 'borrador') {
         const titulo = campo('t').value.trim(), cuerpo = campo('c').value.replace(/\s+$/, '');
         if (!titulo || !cuerpo.trim()) { toast('Completá el título y el texto del escrito'); return; }
-        pedido = { ...pedido, titulo, cuerpo, realizar: campo('r')?.checked ? a.realizar : '' };
+        campos = { titulo, cuerpo, realizar: campo('r')?.checked ? a.realizar : '' };
         cambiado = titulo !== a.titulo || cuerpo !== a.cuerpo;
       }
-      const antes = b.textContent; b.textContent = 'Enviando…';
-      try { await presentarAhora(pedido); } finally { if (b.isConnected) b.textContent = antes; }
-      anotar(`${a.estado === 'borrador' ? 'Confirmaste y pediste' : 'Pediste'} presentar ahora "${pedido.titulo || a.titulo}" en la causa ${a.expte}${cambiado ? ' (con cambios tuyos en el texto)' : ''}.`);
-      toast('Listo: la tarea de Claude lo presenta en el SAC en unos minutos');
+      const pestaña = abrirTarea(true);
+      try {
+        r = await actualizarAgenda(id, a.rev, { ...campos, estado: 'pendiente', fecha: iso(today()), ahora: new Date().toISOString(), resultado: '' });
+      } catch (e) { pestaña?.close(); throw e; }
+      if (r.conflicto) { pestaña?.close(); } else {
+        if (pestaña) pestaña.location.href = TAREA_SAC; else abrirTarea();
+        anotar(`${a.estado === 'borrador' ? 'Confirmaste' : 'Pediste presentar'} "${campos.titulo || a.titulo}" de la causa ${a.expte} para presentarlo ahora${cambiado ? ' (con cambios tuyos en el texto)' : ''}: quedó listo y se abrió la tarea de Claude para tocar "Ejecutar ahora".`);
+        toast('Listo. En Claude tocá “Ejecutar ahora” y Claude lo presenta en el SAC');
+      }
+    } else if (b.dataset.ag === 'tarea') {
+      abrirTarea();
       return;
     } else if (b.dataset.ag === 'nopresentado') {
       r = await actualizarAgenda(id, a.rev, { estado: 'error', resultado: `Se interrumpió mientras se presentaba (empezó a las ${a.actualizado ? hora(new Date(a.actualizado)) : '?'}). Antes de volver a mandarlo, fijate en el SAC si quedó presentado.` });
@@ -984,10 +986,6 @@ async function agAct(b) {
     } else if (b.dataset.ag === 'cancelar') {
       r = await actualizarAgenda(id, a.rev, { estado: 'cancelado' });
       if (!r.conflicto) { anotar(`Cancelaste "${a.titulo}" de la causa ${a.expte}: no se presenta.`); toast('Escrito cancelado: no se presenta'); }
-    } else if (b.dataset.ag === 'reagendar') {
-      const fecha = proximaCorrida();
-      r = await actualizarAgenda(id, a.rev, { estado: 'pendiente', fecha, resultado: '', ahora: null });
-      if (!r.conflicto) { anotar(`Volviste a agendar "${a.titulo}" de la causa ${a.expte} para el ${fmt(fecha)}.`); toast(`Agendado de nuevo: sale el ${fmtLargo(fecha)} desde las ${HORA_SAC}`); }
     }
     if (r?.conflicto) toast('El escrito cambió recién. Revisalo y probá de nuevo');
   } catch (e) { toast(mensaje(e)); }
@@ -1044,7 +1042,7 @@ function bienvenidaHtml() {
   return `<div class="bienvenida">
    <p class="m0"><b>Pedile a Claude lo que necesites del gestor.</b> Lee y actualiza las causas, te dice qué hay pendiente y deja escritos de la biblioteca listos para presentar en el SAC.</p>
    <div class="sugerencias">${ejemplos.map((e) => `<button class="chip" data-chat="ejemplo">${esc(e)}</button>`).join('')}</div>
-   <p class="hint m0">Cada escrito lo confirmás vos en una tarjeta. Después, una tarea de Claude lo presenta desde la compu del estudio: el día indicado desde las ${HORA_SAC} (de lunes a viernes), o en el momento si tocás “Ahora”.</p>
+   <p class="hint m0">Cada escrito lo confirmás vos en una tarjeta. Con “Ahora” se abre la tarea de Claude: tocás “Ejecutar ahora” y Claude lo presenta en el SAC.</p>
   </div>`;
 }
 

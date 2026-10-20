@@ -2,9 +2,8 @@
 // agenda como borrador. No puede eliminar nada ni presentar en el SAC: eso último lo hace la
 // tarea programada, y solo con lo que la persona confirmó en la app.
 import { Base, ErrorBase } from './base.ts';
-import { HORA_TAREA } from './instrucciones.ts';
 import {
-  Ahora, Causa, ESTADOS, ETIQUETAS, Mov, caratula, completar, dma, diaSemana, esFecha, nombreDia, norm,
+  Ahora, Causa, ESTADOS, ETIQUETAS, Mov, caratula, completar, dma, esFecha, nombreDia, norm,
   reclamado, resumenLiquidacion, ultimaDe,
 } from './util.ts';
 
@@ -95,7 +94,7 @@ export const HERRAMIENTAS = [
   },
   {
     name: 'preparar_presentacion',
-    description: `Arma un escrito para presentar en el SAC en una fecha y lo deja como BORRADOR en la agenda. La persona lo ve completo en una tarjeta, puede corregirlo y lo confirma con "Agendar" (se presenta ese día desde las ${HORA_TAREA}) o con "Ahora" (se presenta en el momento): recién ahí queda confirmado. Con plantilla_id usa esa plantilla completada con los datos de la causa; si no, mandá titulo y cuerpo. Con dar_por_realizada, al presentarlo también se da por realizada la próxima acción que la causa tenga anotada.`,
+    description: 'Arma un escrito para presentar en el SAC y lo deja como BORRADOR en la agenda, con la fecha que se indique. La persona lo ve completo en una tarjeta, puede corregirlo y elige "Ahora" (queda listo y se abre la tarea de Claude, donde toca "Ejecutar ahora" para que se presente) o "Agendar" (queda en la agenda para ese día, pero no se presenta solo). Con plantilla_id usa esa plantilla completada con los datos de la causa; si no, mandá titulo y cuerpo. Con dar_por_realizada, al presentarlo también se da por realizada la próxima acción que la causa tenga anotada.',
     input_schema: {
       type: 'object',
       properties: {
@@ -121,7 +120,7 @@ export const HERRAMIENTAS = [
   },
   {
     name: 'reprogramar_presentacion',
-    description: 'Cambia el día de un escrito agendado, o vuelve a agendar uno que quedó con error (el texto ya fue confirmado).',
+    description: 'Cambia el día de un escrito agendado, o vuelve a agendar uno que quedó con error (el texto ya fue confirmado). Agendado no se presenta solo: ese día la persona toca "Presentar ahora".',
     input_schema: {
       type: 'object',
       properties: { id: { type: 'string', description: 'id del escrito en la agenda.' }, fecha: fecha('Día nuevo.') },
@@ -171,7 +170,7 @@ const idValido = (x: unknown) => {
 const escrito = (a: any, causas?: Map<string, Causa>) => ({
   id: a.id, expte: a.expte, ...(causas?.get(a.expte) ? { caratula: caratula(causas.get(a.expte)!) } : {}),
   titulo: a.titulo, fecha: a.fecha,
-  estado: a.estado === 'pendiente' ? (a.ahora ? 'agendado para presentar ahora (botón «Ahora»)' : 'agendado') : a.estado === 'presentando' ? 'presentándose en el SAC en este momento' : a.estado,
+  estado: a.estado === 'pendiente' ? (a.ahora ? 'listo para presentar: falta que la persona toque "Ejecutar ahora" en la tarea de Claude' : 'agendado (no se presenta solo)') : a.estado === 'presentando' ? 'presentándose en el SAC en este momento' : a.estado,
   ...(a.realizar ? { da_por_realizada: a.realizar } : {}), ...(a.resultado ? { resultado: a.resultado } : {}),
 });
 
@@ -353,11 +352,8 @@ const acciones: Record<string, (e: Entrada, ctx: Contexto) => Promise<unknown>> 
     }
     // La tarea que presenta en el SAC no adjunta archivos: un escrito que acompaña documentos lo deja con error.
     if (/acompa[ñn]|adjunt/i.test(`${titulo}\n${cuerpo}`)) avisos.push('El escrito dice que acompaña documentos: la tarea que presenta en el SAC no adjunta archivos, así que no lo va a presentar (lo deja con error para que la persona lo presente o se lo pida a Claude en la app de Claude, con los archivos).');
-    const dow = diaSemana(e.fecha);
-    if (dow === 0 || dow === 6) avisos.push(`El ${dma(e.fecha)} es ${nombreDia(e.fecha)}: la tarea corre de lunes a viernes, así que se presentaría el lunes siguiente.`);
-    if (e.fecha === hoy.fecha && hoy.hora >= HORA_TAREA) avisos.push(`La tarea de hoy ya corrió (${HORA_TAREA}): con "Agendar" se presentaría en la próxima corrida, el próximo día hábil. Para presentarlo hoy, la persona puede tocar "Ahora" en la tarjeta.`);
-    const iguales = await db.leer('agenda', `expte=eq.${c.expte}&estado=in.(pendiente,presentando,borrador)&select=id,titulo,fecha,estado`);
-    for (const a of iguales) if (norm(a.titulo) === norm(titulo)) avisos.push(`Ya hay un escrito igual ${a.estado === 'borrador' ? 'en borrador' : a.estado === 'presentando' ? 'presentándose ahora' : 'agendado'} para el ${dma(a.fecha)} (id ${a.id}).`);
+    const iguales = await db.leer('agenda', `expte=eq.${c.expte}&estado=in.(pendiente,presentando,borrador)&select=id,titulo,fecha,estado,ahora`);
+    for (const a of iguales) if (norm(a.titulo) === norm(titulo)) avisos.push(`Ya hay un escrito igual ${a.estado === 'borrador' ? 'en borrador' : a.estado === 'presentando' ? 'presentándose ahora' : a.ahora ? 'listo para presentar' : 'agendado'} para el ${dma(a.fecha)} (id ${a.id}).`);
 
     const [fila] = await db.insertar('agenda', { expte: c.expte, titulo, cuerpo, fecha: e.fecha, realizar, estado: 'borrador' });
     ctx.cambios = true;
@@ -365,7 +361,7 @@ const acciones: Record<string, (e: Entrada, ctx: Contexto) => Promise<unknown>> 
     return {
       tarjeta: true, id: fila.id, expte: c.expte, caratula: caratula(c), titulo, cuerpo, fecha: fila.fecha,
       dia: nombreDia(fila.fecha), da_por_realizada: realizar || null, avisos,
-      importante: `Es un borrador: la persona tiene que revisarlo en la tarjeta y tocar "Agendar" (ese día desde las ${HORA_TAREA}) o "Ahora" (en el momento). Hasta entonces no está agendado.`,
+      importante: 'Es un borrador: para presentarlo, la persona lo revisa en la tarjeta, toca "Ahora" y después "Ejecutar ahora" en la tarea de Claude que se abre. "Agendar" solo lo deja en la agenda: no se presenta solo. Hasta que toque uno de los dos, no está confirmado.',
     };
   },
 

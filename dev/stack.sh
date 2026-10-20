@@ -119,15 +119,13 @@ SQL
   echo $! > "$STACK/postgrest.pid"
 
   # La función `chat` (supabase/functions/chat) con Deno, hablando con un doble de la API de
-  # Claude y de la tarea del SAC (claude-falso.mjs) en vez de las reales. Sin Deno, se saltea:
-  # el resto anda igual.
+  # Claude (claude-falso.mjs) en vez de la real. Sin Deno, se saltea: el resto anda igual.
   stop_one claude-falso; stop_one chat
   CLAUDE_FALSO_PORT=54340 nohup setsid node "$HERE/claude-falso.mjs" > "$LOGS/claude-falso.log" 2>&1 &
   echo $! > "$STACK/claude-falso.pid"
   if [ -x "$DENO" ]; then
     SUPABASE_URL=http://127.0.0.1:54321 SUPABASE_ANON_KEY="$ANON_KEY" ANTHROPIC_API_KEY=clave-de-prueba \
     ANTHROPIC_URL=http://127.0.0.1:54340 DENO_SERVE_ADDRESS=tcp:127.0.0.1:54330 \
-    TAREA_SAC_URL=http://127.0.0.1:54340/v1/claude_code/routines/trig_prueba/fire TAREA_SAC_TOKEN=token-de-prueba \
       nohup setsid "$DENO" run --allow-net --allow-env "$REPO/supabase/functions/chat/index.ts" > "$LOGS/chat.log" 2>&1 &
     echo $! > "$STACK/chat.pid"
   else

@@ -2,20 +2,18 @@
 // persona en la app. Así valen las mismas tres barreras (la puerta de la API, las políticas de
 // filas y las estadísticas apagadas) y el chat no puede hacer nada que la persona no pueda.
 // El encabezado `x-gestor-via: chat` solo cambia la firma: lo que se cambie queda como "Claude"
-// (gestor.autor, migración 0005). Sin él (comoClaude = false, el botón «Ahora»), queda firmado
-// por la persona, como lo que hace desde la app.
+// (gestor.autor, migración 0005).
 
 export class ErrorBase extends Error {
   constructor(mensaje: string, public status: number, public codigo: string) { super(mensaje); }
 }
 
 export class Base {
-  constructor(private url: string, private clave: string, private jwt: string, private comoClaude = true) {}
+  constructor(private url: string, private clave: string, private jwt: string) {}
 
   private async pedir(ruta: string, opciones: { method?: string; body?: unknown; prefer?: string } = {}) {
     const headers: Record<string, string> = {
-      apikey: this.clave, authorization: `Bearer ${this.jwt}`, accept: 'application/json',
-      ...(this.comoClaude ? { 'x-gestor-via': 'chat' } : {}),
+      apikey: this.clave, authorization: `Bearer ${this.jwt}`, 'x-gestor-via': 'chat', accept: 'application/json',
     };
     if (opciones.body !== undefined) headers['content-type'] = 'application/json';
     if (opciones.prefer) headers.prefer = opciones.prefer;

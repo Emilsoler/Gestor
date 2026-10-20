@@ -6,10 +6,6 @@
 //
 // La clave de la API de Claude vive solo acá, como secreto de Supabase (ANTHROPIC_API_KEY):
 // nunca llega al navegador ni al repositorio.
-//
-// La ruta `…/chat/ahora` es otra cosa: el botón «Ahora» de las tarjetas de escritos (ahora.ts).
-// Comparte con el chat la comprobación de quién pide.
-import { presentarAhora } from './ahora.ts';
 import { Base, ErrorBase } from './base.ts';
 import { ErrorClaude, pedirAClaude } from './claude.ts';
 import { Contexto, HERRAMIENTAS, ejecutar } from './herramientas.ts';
@@ -57,14 +53,12 @@ export async function manejar(req: Request): Promise<Response> {
   const cors = cabeceras(req);
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
   if (req.method !== 'POST') return responder({ error: 'metodo', mensaje: 'Solo POST.' }, 405, cors);
-  const esAhora = /\/ahora\/?$/.test(new URL(req.url).pathname);
 
   // 1. Quién pide: la sesión de la app. La base dice si está autorizado (y la puerta de la API
-  //    rechaza a quien no lo está antes de cualquier otra cosa). Lo del botón «Ahora» queda
-  //    firmado por la persona; lo del chat, como Claude.
+  //    rechaza a quien no lo está antes de cualquier otra cosa).
   const jwt = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
   if (!jwt) return responder({ error: 'sin_sesion', mensaje: 'Falta iniciar sesión.' }, 401, cors);
-  const db = new Base(URL_BASE, clavePublica(), jwt, !esAhora);
+  const db = new Base(URL_BASE, clavePublica(), jwt);
   let acceso: any;
   try {
     acceso = await db.rpc('mi_acceso');
@@ -75,19 +69,7 @@ export async function manejar(req: Request): Promise<Response> {
     return responder({ error: 'base', mensaje: 'No se pudo consultar la base de datos. Probá de nuevo en un momento.' }, 502, cors);
   }
   if (!acceso?.autorizado) return responder({ error: 'sin_acceso', mensaje: 'Esta cuenta no está autorizada para usar el gestor.' }, 403, cors);
-  if (acceso.clave_temporal) return responder({ error: 'clave_temporal', mensaje: `Antes de ${esAhora ? 'presentar escritos' : 'usar el chat'}, elegí tu contraseña definitiva.` }, 403, cors);
-
-  if (esAhora) {
-    let pedido: any;
-    try { pedido = await req.json(); } catch { return responder({ error: 'pedido', mensaje: 'El pedido no se pudo leer.' }, 400, cors); }
-    try {
-      const r = await presentarAhora(db, pedido, acceso.nombre || acceso.email || 'La persona');
-      return responder(r.cuerpo, r.status, cors);
-    } catch (e) {
-      console.error('ahora:', e);
-      return responder({ error: 'base', mensaje: 'No se pudo consultar la base de datos. Probá de nuevo en un momento.' }, 502, cors);
-    }
-  }
+  if (acceso.clave_temporal) return responder({ error: 'clave_temporal', mensaje: 'Antes de usar el chat, elegí tu contraseña definitiva.' }, 403, cors);
 
   const clave = Deno.env.get('ANTHROPIC_API_KEY');
   if (!clave) {

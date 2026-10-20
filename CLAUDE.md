@@ -12,8 +12,7 @@ Tiene tres piezas:
 - **La base**, en Supabase (Postgres + login). El esquema está en `supabase/migrations/`.
   La dirección y la clave pública del proyecto están en `docs/config.js`.
 - **El chat**, en `supabase/functions/chat/`: una función de Supabase que habla con la API de
-  Claude y, en la ruta `chat/ahora`, dispara la tarea que presenta en el SAC (ver "Chat con
-  Claude y escritos para el SAC").
+  Claude (ver "Chat con Claude y escritos para el SAC").
 
 Este repositorio es **público**: acá no van datos de causas, exportaciones, claves secretas
 ni nada del estudio que no sea el código.
@@ -85,15 +84,14 @@ Después de escribir, leer la fila y contar qué quedó. La app abierta lo muest
   Para la tarea que los presenta:
 
   ```sql
-  select * from gestor.agenda_tomar(false);                    -- toma el próximo (queda "presentando"); true: solo lo pedido «Ahora»
+  select * from gestor.agenda_tomar(true);                     -- toma el próximo listo para presentar (queda "presentando")
   select gestor.agenda_presentada('<id>', 'Presentado 10:16');  -- después de presentarlo: movimiento, "A despacho" y, si se pidió, realizada
   select gestor.agenda_fallida('<id>', 'motivo');               -- si no se pudo: queda con error, la causa no se toca
-  select * from gestor.agenda_del_dia();                       -- para consultar: confirmados para hoy (o atrasados) que nadie tomó
   ```
 
-  Presentar siempre a partir de `agenda_tomar`: es lo que impide que dos corridas a la vez (la de
-  las 10:15 y una del botón «Ahora») presenten el mismo escrito, y lo que no toma antes de las
-  10:15 lo que es para hoy y no se pidió «Ahora».
+  Presentar siempre a partir de `agenda_tomar(true)`: toma solo lo que la persona marcó con
+  «Ahora», y nunca le da el mismo escrito a dos corridas a la vez. (`agenda_tomar(false)` y
+  `agenda_del_dia()` son del horario de las 10:15, que ya no existe; ver más abajo.)
 
 - **Ver qué cambió y deshacer**: todo cambio queda en `gestor.cambios` con el estado anterior.
 
@@ -188,28 +186,24 @@ aplicarla con `apply_migration` y pasar `get_advisors` (seguridad).
   El gasto se controla con el tope mensual de la Consola de Claude. Modelo: `claude-sonnet-5-5`
   (`GESTOR_MODELO` para cambiarlo sin tocar el código).
 - **Publicar la función**: `deploy_edge_function` con nombre `chat`, `verify_jwt: true` y los
-  siete archivos de `supabase/functions/chat/` (entrada `index.ts`).
-- **Agenda** (`public.agenda`, migraciones 0005 y 0006): borrador (lo arma el chat) → pendiente (la
-  persona tocó "Agendar" o "Ahora" en la tarjeta: es la única aprobación que vale) → presentando
-  (una corrida de la tarea lo tomó) → presentado o error; o cancelado (solo antes de que lo tomen).
-  La tarea programada de Claude "Presentar escritos agendados en el SAC" corre de lunes a viernes
-  a las 10:15 desde la compu del estudio, y también cuando se toca «Ahora»: toma los escritos de a
-  uno con `gestor.agenda_tomar`, presenta cada uno y lo cierra con `agenda_presentada` o
-  `agenda_fallida`. No adjunta archivos. Si una corrida se corta con un escrito tomado, a la media
-  hora la tarjeta ofrece "Marcar como no presentado" (queda con error, para revisarlo en el SAC).
-- **Botón «Ahora»** (`chat/ahora`, `ahora.ts`): con la sesión de la persona (queda firmado por
-  ella) confirma el escrito con fecha de hoy y la hora del pedido en `agenda.ahora`, y dispara la
-  tarea por su API (POST a `…/v1/claude_code/routines/<id de la tarea>/fire`). Esa corrida llega
-  con un aviso (bloque routine-fire-payload) y toma solo lo pedido «Ahora»
-  (`agenda_tomar(true)`). Si la tarea no arranca, el escrito vuelve al estado y la fecha que tenía.
-  El token de la tarea es el secreto `TAREA_SAC_TOKEN` de la función: se genera en
-  claude.ai/code/routines (la tarea → Editar → Add another trigger → API → Generate token; se ve
-  una sola vez) y se carga en el panel de Supabase (Edge Functions → Secrets), nunca por el chat ni
-  en el repositorio. Sin él, «Ahora» avisa y no toca nada. `TAREA_SAC_URL` cambia la dirección
-  (por ejemplo, si la tarea se vuelve a crear).
-- **La hora de la tarea (10:15) está en cuatro lugares**: la tarea programada, `HORA_TAREA` en
-  `supabase/functions/chat/instrucciones.ts`, `HORA_SAC` en `docs/app.js` y `gestor.hora_tarea()`
-  (migración 0006). Si cambia, en los cuatro.
+  seis archivos de `supabase/functions/chat/` (entrada `index.ts`).
+- **Agenda** (`public.agenda`, migraciones 0005 y 0006): borrador (lo arma el chat) → pendiente
+  (la persona tocó "Agendar" o «Ahora» en la tarjeta: es la única aprobación que vale) →
+  presentando (una corrida de la tarea lo tomó) → presentado o error; o cancelado (solo antes de
+  que lo tomen). "Agendar" solo lo deja en la agenda para un día: **nada se presenta solo**.
+- **Botón «Ahora»** (`docs/app.js`): deja el escrito pendiente, con fecha de hoy y la hora del
+  pedido en `agenda.ahora` ("Listo para presentar"), y abre en otra pestaña la tarea de Claude
+  "Presentar escritos agendados en el SAC" (`TAREA_SAC`, claude.ai/scheduled-task/trig_…). Ahí la
+  persona toca "Ejecutar ahora": la corrida toma lo listo con `agenda_tomar(true)`, lo presenta con
+  Claude in Chrome (el Chrome donde está abierta la sesión del SAC) y lo cierra con
+  `agenda_presentada` o `agenda_fallida`. No adjunta archivos. Si una corrida se corta con un
+  escrito tomado, a la media hora la tarjeta ofrece "Marcar como no presentado".
+- **Por qué no se dispara solo**: la tarea es una "tarea programada" de claude.ai y en esta cuenta
+  su "Activador" solo ofrece "Programación" (no hay activador por API ni token). Por pedido de la
+  persona no tiene horario: quedó activa con una sola ejecución el 31/12/2099, así que corre solo
+  con "Ejecutar ahora". No apagar "Activo". Las instrucciones de la tarea se cambian con
+  `update_trigger` (id `trig_01EX9sLZMbvqDtgqTNJFGTg5`). Si algún día la tarea tiene activador por
+  API, el disparo desde la función está en el historial de git (commit e601d73).
 
 ## Estilo
 
