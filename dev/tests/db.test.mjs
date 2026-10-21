@@ -352,7 +352,8 @@ test('autorizar una cuenta que ya existe, sin tocarle la clave', async () => {
 
 test('lo que cambia Claude lo ve la app en la siguiente lectura, y su revisión vieja ya no pisa', async () => {
   const antes = (await emi.from('causas').select('*').eq('expte', '14000001').single()).data;
-  sql(`select gestor.movimiento('14000001', 'Decreto: autos', '2026-10-20')`);
+  // Con la fecha de hoy: una fija queda detrás de lo que las pruebas anteriores anotan hoy.
+  sql(`select gestor.movimiento('14000001', 'Decreto: autos')`);
   const r = await emi.from('causas').update({ notas: 'edición vieja' }).eq('expte', '14000001').eq('rev', antes.rev).select();
   assert.deepEqual(r.data, []);
   const ahora = (await emi.from('causas').select('*').eq('expte', '14000001').single()).data;
