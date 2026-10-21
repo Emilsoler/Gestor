@@ -518,6 +518,25 @@ test('celular: tarjetas, filtros plegados y botón de nueva causa', async () => 
   await c.close();
 });
 
+test('botón SAC: en el iPhone abre Chrome; en la PC y desde Chrome, otra pestaña', async () => {
+  const SAC = 'https://www.justiciacordoba.gob.ar/JusticiaCordoba/extranet.aspx';
+  const cel = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true };
+  const enlace = async (opciones) => {
+    const { c, p } = await nuevoContexto(opciones);
+    await p.goto(BASE); await p.waitForSelector('#fIngreso');
+    const r = await p.$eval('#btnSac', (a) => [a.getAttribute('href'), a.getAttribute('target')]);
+    await c.close();
+    return r;
+  };
+  assert.deepEqual(await enlace({ nombre: 'sac-iphone', ...cel,
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.1 Mobile/15E148 Safari/604.1' }),
+  ['googlechromes://www.justiciacordoba.gob.ar/JusticiaCordoba/extranet.aspx', null]);
+  assert.deepEqual(await enlace({ nombre: 'sac-chrome-iphone', ...cel,
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_6_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/155.0.8059.37 Mobile/15E148 Safari/604.1' }),
+  [SAC, '_blank']);
+  assert.deepEqual(await enlace({ nombre: 'sac-pc' }), [SAC, '_blank']);
+});
+
 test('con tiempo real el cambio de Claude llega al instante; si se corta, sigue con el respaldo', async () => {
   await tiempoReal(true);
   const { c, p } = await nuevoContexto({ nombre: 'vivo' });

@@ -1349,6 +1349,20 @@ function hablarConClaude(c) {
   window.open('https://claude.ai/new?q=' + encodeURIComponent(texto), '_blank', 'noopener');
 }
 $('#btnChat').onclick = () => abrirChat(null);
+// Botón SAC. En el iPhone, el gestor instalado abre los enlaces de otros sitios en una vista de
+// Safari propia, y ahí no se puede entrar a las causas: va a Chrome, con la dirección que Chrome
+// registra para eso (https → googlechromes). Sin target: se abre la otra app y el gestor queda igual.
+// En la PC (y si el gestor ya está abierto en Chrome) sigue el enlace común, en otra pestaña.
+{
+  const ua = navigator.userAgent;
+  const iphone = /iphone|ipad|ipod/i.test(ua) || (/macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
+  if (iphone && !/CriOS/.test(ua)) {
+    const sac = $('#btnSac');
+    sac.href = sac.href.replace(/^https:/, 'googlechromes:');
+    sac.removeAttribute('target');
+    sac.title = 'Abrir el SAC en Chrome';
+  }
+}
 $('#btnCuenta').onclick = () => { S.menu = !S.menu; renderMenu(); };
 $('#btnFiltros').onclick = (e) => { const abierto = $('#toolbar').classList.toggle('abierto'); e.currentTarget.setAttribute('aria-expanded', abierto); };
 movil.addEventListener('change', () => render());

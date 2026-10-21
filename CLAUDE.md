@@ -192,6 +192,10 @@ aplicarla con `apply_migration` y pasar `get_advisors` (seguridad).
 - **Botón "SAC"** (encabezado, entre "Claude" y el círculo de la cuenta): un enlace común a Servicios
   Extranet del Poder Judicial (`https://www.justiciacordoba.gob.ar/JusticiaCordoba/extranet.aspx`),
   en otra pestaña para que el gestor quede abierto. El ingreso lo hace la persona en esa página.
+  En el iPhone (la persona usa uno, con Chrome instalado) el gestor instalado abre ese enlace en una
+  vista de Safari propia donde no se puede entrar a las causas; por eso `app.js` lo cambia a
+  `googlechromes://…` y se abre en Chrome (el iPhone puede preguntar antes si abrirlo). Si el
+  gestor ya está abierto en Chrome del iPhone (`CriOS`), queda el enlace común.
 - **Terceros**: `docs/vendor/supabase.js` y las tipografías se copian desde `dev/node_modules`
   con `node dev/vendor.mjs`; no se cargan de ningún CDN.
 
