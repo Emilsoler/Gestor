@@ -3,6 +3,9 @@
 //
 //   pdftotext -layout listado.pdf - | node dev/importar-listado.mjs            → JSON, para revisar
 //   pdftotext -layout listado.pdf - | node dev/importar-listado.mjs --sql      → SQL para execute_sql
+//   pdftotext -layout listado.pdf - | node dev/importar-listado.mjs --lotes <carpeta>
+//       → el mismo SQL en lotes chicos (NN-deudores.sql, para el conector) y verificar.sql, que
+//         compara cada deudor de la base con el listado (tiene que dar "igual" en los nuevos)
 //
 // El SQL agrega solo los socios que todavía no están en la base (no toca a los que ya se gestionan:
 // sus pagos y planes viven en la app). Los datos personales no se guardan en este repositorio:
@@ -13,8 +16,9 @@
 // (N de M, vencimiento e importe; los DOCUMENTO-R son saldos de cuotas pagadas en parte). Con el
 // "de M" y el importe se agregan también las cuotas que faltan vencer, mes a mes. Los intereses del
 // listado no se copian: la app los calcula; quedan anotados en una gestión para comparar.
-import { readFileSync } from 'node:fs';
-import { randomBytes } from 'node:crypto';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { randomBytes, createHash } from 'node:crypto';
 
 const id = () => randomBytes(4).toString('hex');
 const fecha = (s) => { const [d, m, a] = s.split('/'); return `${a.length === 2 ? '20' + a : a}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`; };
@@ -138,8 +142,65 @@ select x.nombre, x.socio, x.domicilio, x.telefonos, x.acreedor, x.tasa, x.hon_pc
 commit;`;
 }
 
+// Huella de un deudor: md5 del texto jsonb de lo que trae el listado, escrito como lo imprime
+// Postgres (claves ordenadas por largo y después por bytes, separadores ", " y ": "). verificar.sql
+// arma el mismo texto en la base con jsonb_build_object y compara.
+const CAMPOS = ['nombre', 'socio', 'domicilio', 'telefonos', 'acreedor', 'tasa', 'hon_pct', 'operaciones', 'cuotas', 'notas', 'gestiones'];
+const ordenClaves = (a, b) => (Buffer.byteLength(a) - Buffer.byteLength(b)) || Buffer.compare(Buffer.from(a), Buffer.from(b));
+const ESCAPES = { '\\': '\\\\', '"': '\\"', '\b': '\\b', '\f': '\\f', '\n': '\\n', '\r': '\\r', '\t': '\\t' };
+const comillas = (s) => '"' + s.replace(/[\\"\u0000-\u001f]/g, (c) => ESCAPES[c] || '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0')) + '"';
+export const textoJsonb = (v) => v === null || v === undefined ? 'null'
+  : Array.isArray(v) ? '[' + v.map(textoJsonb).join(', ') + ']'
+  : typeof v === 'object' ? '{' + Object.keys(v).filter((k) => v[k] !== undefined).sort(ordenClaves).map((k) => comillas(k) + ': ' + textoJsonb(v[k])).join(', ') + '}'
+  : typeof v === 'string' ? comillas(v) : String(v);
+export const huella = (d) => createHash('md5').update(textoJsonb(Object.fromEntries(CAMPOS.map((k) => [k, d[k]])))).digest('hex');
+
+/** Los deudores en lotes chicos (para pasarlos de a uno al conector sin errores de copia). */
+export function lotes(deudores, max = +process.env.LOTE_BYTES || 9000) {
+  const out = []; let actual = [], bytes = 0;
+  for (const d of deudores) {
+    const n = Buffer.byteLength(JSON.stringify(d));
+    if (actual.length && bytes + n > max) { out.push(actual); actual = []; bytes = 0; }
+    actual.push(d); bytes += n;
+  }
+  if (actual.length) out.push(actual);
+  return out;
+}
+
+/** Consulta que dice, por socio del listado, si en la base está tal cual ("igual"), distinto o falta. */
+export function verificarSql(deudores) {
+  const q = (s) => `'${String(s).replace(/'/g, "''")}'`;
+  return `-- Cómo quedó en la base cada deudor del listado. Los recién agregados tienen que dar "igual";
+-- "distinto" es lo esperable en los que ya estaban (el listado no los toca) o se cambiaron después.
+with esperado (socio, nombre, huella) as (values
+${deudores.map((d) => `  (${q(d.socio)}, ${q(d.nombre)}, ${q(huella(d))})`).join(',\n')})
+select e.socio, e.nombre,
+       case when not exists (select 1 from public.deudores d where d.socio = e.socio) then 'falta'
+            when exists (select 1 from public.deudores d where d.socio = e.socio and md5(jsonb_build_object(
+                   'nombre', d.nombre, 'socio', d.socio, 'domicilio', d.domicilio, 'telefonos', d.telefonos, 'acreedor', d.acreedor,
+                   'tasa', trim_scale(d.tasa), 'hon_pct', trim_scale(d.hon_pct), 'operaciones', d.operaciones, 'cuotas', d.cuotas,
+                   'notas', d.notas, 'gestiones', d.gestiones)::text) = e.huella) then 'igual'
+            else 'distinto' end as estado
+  from esperado e
+ order by length(e.socio), e.socio;
+`;
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const r = leerListado(readFileSync(0, 'utf8'));
-  if (process.argv.includes('--sql')) process.stdout.write(aSql(r.deudores) + '\n');
+  const i = process.argv.indexOf('--lotes');
+  if (i > 0) {
+    const salida = process.argv[i + 1];
+    if (!salida) { console.error('uso: … | node dev/importar-listado.mjs --lotes <carpeta-de-salida (fuera del repositorio)>'); process.exit(2); }
+    mkdirSync(salida, { recursive: true });
+    const partes = lotes(r.deudores);
+    partes.forEach((l, k) => {
+      const archivo = `${String(k + 1).padStart(2, '0')}-deudores.sql`;
+      writeFileSync(join(salida, archivo), aSql(l) + '\n');
+      console.log(archivo, `${l.length} deudores`, Buffer.byteLength(aSql(l)) + ' bytes');
+    });
+    writeFileSync(join(salida, 'verificar.sql'), verificarSql(r.deudores));
+    console.log(`\n${r.deudores.length} deudores → ${partes.length} lotes y verificar.sql en ${salida}`);
+  } else if (process.argv.includes('--sql')) process.stdout.write(aSql(r.deudores) + '\n');
   else process.stdout.write(JSON.stringify(r, null, 2) + '\n');
 }

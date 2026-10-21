@@ -13,9 +13,9 @@ Nada de esta carpeta se publica con la app (GitHub Pages sirve solo `docs/`).
 | `tests/chat.test.mjs` | La función `chat` de punta a punta: lo que manda a Claude, lo que hacen las herramientas y lo que vuelve. |
 | `claude-falso.mjs` | Un doble de la API de Claude (127.0.0.1:54340) que contesta lo que cada prueba le guiona. La función `chat` corre en local apuntando a él. |
 | `tests/app.test.mjs` | La app de punta a punta en un navegador real (Playwright). |
-| `tests/cobranzas.test.mjs` | Cobranzas: las cuentas (contra la planilla de Excel y el listado de la Mutual), la liquidación de la base comparada con la de la app en cientos de casos al azar, las funciones para Claude y los permisos. |
+| `tests/cobranzas.test.mjs` | Cobranzas: las cuentas (contra la planilla de Excel y el listado de la Mutual), la liquidación de la base comparada con la de la app en cientos de casos al azar, las funciones para Claude, los permisos y la importación del listado (con uno inventado). |
 | `tests/cobranzas-app.test.mjs` | La app de cobranzas de punta a punta (`/cobranzas/`), en PC y en celular. |
-| `importar-listado.mjs` | Lee el listado de prendarios vencidos de la Mutual (texto de `pdftotext -layout`) y arma los deudores; con `--sql`, el `insert` para la base. |
+| `importar-listado.mjs` | Lee el listado de prendarios vencidos de la Mutual (texto de `pdftotext -layout`) y arma los deudores; con `--lotes <carpeta>`, el `insert` en lotes chicos para el conector y `verificar.sql` para confirmar que llegaron iguales (con `--sql`, todo en uno). |
 | `iconos-cobranzas.mjs` | Regenera los íconos de la app de cobranzas. |
 | `tests/mirar.mjs`, `tests/estados.mjs` | Capturas de pantalla para revisar la app a ojo. |
 | `migrar.mjs` | Arma los lotes para pasar datos del gestor anterior y la consulta de verificación. |

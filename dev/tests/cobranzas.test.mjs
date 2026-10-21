@@ -10,6 +10,7 @@ import { sql, sqlFalla, anon, entrar, crearCuenta, servicio } from './helpers.mj
 import {
   liquidar, armarPlan, estadoPlan, promesa, resumen, detalleCuotas, nombrePropio, sumarMeses, diasEntre, totalPago,
 } from '../../docs/cobranzas/calculo.js';
+import { leerListado, lotes, aSql, verificarSql } from '../importar-listado.mjs';
 
 const EMAIL = 'cobra@test.local', CLAVE = 'Clave-de-cobranzas-2026';
 const OTRO = 'curioso@test.local';
@@ -341,4 +342,62 @@ test('textos: cuotas en palabras, nombres propios, fechas y pagos', () => {
   assert.equal(sumarMeses('2026-01-31', 1), '2026-02-28');
   assert.equal(diasEntre('2026-03-01', '2026-03-31'), 30);
   assert.equal(totalPago({ imp: { capital: 1000.1, intereses: 0.2 } }), 1000.3);
+});
+
+// ───────────────────────── Importar el listado de la Mutual ─────────────────────────
+
+// Un listado inventado, con la forma exacta del PDF de la Mutual pasado por `pdftotext -layout`:
+// un nombre partido en dos renglones, un saldo de cuota (DOCUMENTO-R) y teléfonos con notas.
+const LISTADO = `Fecha:      20/10/2026                              ASOCIACION MUTUAL BELL                                                          Pág.No       1
+                                                                 ** PRENDARIOS **
+                                            DOCUMENTOS VENCIDOS HASTA EL 20/10/26
+  Fecha        U.P     Liquidación                 Nro./Socio                 Cuota N F.Vto. D.            Importe        Intereses      Total
+ 09/01/26 14/09/26 DOCUMENTO       900001    901 PEREZ JUANA DE LAS            9 de 12 20/09/26    30 2      100,000.00      9,000.00    109,000.00
+ 09/01/26            DOCUMENTO     900001        NIEVES                       10 de 12 20/10/26     0 2      100,000.00          0.00    100,000.00
+                                                                                                            200,000.00      9,000.00    209,000.00
+ Direccion y Tel.: CALLE FALSA 123 - 03537-400100 3537000111 TIA                                                                         LEGALES
+  Liquid.: 900001 Concec:PROPIO Marca:fiat                Modelo: uno 1.4 Ano:2010 Dominio: ZZZ999
+ LEGALES 12/12/24
+ 14/09/26 14/09/26 DOCUMENTO-R       59001   902 DISTRIBUIDORA EJEMPLO SAS     10 de 0 11/12/25    313 3       50,000.50     40,000.00     90,000.50
+ 11/02/25            DOCUMENTO     900002                                     11 de 12 11/01/26   282 3      150,000.00     90,000.00    240,000.00
+ 11/02/25            DOCUMENTO     900002                                     12 de 12 11/02/26   251 3      150,000.00     80,000.00    230,000.00
+                                                                                                            350,000.50    210,000.00    560,000.50
+ Direccion y Tel.: AV. SIEMPRE VIVA 742 - NO POSEE 3537 40-0222
+  Liquid.: 900002 Concec:PROPIO Marca: Modelo:                  Ano:0 Dominio:
+  Liquid.: 59001 Concec: Marca: Modelo: Ano:0 Dominio:
+ LEGALES
+
+                                                                                 Total:         550,000.50    219,000.00    769,000.50
+`;
+
+test('listado de la Mutual: se lee, se carga en lotes y verificar.sql confirma que llegó igual', () => {
+  const r = leerListado(LISTADO);
+  assert.equal(r.corte, '2026-10-20');
+  const [a, b] = r.deudores;
+  assert.deepEqual(r.deudores.map((d) => [d.socio, d.nombre]), [['901', 'PEREZ JUANA DE LAS NIEVES'], ['902', 'DISTRIBUIDORA EJEMPLO SAS']]);
+  assert.equal(a.domicilio, 'CALLE FALSA 123');
+  assert.deepEqual(a.telefonos, [{ numero: '03537-400100', nota: '' }, { numero: '3537000111', nota: 'tia' }]);
+  assert.deepEqual(b.telefonos, [{ numero: '3537 40-0222', nota: '' }]); // el código de área suelto se une al número
+  assert.deepEqual(a.operaciones.map((o) => [o.numero, o.fecha, o.cuotas, o.ultimo_pago, o.vehiculo]),
+    [['900001', '2026-01-09', 12, '2026-09-14', { marca: 'FIAT', modelo: 'UNO 1.4', anio: '2010', dominio: 'ZZZ999' }]]);
+  // Las dos vencidas del listado y, con el "de 12", las que faltan vencer.
+  assert.deepEqual(a.cuotas.map((c) => [c.n, c.de, c.vto, c.importe, c.doc]),
+    [[9, 12, '2026-09-20', 100000, '900001'], [10, 12, '2026-10-20', 100000, '900001'], [11, 12, '2026-11-20', 100000, ''], [12, 12, '2026-12-20', 100000, '']]);
+  assert.deepEqual(b.cuotas.map((c) => [c.n, c.de, c.vto, c.importe, c.doc]),
+    [[10, null, '2025-12-11', 50000.5, 'R 59001'], [11, 12, '2026-01-11', 150000, '900002'], [12, 12, '2026-02-11', 150000, '900002']]);
+  assert.ok(b.cuotas.every((c) => c.op === b.operaciones[0].id));
+  assert.match(a.notas, /LEGALES 12\/12\/24/);
+  for (const d of r.deudores) assert.equal(d.control.vencido, d.control.importe); // los documentos suman el subtotal del listado
+
+  sql(`delete from public.deudores where socio in ('901', '902')`);
+  const partes = lotes(r.deudores, 1500);
+  assert.equal(partes.length, 2);
+  for (const l of partes) sql(aSql(l));
+  sql(aSql(r.deudores)); // repetirlo no duplica: solo agrega los socios que no están
+  assert.equal(sql(`select count(*) from public.deudores where socio in ('901', '902')`), '2');
+  assert.equal(sql(verificarSql(r.deudores)), '901|PEREZ JUANA DE LAS NIEVES|igual\n902|DISTRIBUIDORA EJEMPLO SAS|igual');
+  sql(`update public.deudores set hon_pct = 10 where socio = '902'`);
+  assert.match(sql(verificarSql(r.deudores)), /902\|DISTRIBUIDORA EJEMPLO SAS\|distinto/);
+  sql(`delete from public.deudores where socio in ('901', '902')`);
+  assert.match(sql(verificarSql(r.deudores)), /901\|PEREZ JUANA DE LAS NIEVES\|falta/);
 });

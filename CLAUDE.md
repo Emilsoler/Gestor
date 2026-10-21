@@ -256,7 +256,8 @@ aplicarla con `apply_migration` y pasar `get_advisors` (seguridad).
 ## Cobranzas (`docs/cobranzas/`)
 
 Segunda app, para la cobranza de deudores en mora (hoy, los prendarios que la Asociación Mutual
-Bell pasa a Legales). Publicada en `…/gestor/cobranzas/`, instalable aparte (ícono "C" verde).
+Bell pasa a Legales). Publicada en https://emilsoler.github.io/Gestor/cobranzas/ (el repositorio
+ahora se llama `Gestor`), instalable aparte (ícono "C" verde).
 Comparte con el gestor la base, el login (la sesión se guarda con la misma clave: quien entra en
 una está adentro de la otra), `config.js`, `vendor/`, las tipografías, `liquidacion.js` (importes) y
 `excel.js`. La persona es la única usuaria; se manejan los dos con `gestor.miembros`.
@@ -303,8 +304,12 @@ Otros cambios (datos, cuotas, planes): `update` directo dentro de una transacci�
 
 **Importar el listado de la Mutual** ("PRENDARIOS · DOCUMENTOS VENCIDOS", un PDF del sistema):
 `pdftotext -layout listado.pdf - | node dev/importar-listado.mjs` muestra lo que se leyó (con los
-totales del listado para controlar) y con `--sql` arma el `insert` para `execute_sql`. Solo agrega
-los socios que no están: a los que ya se gestionan no los toca (comparar a mano si cambió algo).
+totales del listado para controlar) y con `--lotes <carpeta del scratchpad>` arma el `insert` en
+lotes chicos (`NN-deudores.sql`, uno por llamada a `execute_sql`, copiados tal cual) más
+`verificar.sql`: correrlo después en la base tiene que dar "igual" en todos los socios nuevos (si uno
+da "distinto", algo cambió al copiar: borrarlo y repetir su lote). Solo agrega los socios que no
+están: a los que ya se gestionan no los toca (comparar a mano si cambió algo; ahí "distinto" es lo
+esperable).
 El listado y los datos no se guardan en el repositorio. Con el "N de M" de cada operación también
 se cargan las cuotas que faltan vencer, mes a mes.
 
