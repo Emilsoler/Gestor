@@ -268,7 +268,6 @@ label.f input[readonly]{color:var(--soft)}
 .cifras dt{font-size:11.5px;color:var(--muted)}
 .cifras dd{margin:0;font:500 16px var(--f-mono);font-variant-numeric:tabular-nums}
 .cifras.grandes dd{font:300 22px/1.15 var(--f-body)}
-.cifras dd small{font-size:11px;color:var(--muted)}
 
 /* Tablas de la ficha: cuotas, rubros, imputación, plan */
 .tabla{width:100%;border-collapse:collapse;min-width:420px}

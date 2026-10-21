@@ -13,6 +13,7 @@ const HOY = enCordoba(new Date());
 const dia = (n) => { const [y, m, d] = HOY.split('-').map(Number); return enCordoba(new Date(Date.UTC(y, m - 1, d + n, 15))); };
 const q = (s) => "'" + String(s).replace(/'/g, "''") + "'";
 const json = (o) => q(JSON.stringify(o));
+const corta = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}`; // como fmt de la app: 28/09/26
 
 let browser, ctx, page;
 const errores = [];
@@ -50,7 +51,7 @@ before(async () => {
   const cuotas = (pref, vtos, importe, de) => vtos.map((v, i) => ({ id: pref + i, n: i + 1, de, vto: v, importe }));
   const filas = [
     { nombre: 'PRUEBA PAGADOR', socio: '101', tasa: 5, hon_pct: 0, telefonos: [{ numero: '3537000111', nota: '' }, { numero: '03537-400100', nota: 'fijo' }],
-      operaciones: [{ id: 'op1', tipo: 'Ayuda económica con prenda', numero: '900123', vehiculo: { marca: 'FIAT', modelo: 'UNO', anio: '2010', dominio: 'ZZZ999' } }],
+      operaciones: [{ id: 'op1', tipo: 'Ayuda económica con prenda', numero: '900123', ultimo_pago: dia(-100), vehiculo: { marca: 'FIAT', modelo: 'UNO', anio: '2010', dominio: 'ZZZ999' } }],
       cuotas: cuotas('a', [dia(-90), dia(-60), dia(-30), dia(30)], 100000, 4) },
     { nombre: 'PRUEBA PLANES', socio: '102', tasa: 4, hon_pct: 10, telefonos: [{ numero: '3537111222', nota: '' }], operaciones: [], cuotas: cuotas('b', [dia(-45), dia(-15)], 200000, 2) },
     { nombre: '<img src=x onerror="window.__xss=1"> XSS', socio: '103', tasa: 5, hon_pct: 0, telefonos: [], operaciones: [], cuotas: cuotas('c', [dia(-200)], 50000, 1) },
@@ -99,7 +100,11 @@ test('listado: búsqueda, filtros y orden', async () => {
   await page.click('#v_deudores');
   await page.fill('#q', 'ZZZ999'); // por dominio del vehículo
   assert.equal(await page.locator('#main tbody tr').count(), 1);
-  assert.match(await page.locator('#main tbody tr').textContent(), /Pagador/);
+  const fila = norm(await page.locator('#main tbody tr').textContent());
+  assert.match(fila, /Pagador/);
+  // El último pago que traía el listado de la Mutual: solo la fecha, sin "en la Mutual".
+  assert.ok(fila.includes(corta(dia(-100))), fila);
+  assert.doesNotMatch(fila, /Mutual/);
   await page.fill('#q', '');
   await page.selectOption('#fOrden', 'deuda'); // venía ordenado por mora (lo dejó así el filtro por antigüedad)
   const nombres = await page.locator('#main tbody tr td.car b').allTextContents();
@@ -116,6 +121,13 @@ test('liquidación: fecha, cuotas a vencer y tasa', async () => {
   assert.match(cifras[0], /^Deuda al /);
   assert.ok(!cifras.some((t) => /Mutual/.test(t)), cifras.join(' · '));
   assert.match(norm(await page.locator('.ficha .tabcuerpo').textContent()), /La deuda es el saldo de las cuotas vencidas más sus intereses, al 5% mensual simple\./);
+  // Último pago: la fecha sola, sin "(Mutual)", en el resumen y en los datos de la operación.
+  const ultimo = norm(await page.locator('.ficha .cifras.grandes div', { hasText: 'Último pago' }).textContent());
+  assert.equal(ultimo, `Último pago${corta(dia(-100))}`);
+  await tab(page, 'datos');
+  const datos = norm(await page.locator('.ficha .tabcuerpo').textContent());
+  assert.ok(datos.includes(`Último pago${corta(dia(-100))}`), datos);
+  assert.doesNotMatch(datos, /pago en la Mutual/);
   await tab(page, 'liquidacion');
   // 3 cuotas vencidas de $ 100.000 al 5% mensual: 90, 60 y 30 días → $ 30.000 de intereses.
   await totalEs(page, '$ 330.000');

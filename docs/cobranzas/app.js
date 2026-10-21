@@ -14,7 +14,7 @@ import {
 import { importe, enCelda, idNuevo, r2 } from '../liquidacion.js';
 import { xlsx } from '../excel.js';
 
-const VERSION = '1.0.1';
+const VERSION = '1.0.2';
 const CLAVE_MIN = 10;
 const TIPOS_GESTION = ['Llamada', 'WhatsApp', 'Visita', 'Email', 'Carta documento', 'Promesa de pago', 'Nota'];
 const MEDIOS = ['Efectivo', 'Transferencia', 'Depósito', 'Cheque', 'Débito', 'Otro'];
@@ -328,7 +328,7 @@ const proximo = (x) => pendientesDe(x.d, x.r)[0] || null;
 function ultimoPago(d, r) {
   const app = r.ultimo?.fecha || '', mutual = d.operaciones.map((o) => o.ultimo_pago).filter((x) => ES_FECHA.test(x || '')).sort().pop() || '';
   if (!app && !mutual) return null;
-  return app >= mutual ? { fecha: app, mutual: false } : { fecha: mutual, mutual: true };
+  return { fecha: app >= mutual ? app : mutual };
 }
 
 function filtrados(todos) {
@@ -356,7 +356,7 @@ function vistaDeudores(todos) {
   const dia = hoy();
   const sit = (r) => pill(r.texto, CLASE[r.clave] || '');
   const venc = (r) => (r.liq.vencidas ? `<span>${cuantos(r.liq.vencidas, 'cuota', 'cuotas')}</span><small>${esc(detalleCuotas(r.liq).replace(/^las? /, ''))}</small>` : '<span class="hint">—</span>');
-  const ult = (d, r) => { const u = ultimoPago(d, r); return u ? `<span class="mono">${fmt(u.fecha)}</span>${u.mutual ? '<small>en la Mutual</small>' : ''}` : '<span class="hint">—</span>'; };
+  const ult = (d, r) => { const u = ultimoPago(d, r); return u ? `<span class="mono">${fmt(u.fecha)}</span>` : '<span class="hint">—</span>'; };
   const prox = (x) => { const p = proximo(x); return p ? `<span class="next">${esc(p.texto)}</span>${p.fecha ? `<small class="due ${dueClase(p, dia)}">${esc(p.fecha === dia ? 'hoy' : fmt(p.fecha))}</small>` : ''}` : '<span class="hint">—</span>'; };
   if (movil.matches) {
     return `<div class="filas">${xs.map((x) => { const { d, r } = x; return `<article class="fila" data-abrir="${esc(d.id)}" tabindex="0" role="button" aria-label="Abrir la ficha de ${esc(nombre(d))}">
@@ -505,7 +505,7 @@ function tabResumen(d, r) {
       <div><dt>Deuda al ${fmt(liq.fecha)}</dt><dd>${esc(plata(Math.max(0, liq.total.saldo)))}</dd></div>
       ${r.plan ? `<div><dt>Saldo del plan</dt><dd>${esc(plata(r.ep.saldo))}</dd></div>` : ''}
       <div><dt>Mora</dt><dd>${liq.vencidas ? esc(cuantos(liq.dias_mora, 'día', 'días')) : '—'}</dd></div>
-      <div><dt>Último pago</dt><dd>${u ? esc(fmt(u.fecha)) + (u.mutual ? ' <small>(Mutual)</small>' : '') : '—'}</dd></div>
+      <div><dt>Último pago</dt><dd>${u ? esc(fmt(u.fecha)) : '—'}</dd></div>
     </dl>
     <p class="m0">${liq.vencidas ? `Debe ${esc(detalleCuotas(liq))}.` : 'No tiene cuotas vencidas.'}${esc(aVencer)}</p>
     <p class="hint m0">La deuda es el saldo de las cuotas vencidas más sus intereses, al ${porciento(d.tasa)} mensual simple${extras.length ? `, más ${esc(extras.join(' y '))}` : ''}.</p>
@@ -847,7 +847,7 @@ function tabDatos(d) {
     <h5>Teléfonos</h5>${telefonosHtml(d)}
     ${d.notas ? `<h5>Notas</h5><p class="m0 texto">${esc(d.notas)}</p>` : ''}
   </div>
-  <div class="sec"><h4>Operación</h4>${d.operaciones.length ? d.operaciones.map((o) => `<dl class="datos">${dato('Tipo', o.tipo)}${dato('N°', o.numero)}${dato('Otorgada', o.fecha ? fmt(o.fecha) : '')}${dato('Cuotas', o.cuotas ? `${o.cuotas}${o.importe ? ' de ' + plata(+o.importe) : ''}` : '')}${dato('Concesionaria', o.concesionaria)}${dato('Vehículo', vehiculoTexto(o.vehiculo))}${dato('Último pago en la Mutual', o.ultimo_pago ? fmt(o.ultimo_pago) : '')}</dl>${o.nota ? `<p class="hint m0">${esc(o.nota)}</p>` : ''}`).join('') : '<p class="hint m0">Sin operación cargada.</p>'}</div>
+  <div class="sec"><h4>Operación</h4>${d.operaciones.length ? d.operaciones.map((o) => `<dl class="datos">${dato('Tipo', o.tipo)}${dato('N°', o.numero)}${dato('Otorgada', o.fecha ? fmt(o.fecha) : '')}${dato('Cuotas', o.cuotas ? `${o.cuotas}${o.importe ? ' de ' + plata(+o.importe) : ''}` : '')}${dato('Concesionaria', o.concesionaria)}${dato('Vehículo', vehiculoTexto(o.vehiculo))}${dato('Último pago', o.ultimo_pago ? fmt(o.ultimo_pago) : '')}</dl>${o.nota ? `<p class="hint m0">${esc(o.nota)}</p>` : ''}`).join('') : '<p class="hint m0">Sin operación cargada.</p>'}</div>
   <div class="sec"><h4>Cuotas que se deben · ${d.cuotas.length}</h4>
     ${d.cuotas.length ? `<div class="scrollx"><table class="tabla"><thead><tr><th>Cuota</th><th>Vence</th><th class="num">Importe</th><th>Doc.</th></tr></thead><tbody>${[...d.cuotas].sort((a, b) => (a.vto || '').localeCompare(b.vto || '') || (a.n ?? 0) - (b.n ?? 0)).map((q) => `<tr><td>${q.n ?? '—'}${q.de ? ' de ' + q.de : q.n != null ? ' (saldo)' : ''}</td><td class="mono">${fmt(q.vto)}</td><td class="num mono">${esc(plata(+q.importe || 0))}</td><td class="hint">${esc(q.doc || '')}</td></tr>`).join('')}</tbody></table></div>` : '<p class="hint m0">Sin cuotas cargadas: agregalas desde “Editar datos”.</p>'}
   </div>
@@ -885,7 +885,7 @@ function datosEditarHtml(d, E) {
       <label class="f">Modelo<input ${atar(`f.edit.operaciones.${i}.vehiculo.modelo`)}></label>
       <label class="f">Año<input ${atar(`f.edit.operaciones.${i}.vehiculo.anio`)} inputmode="numeric"></label>
       <label class="f">Dominio<input ${atar(`f.edit.operaciones.${i}.vehiculo.dominio`)}></label>
-      <label class="f">Último pago en la Mutual<input type="date" ${atar(`f.edit.operaciones.${i}.ultimo_pago`)}></label>
+      <label class="f">Último pago<input type="date" ${atar(`f.edit.operaciones.${i}.ultimo_pago`)}></label>
     </div><div><button class="btn small danger" data-a="op-quitar" data-i="${i}">Quitar operación</button></div></div>`).join('')}
     <div><button class="btn small" data-a="op-agregar">+ Operación</button></div>
   </div>
