@@ -58,20 +58,23 @@ test('Excel: los otros tres casos (interés simple al 4%, 3% y 4%)', () => {
   assert.equal(a.dias_mora, 321);
 });
 
-test('listado de la Mutual: el 9% mensual capitalizable da lo mismo que el sistema (al peso)', () => {
-  // Un deudor del listado, al 20/10/26: cuotas 21 a 24 de 24, $ 297.060 cada una. El sistema: $ 1.787.513,14.
+test('listado de la Mutual: la deuda son las cuotas vencidas más sus intereses, sin el saldo de la Mutual', () => {
+  // Un deudor del listado, al 20/10/26: cuotas 21 a 24 de 24, $ 297.060 cada una, al 5 % mensual simple.
   const d = { tasa: 5, cuotas: [21, 22, 23, 24].map((n, k) => ({ id: 'm' + n, n, de: 24, vto: sumarMeses('2026-04-17', k), importe: 297060 })) };
-  const l = liquidar(d, '2026-10-20', { tasaSistema: 9 });
+  const l = liquidar(d, '2026-10-20');
   assert.deepEqual(l.cuotas.map((c) => c.dias), [186, 156, 125, 95]);
-  assert.equal(l.sistema.capital, 1188240);
-  assert.ok(Math.abs(l.sistema.total - 1787513.14) < 15, `sistema ${l.sistema.total}`);
+  assert.equal(rubro(l, 'capital').saldo, 1188240);
+  assert.equal(rubro(l, 'intereses').saldo, 278246.2); // 297.060 × 5 % × (186 + 156 + 125 + 95) / 30
+  assert.equal(l.total.saldo, 1466486.2);
+  // Una sola cuenta: el saldo según el sistema de la Mutual (9 % capitalizable) ya no existe (0009).
+  assert.equal(l.sistema, undefined);
   // Otro: un saldo de cuota (DOCUMENTO-R) y dos cuotas, con 313, 282 y 251 días.
   const g = { tasa: 5, cuotas: [
     { id: 'r', n: 10, de: 0, vto: '2025-12-11', importe: 681990, doc: '59676' },
     { id: 'a', n: 11, de: 12, vto: '2026-01-11', importe: 1421160 },
     { id: 'b', n: 12, de: 12, vto: '2026-02-11', importe: 1421160 }] };
-  const lg = liquidar(g, '2026-10-20', { tasaSistema: 9 });
-  assert.ok(Math.abs(lg.sistema.total - 7793492.81) < 40, `sistema ${lg.sistema.total}`);
+  const lg = liquidar(g, '2026-10-20');
+  assert.deepEqual(lg.cuotas.map((c) => c.dias), [313, 282, 251]);
   assert.equal(lg.cuotas[0].de, null);
   assert.equal(detalleCuotas(lg), 'el saldo de la cuota 10 y las cuotas 11 y 12 de 12');
 });
@@ -169,10 +172,7 @@ test('la liquidación de la base (gestor.liquidacion_deudor) da lo mismo que la 
   for (const [i, d] of ds.entries()) {
     const f = fechas[i % fechas.length], aVencer = i % 3 === 0;
     const base = JSON.parse(sql(`select gestor.liquidacion_deudor('${d.id}', '${f}', ${aVencer})`));
-    const app = liquidar(d, f, { aVencer, tasaSistema: 9 });
-    // El comparativo con la Mutual usa potencias con decimales: hasta un centavo de diferencia.
-    assert.ok(Math.abs(base.sistema.total - app.sistema.total) <= 0.01 * Math.max(1, app.cuotas.length), `sistema del deudor ${i}`);
-    delete base.sistema.total; delete base.sistema.intereses; delete app.sistema.total; delete app.sistema.intereses;
+    const app = liquidar(d, f, { aVencer });
     assert.deepEqual(base, app, `deudor ${i} al ${f}${aVencer ? ' con cuotas a vencer' : ''}`);
     comparadas++;
   }

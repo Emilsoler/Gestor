@@ -10,8 +10,8 @@
 //   · Honorarios: hon_pct % sobre capital + intereses devengados.
 //   · Gastos y honorarios fijos: su importe, si su fecha es hasta la de la liquidación.
 //   · Los pagos posteriores a la fecha no cuentan. Todo en centavos, redondeado cuota por cuota.
-//   · sistema: lo que daría el sistema de la Mutual (tasa_sistema % mensual capitalizable sobre el
-//     saldo de cada cuota vencida), solo para comparar.
+// La deuda es esta sola cuenta. El saldo "según la Mutual" (su 9 % mensual capitalizable) ya no se
+// calcula ni se muestra, por pedido de la persona (migración 0009).
 
 export const ES_FECHA = /^\d{4}-\d{2}-\d{2}$/;
 const fechaDe = (t) => (typeof t === 'string' && ES_FECHA.test(t) ? t : null);
@@ -45,9 +45,9 @@ const puntos = (tasa) => BigInt(Math.round((+tasa || 0) * 10000)); // % con cuat
 
 /**
  * La liquidación de un deudor a la fecha `fecha` (AAAA-MM-DD).
- * opciones: { aVencer: incluir el capital de las cuotas que todavía no vencieron, tasaSistema: % de la Mutual }
+ * opciones: { aVencer: incluir el capital de las cuotas que todavía no vencieron }
  */
-export function liquidar(d, fecha, { aVencer = false, tasaSistema = 9 } = {}) {
+export function liquidar(d, fecha, { aVencer = false } = {}) {
   const f = fecha;
   const tasa = +d.tasa || 0, hon = +d.hon_pct || 0;
   const qs = (d.cuotas || []).map((q, i) => ({ q, i, vto: fechaDe(q.vto), n: entero(q.n) }))
@@ -80,8 +80,8 @@ export function liquidar(d, fecha, { aVencer = false, tasaSistema = 9 } = {}) {
     for (const [k, v] of Object.entries(imp)) if (!['capital', 'intereses', 'honorarios'].includes(k)) pagGasto[k] = (pagGasto[k] || 0) + centavos(v);
   }
 
-  const ts = +tasaSistema || 0, tBp = puntos(tasa);
-  let capDev = 0, capSaldo = 0, intDev = 0, aVenc = 0, anticipado = 0, vencidas = 0, diasMora = 0, sisCap = 0, sisTot = 0;
+  const tBp = puntos(tasa);
+  let capDev = 0, capSaldo = 0, intDev = 0, aVenc = 0, anticipado = 0, vencidas = 0, diasMora = 0;
   const cuotas = qs.map((c) => {
     if (c.vto && f > c.t) c.acc += c.rem * diasEntre(c.t, f);
     const interes = Number(dividir(BigInt(c.acc) * tBp, 30000000n));
@@ -89,10 +89,7 @@ export function liquidar(d, fecha, { aVencer = false, tasaSistema = 9 } = {}) {
     const incluida = !c.vto || c.vto <= f || aVencer;
     intDev += interes;
     if (incluida) { capDev += c.imp; capSaldo += c.rem; } else { aVenc += c.rem; anticipado += c.imp - c.rem; }
-    if ((!c.vto || c.vto <= f) && c.rem > 0) {
-      vencidas++; diasMora = Math.max(diasMora, dias);
-      sisCap += c.rem; sisTot += Math.round(c.rem * Math.pow(1 + ts / 100, dias / 30));
-    }
+    if ((!c.vto || c.vto <= f) && c.rem > 0) { vencidas++; diasMora = Math.max(diasMora, dias); }
     return { id: c.id, n: c.n, de: c.de, vto: c.vto, doc: c.doc, importe: pesos(c.imp), pagado: pesos(c.imp - c.rem), saldo: pesos(c.rem), dias, interes: pesos(interes), incluida };
   });
 
@@ -119,7 +116,6 @@ export function liquidar(d, fecha, { aVencer = false, tasaSistema = 9 } = {}) {
     total: { devengado: pesos(totDev), pagado: pesos(totPag), saldo: pesos(totDev - totPag) },
     capital_a_vencer: pesos(aVenc), capital_anticipado: pesos(anticipado), capital_sin_cuotas: pesos(sinCuotas),
     vencidas, dias_mora: diasMora,
-    sistema: { tasa: ts, capital: pesos(sisCap), intereses: pesos(sisTot - sisCap), total: pesos(sisTot) },
   };
 }
 
@@ -222,7 +218,7 @@ export const tramoDe = (dias) => TRAMOS.find((t) => dias >= t.desde && dias <= t
  * vigente, la promesa de pago y la situación que se muestra (clave + texto).
  */
 export function resumen(d, hoy, aj = {}) {
-  const liq = liquidar(d, hoy, { tasaSistema: aj.tasa_sistema ?? 9 });
+  const liq = liquidar(d, hoy);
   const plan = planVigente(d);
   const ep = plan ? estadoPlan(plan, d.pagos, hoy, aj.gracia ?? 5, aj.caducidad ?? 2) : null;
   const prom = promesa(d, hoy, aj.gracia ?? 5);

@@ -14,7 +14,7 @@ import {
 import { importe, enCelda, idNuevo, r2 } from '../liquidacion.js';
 import { xlsx } from '../excel.js';
 
-const VERSION = '1.0.0';
+const VERSION = '1.0.1';
 const CLAVE_MIN = 10;
 const TIPOS_GESTION = ['Llamada', 'WhatsApp', 'Visita', 'Email', 'Carta documento', 'Promesa de pago', 'Nota'];
 const MEDIOS = ['Efectivo', 'Transferencia', 'Depósito', 'Cheque', 'Débito', 'Otro'];
@@ -95,7 +95,7 @@ function aplicarAnchos(caja) { caja.querySelectorAll('[data-ancho]').forEach((el
 // Cada deudor se resume una vez por versión (y por día): la liquidación no se recalcula en cada dibujo.
 const memo = new Map();
 function res(d) {
-  const aj = ajustes(), dia = hoy(), k = `${d.rev}|${dia}|${aj.rev}|${aj.tasa_sistema}|${aj.gracia}|${aj.caducidad}`;
+  const aj = ajustes(), dia = hoy(), k = `${d.rev}|${dia}|${aj.rev}|${aj.gracia}|${aj.caducidad}`;
   const m = memo.get(d.id);
   if (m && m.k === k && m.d === d) return m.r;
   const r = resumen(d, dia, aj);
@@ -246,7 +246,7 @@ function render() {
 // ───────────────────────── Inicio: el tablero ─────────────────────────
 
 function vistaInicio(todos) {
-  const dia = hoy(), aj = ajustes();
+  const dia = hoy();
   subtitulo(`Al ${fmtLargo(dia)}`);
   if (!todos.length) return vacio('Todavía no hay deudores cargados', 'Usá “+ Nuevo deudor” para cargar el primero, o pedile a Claude que importe el listado de la Mutual.');
   const activos = todos.filter((x) => x.r.activo);
@@ -276,13 +276,10 @@ function vistaInicio(todos) {
   // Mora por antigüedad: deudores sin plan con cuotas vencidas, por los días de la cuota más vieja.
   const filas = TRAMOS.map((t) => { const xs = enMora.filter((x) => tramoDe(x.r.liq.dias_mora).id === t.id); return { t, n: xs.length, monto: suma(xs, (x) => x.r.saldo) }; });
   const max = Math.max(1, ...filas.map((f) => f.monto));
-  const conTasa = suma(enMora, (x) => x.r.liq.rubros.filter((rb) => ['capital', 'intereses'].includes(rb.id)).reduce((a, rb) => a + rb.saldo, 0));
-  const sistema = suma(enMora, (x) => x.r.liq.sistema.total);
   const mora = `<section class="card">
     <div class="card-cab"><h3>Mora por antigüedad</h3><span class="hint">${cuantos(enMora.length, 'deudor', 'deudores')} · ${compacto(suma(enMora, (x) => x.r.saldo))}</span></div>
     <div class="tramos">${filas.map((f) => `<button class="tramo" data-tramo="${f.t.id}" ${f.n ? '' : 'disabled'} aria-label="${esc(f.t.nombre)}: ${cuantos(f.n, 'deudor', 'deudores')}, ${esc(plata(f.monto))}" title="${esc(f.t.nombre)}: ${cuantos(f.n, 'deudor', 'deudores')} · ${esc(plata(f.monto))}">
       <span class="tramo-n">${esc(f.t.nombre)}</span><span class="tramo-b"><i data-ancho="${(f.monto / max * 100).toFixed(1)}"></i></span><span class="tramo-v">${f.n ? esc(compacto(f.monto)) : '—'}</span><span class="tramo-c">${f.n || ''}</span></button>`).join('')}</div>
-    ${enMora.length ? `<p class="compara">Capital e intereses: <b>${esc(compacto(conTasa))}</b> con tu tasa · <b>${esc(compacto(sistema))}</b> según el sistema de la Mutual (${porciento(aj.tasa_sistema)} mensual capitalizable, aprox.).</p>` : ''}
   </section>`;
 
   // Para hacer: lo atrasado, lo de hoy y lo de los próximos siete días.
@@ -501,17 +498,17 @@ const rerender = () => { if (S.abierto) renderFicha(); else if (S.panel) renderP
 function tabResumen(d, r) {
   const liq = r.liq, u = ultimoPago(d, r), tels = telefonos(d).filter((t) => t.wa);
   const aVencer = liq.capital_a_vencer > 0 ? ` Además hay ${plata(liq.capital_a_vencer)} de cuotas a vencer.` : '';
+  const extras = [d.hon_pct ? `${porciento(d.hon_pct)} de honorarios` : '', liq.rubros.some((rb) => !['capital', 'intereses', 'honorarios'].includes(rb.id)) ? 'los gastos cargados' : ''].filter(Boolean);
   const ult = d.gestiones.slice(-3).reverse();
   return `<div class="sec">
     <dl class="cifras grandes">
       <div><dt>Deuda al ${fmt(liq.fecha)}</dt><dd>${esc(plata(Math.max(0, liq.total.saldo)))}</dd></div>
       ${r.plan ? `<div><dt>Saldo del plan</dt><dd>${esc(plata(r.ep.saldo))}</dd></div>` : ''}
-      <div><dt>Según la Mutual</dt><dd>${liq.sistema.total ? esc(plata(liq.sistema.total)) : '—'}</dd></div>
       <div><dt>Mora</dt><dd>${liq.vencidas ? esc(cuantos(liq.dias_mora, 'día', 'días')) : '—'}</dd></div>
       <div><dt>Último pago</dt><dd>${u ? esc(fmt(u.fecha)) + (u.mutual ? ' <small>(Mutual)</small>' : '') : '—'}</dd></div>
     </dl>
     <p class="m0">${liq.vencidas ? `Debe ${esc(detalleCuotas(liq))}.` : 'No tiene cuotas vencidas.'}${esc(aVencer)}</p>
-    <p class="hint m0">“Según la Mutual” es capital e intereses al ${porciento(ajustes().tasa_sistema)} mensual capitalizable, como el listado del sistema; la deuda usa tu tasa (${porciento(d.tasa)} mensual simple)${d.hon_pct ? ` y ${porciento(d.hon_pct)} de honorarios` : ''}.</p>
+    <p class="hint m0">La deuda es el saldo de las cuotas vencidas más sus intereses, al ${porciento(d.tasa)} mensual simple${extras.length ? `, más ${esc(extras.join(' y '))}` : ''}.</p>
     <div class="actions acciones">
       <button class="btn primary" data-a="ir-pago">Registrar pago</button>
       <button class="btn" data-a="ir-mensaje">Mandar WhatsApp</button>
@@ -545,8 +542,8 @@ function proximaHtml(d) {
 // ── Liquidación ──
 
 function tabLiquidacion(d) {
-  const L = S.f.liq, aj = ajustes();
-  const liq = liquidar(d, ES_FECHA.test(L.fecha || '') ? L.fecha : hoy(), { aVencer: L.aVencer, tasaSistema: aj.tasa_sistema });
+  const L = S.f.liq;
+  const liq = liquidar(d, ES_FECHA.test(L.fecha || '') ? L.fecha : hoy(), { aVencer: L.aVencer });
   const cuotas = liq.cuotas.filter((c) => c.incluida || c.pagado > 0);
   const nq = (c) => (c.n == null ? '—' : c.de == null ? `${c.n} (saldo)` : `${c.n} de ${c.de}`);
   const filaRubro = (rb) => `<tr><td>${esc(rb.nombre)}${rb.tipo === 'honorarios' && rb.id === 'honorarios' ? ` <span class="hint">(${porciento(d.hon_pct)})</span>` : rb.tipo === 'honorarios' ? ' <span class="hint">(honorarios)</span>' : ''}</td><td class="num mono">${esc(plata(rb.devengado))}</td><td class="num mono">${rb.pagado ? esc(plata(rb.pagado)) : '—'}</td><td class="num mono fuerte">${esc(plata(rb.saldo))}</td></tr>`;
@@ -569,7 +566,6 @@ function tabLiquidacion(d) {
     <div class="scrollx"><table class="tabla rubros"><thead><tr><th>Rubro</th><th class="num">Devengado</th><th class="num">Pagado</th><th class="num">Saldo</th></tr></thead>
       <tbody>${liq.rubros.map(filaRubro).join('')}</tbody>
       <tfoot><tr><td>Total</td><td class="num mono">${esc(plata(liq.total.devengado))}</td><td class="num mono">${esc(plata(liq.total.pagado))}</td><td class="num mono fuerte">${esc(plata(liq.total.saldo))}</td></tr></tfoot></table></div>
-    ${liq.sistema.total ? `<p class="compara m0">Según el sistema de la Mutual (${porciento(aj.tasa_sistema)} mensual capitalizable, aprox.): capital e intereses <b>${esc(plata(liq.sistema.total))}</b>, contra <b>${esc(plata(suma(liq.rubros.filter((rb) => ['capital', 'intereses'].includes(rb.id)), (rb) => rb.saldo)))}</b> con tu tasa.</p>` : ''}
     ${extra.map((t) => `<p class="hint m0">${esc(t)}</p>`).join('')}
     <div class="actions"><button class="btn small" data-a="excel-liq">Descargar en Excel</button><button class="btn small" data-a="copiar-liq">Copiar resumen</button></div>
   </div>
@@ -599,7 +595,7 @@ function pagoNuevo(d, delPlan = false) {
 /** La liquidación a la fecha del pago, sin ese pago: el saldo de cada rubro para imputar. */
 function liqDelPago(d) {
   const f = ES_FECHA.test(S.f.pago?.fecha || '') ? S.f.pago.fecha : hoy();
-  return liquidar(d, f, { aVencer: true, tasaSistema: ajustes().tasa_sistema });
+  return liquidar(d, f, { aVencer: true });
 }
 
 function tabPagos(d, r) {
@@ -662,7 +658,7 @@ function planNuevo(d) {
 /** Lo que se está armando en el simulador: la deuda base, la quita y el plan resultante. */
 function borradorPlan(d) {
   const P = S.f.plan, fecha = ES_FECHA.test(P.fecha || '') ? P.fecha : hoy();
-  const liq = liquidar(d, fecha, { tasaSistema: ajustes().tasa_sistema });
+  const liq = liquidar(d, fecha);
   const deudaLiq = Math.max(0, liq.total.saldo), base = importe(P.monto) > 0 ? importe(P.monto) : deudaLiq;
   const quita = importe(P.quitaMonto) > 0 ? importe(P.quitaMonto) : (porc(P.quitaPct) > 0 ? r2(base * porc(P.quitaPct) / 100) : 0);
   const anticipo = importe(P.anticipo), n = Math.max(1, Math.min(120, parseInt(P.n, 10) || 1)), tasa = porc(P.tasa) > 0 ? porc(P.tasa) : 0;
@@ -1171,7 +1167,7 @@ function bajar(hojas, archivo) {
 }
 
 function descargarLiquidacion(d) {
-  const L = S.f.liq, aj = ajustes(), liq = liquidar(d, ES_FECHA.test(L.fecha || '') ? L.fecha : hoy(), { aVencer: L.aVencer, tasaSistema: aj.tasa_sistema });
+  const L = S.f.liq, liq = liquidar(d, ES_FECHA.test(L.fecha || '') ? L.fecha : hoy(), { aVencer: L.aVencer });
   const cuotas = liq.cuotas.filter((c) => c.incluida || c.pagado > 0);
   const ini = 8, fin = ini + cuotas.length - 1;
   const filas = [
@@ -1194,7 +1190,6 @@ function descargarLiquidacion(d) {
   liq.rubros.forEach((rb, i) => filas.push([{ v: rb.nombre, s: 'texto' }, { v: rb.devengado, s: 'pesos' }, { v: rb.pagado, s: 'pesos' }, { f: `B${r0 + i}-C${r0 + i}`, v: rb.saldo, s: 'calculo' }]));
   const rf = r0 + liq.rubros.length - 1;
   filas.push([{ v: 'Total', s: 'totTexto' }, ...['B', 'C', 'D'].map((col) => ({ f: `SUM(${col}${r0}:${col}${rf})`, v: { B: liq.total.devengado, C: liq.total.pagado, D: liq.total.saldo }[col], s: 'totPesos' }))]);
-  if (liq.sistema.total) filas.push([], [{ v: `Según el sistema de la Mutual (${porciento(aj.tasa_sistema)} mensual capitalizable, aprox.): capital e intereses`, s: 'texto' }, { v: liq.sistema.total, s: 'pesos' }]);
   if (d.pagos.length) {
     filas.push([], [{ v: 'Pagos', s: 'negrita' }], [{ v: 'Fecha', s: 'cab' }, { v: 'Recibo', s: 'cab' }, { v: 'Medio', s: 'cab' }, { v: 'Total', s: 'cab' }, { v: 'Imputación', s: 'cab' }]);
     const rubroDe = (k) => liq.rubros.find((x) => x.id === k)?.nombre || (k === 'honorarios' ? 'Honorarios' : k);
@@ -1207,7 +1202,7 @@ function descargarLiquidacion(d) {
 }
 
 function textoLiquidacion(d) {
-  const L = S.f.liq, liq = liquidar(d, ES_FECHA.test(L.fecha || '') ? L.fecha : hoy(), { aVencer: L.aVencer, tasaSistema: ajustes().tasa_sistema });
+  const L = S.f.liq, liq = liquidar(d, ES_FECHA.test(L.fecha || '') ? L.fecha : hoy(), { aVencer: L.aVencer });
   return [`${d.nombre} — liquidación al ${fmtLargo(liq.fecha)}`, liq.vencidas ? `Debe ${detalleCuotas(liq)}.` : '',
     ...liq.rubros.filter((rb) => rb.saldo).map((rb) => `${rb.nombre}: ${plata(rb.saldo)}`), `Total: ${plata(liq.total.saldo)}`].filter(Boolean).join('\n');
 }
@@ -1233,15 +1228,15 @@ function descargarDeudores() {
     [{ v: 'Deudores', s: 'titulo' }],
     [{ v: `Al ${fmtLargo(hoy())} · ${cuantos(xs.length, 'deudor', 'deudores')}` }],
     [],
-    ['Deudor', 'Socio', 'DNI', 'Teléfono', 'Situación', 'Cuotas vencidas', 'Días de mora', 'Capital', 'Intereses', 'Honorarios y gastos', 'Deuda', 'Saldo exigible', 'Según la Mutual', 'Último pago', 'Próxima acción'].map((v) => ({ v, s: 'cab' })),
+    ['Deudor', 'Socio', 'DNI', 'Teléfono', 'Situación', 'Cuotas vencidas', 'Días de mora', 'Capital', 'Intereses', 'Honorarios y gastos', 'Deuda', 'Saldo exigible', 'Último pago', 'Próxima acción'].map((v) => ({ v, s: 'cab' })),
   ];
   for (const { d, r } of xs) {
     const otros = r.liq.total.saldo - saldo(r, 'capital') - saldo(r, 'intereses'), u = ultimoPago(d, r);
     filas.push([{ v: d.nombre, s: 'texto' }, { v: d.socio || '', s: 'texto' }, { v: d.dni || '', s: 'texto' }, { v: d.telefonos.map((t) => t.numero).join(' / '), s: 'texto' }, { v: r.texto, s: 'texto' },
       { v: r.liq.vencidas ? detalleCuotas(r.liq) : '', s: 'texto' }, { v: r.liq.dias_mora || null, s: 'texto' }, { v: saldo(r, 'capital'), s: 'pesos' }, { v: saldo(r, 'intereses'), s: 'pesos' }, { v: r2(otros), s: 'pesos' },
-      { v: r.liq.total.saldo, s: 'pesos' }, { v: r.saldo, s: 'pesos' }, { v: r.liq.sistema.total || null, s: 'pesos' }, u ? { v: u.fecha, fecha: true, s: 'fecha' } : { v: '', s: 'texto' }, { v: d.proxima || '', s: 'texto' }]);
+      { v: r.liq.total.saldo, s: 'pesos' }, { v: r.saldo, s: 'pesos' }, u ? { v: u.fecha, fecha: true, s: 'fecha' } : { v: '', s: 'texto' }, { v: d.proxima || '', s: 'texto' }]);
   }
-  bajar([{ nombre: 'Deudores', anchos: [34, 9, 12, 22, 22, 30, 10, 15, 15, 15, 15, 15, 15, 12, 30], filas, congelar: { col: 1, fila: 4 } }], `deudores-${hoy()}.xlsx`);
+  bajar([{ nombre: 'Deudores', anchos: [34, 9, 12, 22, 22, 30, 10, 15, 15, 15, 15, 15, 12, 30], filas, congelar: { col: 1, fila: 4 } }], `deudores-${hoy()}.xlsx`);
 }
 
 // ───────────────────────── Paneles: nuevo deudor, mensajes, ajustes, contraseña ─────────────────────────
@@ -1250,7 +1245,7 @@ function abrirPanel(p) {
   S.abierto = null; S.f = null; S.confirmar = ''; S.panel = p;
   const aj = ajustes();
   if (p === 'nuevo') S.nuevo = { nombre: '', dni: '', socio: '', telefono: '', domicilio: '', acreedor: aj.acreedor, tasa: String(aj.tasa), hon: '0', tipo: 'Ayuda económica con prenda', numero: '', n0: '1', de: '', vto: '', importe: '', cant: '' };
-  if (p === 'ajustes') S.aj = { tasa: String(aj.tasa), tasa_sistema: String(aj.tasa_sistema), contado_pct: String(aj.contado_pct), oferta_dias: String(aj.oferta_dias), gracia: String(aj.gracia), caducidad: String(aj.caducidad), acreedor: aj.acreedor, firma: aj.firma };
+  if (p === 'ajustes') S.aj = { tasa: String(aj.tasa), contado_pct: String(aj.contado_pct), oferta_dias: String(aj.oferta_dias), gracia: String(aj.gracia), caducidad: String(aj.caducidad), acreedor: aj.acreedor, firma: aj.firma };
   if (p === 'mensajes') S.modelos = {};
   renderPanel(true);
 }
@@ -1343,8 +1338,7 @@ function panelAjustes() {
   return `${cabPanel('Cobranzas', 'Ajustes')}
   <div class="sec"><h4>Intereses</h4><div class="grid2">
     <label class="f">Interés de los deudores nuevos (% mensual simple)<input ${atar('aj.tasa')} inputmode="decimal"></label>
-    <label class="f">Tasa del sistema de la Mutual (% mensual capitalizable)<input ${atar('aj.tasa_sistema')} inputmode="decimal"></label>
-  </div><p class="hint m0">Cada deudor tiene su propia tasa (en su liquidación). La del sistema es solo para comparar con el listado de la Mutual.</p></div>
+  </div><p class="hint m0">Cada deudor tiene su propia tasa (en su liquidación).</p></div>
   <div class="sec"><h4>Ofertas y planes</h4><div class="grid2">
     <label class="f">Oferta de contado (% de la deuda)<input ${atar('aj.contado_pct')} inputmode="decimal"></label>
     <label class="f">La oferta vale (días)<input ${atar('aj.oferta_dias')} inputmode="numeric"></label>
@@ -1359,8 +1353,8 @@ function panelAjustes() {
 }
 async function guardarAjustesPanel(b) {
   const A = S.aj, ent = (s) => parseInt(s, 10);
-  const campos = { tasa: porc(A.tasa), tasa_sistema: porc(A.tasa_sistema), contado_pct: porc(A.contado_pct), oferta_dias: ent(A.oferta_dias), gracia: ent(A.gracia), caducidad: ent(A.caducidad), acreedor: (A.acreedor || '').trim(), firma: (A.firma || '').trim() };
-  if (!(campos.tasa >= 0 && campos.tasa <= 100) || !(campos.tasa_sistema >= 0 && campos.tasa_sistema <= 100)) { toast('Las tasas van de 0 a 100'); return; }
+  const campos = { tasa: porc(A.tasa), contado_pct: porc(A.contado_pct), oferta_dias: ent(A.oferta_dias), gracia: ent(A.gracia), caducidad: ent(A.caducidad), acreedor: (A.acreedor || '').trim(), firma: (A.firma || '').trim() };
+  if (!(campos.tasa >= 0 && campos.tasa <= 100)) { toast('La tasa va de 0 a 100'); return; }
   if (!(campos.contado_pct > 0 && campos.contado_pct <= 100)) { toast('La oferta de contado va de 1 a 100%'); return; }
   if (!(campos.oferta_dias >= 1 && campos.oferta_dias <= 90) || !(campos.gracia >= 0 && campos.gracia <= 60) || !(campos.caducidad >= 1 && campos.caducidad <= 24)) { toast('Revisá los días y las cuotas'); return; }
   await conBoton(b, 'Guardando…', async () => {

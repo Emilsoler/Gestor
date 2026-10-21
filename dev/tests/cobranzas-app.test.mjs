@@ -59,7 +59,7 @@ before(async () => {
     insert into public.deudores (nombre, socio, tasa, hon_pct, telefonos, operaciones, cuotas)
     select x.nombre, x.socio, x.tasa, x.hon_pct, x.telefonos, x.operaciones, x.cuotas
       from jsonb_to_recordset(${json(filas)}::jsonb) x(nombre text, socio text, tasa numeric, hon_pct numeric, telefonos jsonb, operaciones jsonb, cuotas jsonb);
-    update public.ajustes_cobranzas set tasa = 5, tasa_sistema = 9, contado_pct = 80, firma = 'Dr. Emiliano Soler · Abogado' where id = 1;
+    update public.ajustes_cobranzas set tasa = 5, contado_pct = 80, firma = 'Dr. Emiliano Soler · Abogado' where id = 1;
     update public.modelos_mensaje set titulo = 'Aviso de deuda' where id = 'aviso'; -- lo cambia una prueba
     commit;`);
   browser = await chromium.launch();
@@ -84,6 +84,8 @@ test('ingreso y tablero de inicio', async () => {
   assert.deepEqual(tramos, [['t30', ''], ['t60', '1'], ['t90', '1'], ['t180', ''], ['tmas', '1']]);
   const ancho = await page.locator('.tramo[data-tramo="tmas"] .tramo-b i').evaluate((el) => el.style.width);
   assert.ok(parseFloat(ancho) > 0, 'la barra tiene ancho');
+  // Una sola deuda, la de la app: el saldo según el sistema de la Mutual ya no aparece (0009).
+  assert.doesNotMatch(norm(await page.locator('#main').textContent()), /sistema de la Mutual|capitalizable/);
   assert.equal(await page.evaluate(() => window.__xss), undefined, 'el nombre no se ejecuta como HTML');
   // Un clic en la barra lleva al listado filtrado por antigüedad.
   await page.click('.tramo[data-tramo="tmas"]');
@@ -109,9 +111,20 @@ test('listado: búsqueda, filtros y orden', async () => {
 
 test('liquidación: fecha, cuotas a vencer y tasa', async () => {
   await abrir(page, 'PRUEBA PAGADOR');
+  // El resumen muestra una sola deuda: las cuotas vencidas más sus intereses, sin el saldo de la Mutual.
+  const cifras = await page.locator('.ficha .cifras.grandes dt').allTextContents();
+  assert.match(cifras[0], /^Deuda al /);
+  assert.ok(!cifras.some((t) => /Mutual/.test(t)), cifras.join(' · '));
+  assert.match(norm(await page.locator('.ficha .tabcuerpo').textContent()), /La deuda es el saldo de las cuotas vencidas más sus intereses, al 5% mensual simple\./);
   await tab(page, 'liquidacion');
   // 3 cuotas vencidas de $ 100.000 al 5% mensual: 90, 60 y 30 días → $ 30.000 de intereses.
   await totalEs(page, '$ 330.000');
+  assert.doesNotMatch(norm(await page.locator('.ficha .tabcuerpo').textContent()), /sistema de la Mutual|capitalizable/);
+  const [excel] = await Promise.all([page.waitForEvent('download'), page.click('[data-a="excel-liq"]')]);
+  const trozos = []; for await (const c of await excel.createReadStream()) trozos.push(c);
+  const xl = Buffer.concat(trozos);
+  assert.ok(xl.includes(Buffer.from('Liquidación de deuda')), 'el Excel se lee sin comprimir');
+  assert.ok(!xl.includes(Buffer.from('sistema de la Mutual')), 'el Excel no trae el saldo de la Mutual');
   await page.check('[data-k="f.liq.aVencer"]');
   await totalEs(page, '$ 430.000');
   await page.uncheck('[data-k="f.liq.aVencer"]');
@@ -335,6 +348,14 @@ test('cobros del mes y descarga en Excel', async () => {
   const buf = Buffer.concat(partes);
   assert.equal(buf.readUInt32LE(0), 0x04034b50, 'es un zip (xlsx)');
   assert.ok(buf.includes(Buffer.from('PRUEBA PAGADOR')));
+  // El listado de deudores en Excel, sin la columna del saldo según la Mutual.
+  await page.click('#btnCuenta');
+  const [lista] = await Promise.all([page.waitForEvent('download'), page.click('[data-m="exportar"]')]);
+  assert.match(lista.suggestedFilename(), /^deudores-\d{4}-\d{2}-\d{2}\.xlsx$/);
+  const trozos = []; for await (const c of await lista.createReadStream()) trozos.push(c);
+  const xl = Buffer.concat(trozos);
+  assert.ok(xl.includes(Buffer.from('Saldo exigible')));
+  assert.ok(!xl.includes(Buffer.from('Según la Mutual')));
 });
 
 test('nuevo deudor con sus cuotas impagas', async () => {
@@ -366,12 +387,15 @@ test('nuevo deudor con sus cuotas impagas', async () => {
 test('modelos de mensaje y ajustes', async () => {
   await page.click('#btnMensajes');
   await page.waitForSelector('[data-k="modelos.aviso.titulo"]');
+  assert.doesNotMatch(await page.locator('.campos').textContent(), /deuda_sistema/);
   await page.fill('[data-k="modelos.aviso.titulo"]', 'Aviso de deuda (1)');
   await page.click('[data-a="modelo-guardar"][data-id="aviso"]');
   await toast(page, 'Modelo guardado');
   assert.equal(sql(`select titulo from public.modelos_mensaje where id = 'aviso'`), 'Aviso de deuda (1)');
   await cerrar(page);
   await page.click('#btnAjustes');
+  await page.waitForSelector('[data-k="aj.contado_pct"]');
+  assert.equal(await page.locator('[data-k="aj.tasa_sistema"]').count(), 0, 'sin la tasa del sistema de la Mutual');
   await page.fill('[data-k="aj.contado_pct"]', '75');
   await page.click('[data-a="ajustes-guardar"]');
   await toast(page, 'Ajustes guardados');

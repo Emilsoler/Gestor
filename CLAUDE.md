@@ -276,9 +276,13 @@ una está adentro de la otra), `config.js`, `vendor/`, las tipografías, `liquid
 - **Cuentas** (`calculo.js` y `gestor.liquidacion_deudor`, que dan exactamente lo mismo: las pruebas
   lo comparan con cientos de casos al azar). Como la planilla de Excel del estudio: interés simple,
   `tasa` % mensual por cada 30 días, cuota por cuota desde su vencimiento; honorarios `hon_pct` %
-  sobre capital + intereses; gastos y honorarios fijos como rubros propios. "Según la Mutual" es el
-  9 % mensual capitalizable del sistema de la Mutual (`ajustes_cobranzas.tasa_sistema`), solo para
-  comparar: reproduce el listado con unos pesos de diferencia.
+  sobre capital + intereses; gastos y honorarios fijos como rubros propios. La deuda es esa sola
+  cuenta: el saldo de las cuotas vencidas más sus intereses (y los honorarios y gastos, si tiene).
+  **No hay saldo "según la Mutual"**: la persona pidió sacarlo (migración 0009; antes era el 9 %
+  mensual capitalizable del sistema de la Mutual, para comparar con su listado). No volver a
+  calcularlo ni a informarlo, tampoco al contestar por el conector. `ajustes_cobranzas.tasa_sistema`
+  quedó en la tabla, sin uso, y los totales con intereses del listado sirven solo para controlar que
+  el PDF se leyó bien al importarlo.
 - **Pagos**: cada pago dice a qué rubro va cada parte (`imp`: `capital`, `intereses`,
   `honorarios` o el id de un gasto). **La persona indica la imputación en cada pago**: no hay un
   orden automático. Lo imputado a capital cancela las cuotas en orden de vencimiento y desde la

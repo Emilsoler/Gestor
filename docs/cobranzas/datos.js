@@ -32,7 +32,7 @@ const CACHE = 'cb.cache';
 const FORMA = 1; // sube cuando cambia la forma de lo que se guarda en el dispositivo
 const TABLAS = ['deudores', 'modelos_mensaje', 'ajustes_cobranzas'];
 
-export const AJUSTES_BASE = { id: 1, tasa: 5, tasa_sistema: 9, contado_pct: 80, oferta_dias: 7, gracia: 5, caducidad: 2, acreedor: 'Asociación Mutual Bell', firma: '' };
+export const AJUSTES_BASE = { id: 1, tasa: 5, contado_pct: 80, oferta_dias: 7, gracia: 5, caducidad: 2, acreedor: 'Asociación Mutual Bell', firma: '' };
 
 /** Estado compartido con la interfaz. Se lee libremente; solo este archivo lo modifica. */
 export const D = {
@@ -114,7 +114,7 @@ const DE = {
     pagos: lista(f.pagos), planes: lista(f.planes), gestiones: lista(f.gestiones),
   }),
   modelos_mensaje: (f) => ({ ...f }),
-  ajustes_cobranzas: (f) => ({ ...f, tasa: +f.tasa, tasa_sistema: +f.tasa_sistema, contado_pct: +f.contado_pct }),
+  ajustes_cobranzas: (f) => ({ ...f, tasa: +f.tasa, contado_pct: +f.contado_pct }),
 };
 export const ESTADOS = ['En gestión', 'En juicio', 'Cancelado', 'Incobrable', 'Archivado'];
 const CAMPOS_DEUDOR = ['nombre', 'trato', 'dni', 'socio', 'domicilio', 'email', 'telefonos', 'acreedor', 'estado', 'expte', 'tasa', 'hon_pct',
