@@ -286,3 +286,20 @@ export function detalleCuotas(liq) {
   if (sinNumero) partes.push(sinNumero === 1 ? 'un importe vencido' : `${sinNumero} importes vencidos`);
   return lista(partes) || 'importes vencidos';
 }
+/**
+ * Las mismas cuotas en un solo tramo, para escribir después de "el saldo de": el resto de una cuota
+ * pagada en parte va con las demás ("las cuotas 12 a 18 de 24", "la cuota 18 de 24"). Si no, el
+ * mensaje diría "el saldo de el saldo de la cuota 12…".
+ */
+export function cuotasImpagas(liq) {
+  const venc = liq.cuotas.filter((c) => c.saldo > 0 && (!c.vto || c.vto <= liq.fecha));
+  const ns = [...new Set(venc.filter((c) => c.n != null).map((c) => +c.n))];
+  const partes = [];
+  if (ns.length) {
+    const des = [...new Set(venc.filter((c) => c.n != null && c.de).map((c) => c.de))], de = des.length === 1 ? ` de ${des[0]}` : '';
+    partes.push(ns.length === 1 ? `la cuota ${ns[0]}${de}` : `las cuotas ${lista(tramosDe(ns))}${de}`);
+  }
+  const sinNumero = venc.filter((c) => c.n == null).length;
+  if (sinNumero) partes.push(sinNumero === 1 ? 'un importe vencido' : `${sinNumero} importes vencidos`);
+  return lista(partes) || 'importes vencidos';
+}

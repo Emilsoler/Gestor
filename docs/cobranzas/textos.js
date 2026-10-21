@@ -1,6 +1,6 @@
 // Fechas, importes y mensajes de cobranzas. No toca la pantalla ni la red.
 import { pesos } from '../liquidacion.js';
-import { detalleCuotas, nombrePropio, sumarDias, planVigente, estadoPlan, CADAS } from './calculo.js';
+import { detalleCuotas, cuotasImpagas, nombrePropio, sumarDias, planVigente, estadoPlan, CADAS } from './calculo.js';
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export const iso = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -80,6 +80,7 @@ export const CAMPOS_MENSAJE = [
   ['capital', 'El capital adeudado'],
   ['intereses', 'Los intereses adeudados'],
   ['detalle_cuotas', 'Las cuotas vencidas, en palabras ("las cuotas 21 a 24 de 24")'],
+  ['cuotas_impagas', 'Las cuotas vencidas en un solo tramo, para después de "el saldo de" ("las cuotas 12 a 18 de 24")'],
   ['dias_mora', 'Días de mora de la cuota más vieja'],
   ['operacion', 'La operación ("ayuda económica con garantía prendaria N° …")'],
   ['vehiculo', 'El vehículo prendado'],
@@ -132,6 +133,7 @@ export function contextoMensaje(d, r, aj, dia, planPropuesto = null) {
     capital: pesos(saldoDe('capital')),
     intereses: pesos(saldoDe('intereses')),
     detalle_cuotas: liq.vencidas ? detalleCuotas(liq) : '',
+    cuotas_impagas: liq.vencidas ? cuotasImpagas(liq) : '',
     dias_mora: liq.vencidas ? String(liq.dias_mora) : '',
     operacion: operacionTexto(d),
     vehiculo: vehiculoTexto(op?.vehiculo),

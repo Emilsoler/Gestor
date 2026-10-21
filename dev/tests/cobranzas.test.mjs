@@ -8,7 +8,7 @@ import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { sql, sqlFalla, anon, entrar, crearCuenta, servicio } from './helpers.mjs';
 import {
-  liquidar, armarPlan, estadoPlan, promesa, resumen, detalleCuotas, nombrePropio, sumarMeses, diasEntre, totalPago,
+  liquidar, armarPlan, estadoPlan, promesa, resumen, detalleCuotas, cuotasImpagas, nombrePropio, sumarMeses, diasEntre, totalPago,
 } from '../../docs/cobranzas/calculo.js';
 import { leerListado, lotes, aSql, verificarSql } from '../importar-listado.mjs';
 
@@ -337,6 +337,13 @@ test('textos: cuotas en palabras, nombres propios, fechas y pagos', () => {
   assert.equal(detalleCuotas(l([[12, 24], [13, 24]])), 'las cuotas 12 y 13 de 24');
   assert.equal(detalleCuotas(l([[5, 12], [7, 12], [8, 12], [9, 12], [12, 12]])), 'las cuotas 5, 7 a 9 y 12 de 12');
   assert.equal(detalleCuotas(l([[11, 0], [12, 24], [13, 24]])), 'el saldo de la cuota 11 y las cuotas 12 y 13 de 24');
+  // Para "el saldo de …": el resto de una cuota pagada en parte entra en el tramo.
+  assert.equal(cuotasImpagas(l([[21, 24], [22, 24], [23, 24], [24, 24]])), 'las cuotas 21 a 24 de 24');
+  assert.equal(cuotasImpagas(l([[13, 24]])), 'la cuota 13 de 24');
+  assert.equal(cuotasImpagas(l([[12, 0], [13, 24], [14, 24], [15, 24], [16, 24], [17, 24], [18, 24]])), 'las cuotas 12 a 18 de 24');
+  assert.equal(cuotasImpagas(l([[11, 0], [12, 24], [13, 24]])), 'las cuotas 11 a 13 de 24');
+  assert.equal(cuotasImpagas(l([[5, 12], [7, 12], [8, 12], [9, 12], [12, 12]])), 'las cuotas 5, 7 a 9 y 12 de 12');
+  assert.equal(cuotasImpagas(l([[12, 0]])), 'la cuota 12');
   assert.equal(nombrePropio('GOMEZ ANA DE LAS NIEVES'), 'Gomez Ana de las Nieves');
   assert.equal(nombrePropio('DISTRIBUIDORA EJEMPLO SAS'), 'Distribuidora Ejemplo SAS');
   assert.equal(sumarMeses('2026-01-31', 1), '2026-02-28');
