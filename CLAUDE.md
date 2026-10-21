@@ -189,6 +189,9 @@ aplicarla con `apply_migration` y pasar `get_advisors` (seguridad).
   nada en línea. Los estilos van en `styles.css` (no usar `style="…"`), y todo dato que se
   pinta pasa por `esc()`.
 - **Botón "Claude"**: abre el chat dentro de la app (el del encabezado, vacío; el de la ficha, con la causa nombrada). Para lo que el chat no hace, el aviso de error ofrece abrir la app de Claude con el pedido.
+- **Botón "SAC"** (encabezado, entre "Claude" y el círculo de la cuenta): un enlace común a Servicios
+  Extranet del Poder Judicial (`https://www.justiciacordoba.gob.ar/JusticiaCordoba/extranet.aspx`),
+  en otra pestaña para que el gestor quede abierto. El ingreso lo hace la persona en esa página.
 - **Terceros**: `docs/vendor/supabase.js` y las tipografías se copian desde `dev/node_modules`
   con `node dev/vendor.mjs`; no se cargan de ningún CDN.
 
