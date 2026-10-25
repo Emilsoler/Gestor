@@ -47,6 +47,7 @@
   --i-balanza:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4v16M8 20h8M5 7h14'/%3E%3Cpath d='M5 7 2.5 13a2.6 2.6 0 0 0 5 0zM19 7l-2.5 6a2.6 2.6 0 0 0 5 0z'/%3E%3C/svg%3E");
   --i-alarma:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='13' r='7.5'/%3E%3Cpath d='M12 9v4.2l2.6 1.6M4.5 4.8 2.8 6.5M19.5 4.8l1.7 1.7'/%3E%3C/svg%3E");
   --i-bandera:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5.5 21V4M5.5 4.5h11l-2.3 4 2.3 4h-11'/%3E%3C/svg%3E");
+  --i-semaforo:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='7.5' y='2.5' width='9' height='19' rx='4.5'/%3E%3Ccircle cx='12' cy='7.5' r='1.6'/%3E%3Ccircle cx='12' cy='12' r='1.6'/%3E%3Ccircle cx='12' cy='16.5' r='1.6'/%3E%3C/svg%3E");
   /* Estos dos van como imagen de fondo de los campos: ya traen su color (el de --muted). */
   --i-buscar:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238aa9a2' stroke-width='1.9' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='6.5'/%3E%3Cpath d='m20 20-4.2-4.2'/%3E%3C/svg%3E");
   --i-flecha:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238aa9a2' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
@@ -107,7 +108,7 @@ h1{font:600 20px/1.15 var(--f-body);margin:0;letter-spacing:.14em;text-transform
 .seg button{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;min-width:0;border:0;background:none;color:var(--muted);padding:8px 6px;border-radius:999px;cursor:pointer;font-weight:500}
 .seg button:hover{color:var(--fg)}
 .seg button[aria-pressed="true"]{background:var(--grad);color:#fff}
-#v_inicio{--i:var(--i-inicio)} #v_deudores{--i:var(--i-personas)} #v_planes{--i:var(--i-agenda)} #v_cobros{--i:var(--i-billete)}
+#v_inicio{--i:var(--i-inicio)} #v_deudores{--i:var(--i-personas)} #v_planes{--i:var(--i-agenda)} #v_cobros{--i:var(--i-billete)} #v_creditos{--i:var(--i-semaforo)}
 .badge{display:inline-grid;place-items:center;flex:none;width:8px;height:8px;padding:0;border-radius:999px;overflow:hidden;color:transparent;background:var(--accent);font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
 .badge.urg{background:var(--bad)} .badge.pend{background:var(--warn)}
 
@@ -226,6 +227,95 @@ table.lista{width:100%;border-collapse:collapse;min-width:900px}
 .mes-nav{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .mes-nav b{font-size:15px;min-width:150px;text-align:center;text-transform:capitalize}
 .cobros{min-width:820px}
+
+/* ───────── Aprobación de créditos ─────────
+   La consulta arriba; debajo, el resultado y el historial. En la computadora ancha el historial queda
+   a la izquierda y el resultado a la derecha. El semáforo nunca es solo un color: lleva su nombre. */
+.creditos{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;align-items:start}
+.cr-consulta{order:1} .cr-resultado{order:2} .cr-historial{order:3}
+.cr-vacio{display:none}
+.cr-form{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.cr-form label.f{flex:1 1 220px}
+.cr-form label.f input{font:16px var(--f-mono);letter-spacing:.02em;color:var(--fg)}
+.cr-form .btn{min-height:41px}
+
+.luz{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;padding:3px 10px 3px 8px;border-radius:999px;white-space:nowrap}
+.luz i{flex:none;width:9px;height:9px;border-radius:50%;background:currentColor}
+.luz.chica{font-size:11.5px;padding:2px 8px 2px 7px;min-width:92px}
+.luz-verde{background:var(--ok-soft);color:var(--ok)} .luz-amarillo{background:var(--warn-soft);color:var(--warn)}
+.luz-rojo{background:var(--bad-soft);color:var(--bad)} .luz-sin{background:var(--info-soft);color:var(--info)}
+
+.cr-cab{display:flex;justify-content:space-between;align-items:flex-start;gap:12px 18px;flex-wrap:wrap}
+.cr-quien{display:grid;gap:3px;min-width:0}
+.card .cr-quien h3{margin:0;font:600 19px/1.25 var(--f-body);letter-spacing:0;text-transform:none;color:var(--fg);overflow-wrap:anywhere}
+.cr-quien .mono{color:var(--soft)}
+.cr-luz{display:flex;align-items:center;gap:12px;padding:10px 16px 10px 12px;border-radius:var(--r)}
+.cr-luz i{flex:none;width:22px;height:22px;border-radius:50%;background:currentColor;box-shadow:0 0 0 4px rgba(255,255,255,.07)}
+.cr-luz div{display:grid;gap:1px}
+.cr-luz b{font-size:16px}
+.cr-luz span{font-size:12.5px;color:var(--soft)}
+.motivos{margin:0;padding-left:18px;display:grid;gap:3px}
+.motivos li{overflow-wrap:anywhere}
+.cr-deudor{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.cr-entidades{min-width:460px}
+.cr-entidades td b{font-weight:500;overflow-wrap:anywhere}
+.tag.t-mal{background:var(--bad-soft);color:var(--bad)}
+
+/* Los últimos 24 meses: una fila por entidad y una celda por mes con el número de la situación. Los
+   colores van de calmo (1) a crítico (5) y del 2 al 5 bajan de luminosidad: se distinguen también sin
+   ver colores, y el número siempre está. */
+.historia{border-collapse:separate;border-spacing:2px;font:500 11px var(--f-mono)}
+.historia th{font-weight:400;color:var(--muted);text-align:left;white-space:nowrap}
+.historia thead th{position:relative;height:18px;padding:0}
+.historia thead .r{position:absolute;left:0;bottom:3px;font-size:10.5px}
+.historia thead th:last-child .r{left:auto;right:0}
+.historia tbody th{position:sticky;left:0;z-index:1;background:var(--surface);font:400 12px var(--f-body);color:var(--soft);padding-right:10px;max-width:150px;overflow:hidden;text-overflow:ellipsis}
+.historia td{width:19px;min-width:19px;height:21px;padding:0;text-align:center;border-radius:4px}
+.historia td:not(.h0):hover{outline:2px solid var(--fg);outline-offset:-1px}
+.h0{box-shadow:inset 0 0 0 1px var(--line-soft)}
+.h1{background:#33715a;color:#fff} .h2{background:#f6bd60;color:#0c1b1e} .h3{background:#f28f3b;color:#0c1b1e}
+.h4{background:#e8543f;color:#0c1b1e} .h5,.h6{background:#c8304a;color:#fff}
+.leyenda{display:flex;flex-wrap:wrap;gap:6px 14px}
+.leyenda span{display:inline-flex;align-items:center;gap:6px}
+.leyenda b{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:4px;font:500 10.5px var(--f-mono)}
+
+.cr-filtro{width:100%;padding:9px 14px 9px 38px;border:1px solid var(--line-soft);border-radius:999px;background:var(--sunken) var(--i-buscar) no-repeat 13px 50%/16px 16px;color:var(--fg)}
+.cr-filtro:focus{border-color:var(--accent);outline:none}
+.cr-lista{display:grid;gap:2px;max-height:min(70vh,640px);overflow-y:auto;margin:0 -6px;padding:0 6px}
+.cr-fila{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;border:0;background:none;color:var(--fg);padding:8px 6px;border-radius:var(--r-s);cursor:pointer;text-align:left;width:100%}
+.cr-fila:hover{background:var(--hover)}
+.cr-fila.elegida{background:var(--accent-soft)}
+.cr-fila-t{display:grid;gap:1px;min-width:0}
+.cr-fila-t b{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cr-fila-t .mono{font-size:12px;color:var(--muted)}
+.cr-fila-f{display:grid;justify-items:end;gap:1px}
+.cr-fila-f .mono{font-size:12px;color:var(--soft)}
+.cr-fila-f small{font-size:11.5px;color:var(--muted)}
+/* La ayuda plegable, en bloque: como grilla, cerrada dejaba un hueco abajo. */
+.cr-resultado details.ayuda{display:block}
+.cr-resultado details.ayuda[open]>:not(summary){margin-top:10px}
+
+/* En el celular, las tablas de deudas y de cheques pasan a renglones apilados: nada queda fuera de vista. */
+@media (max-width:720px){
+  .tabla.cr-entidades,.tabla.cr-cheques{min-width:0}
+  .tabla.cr-entidades thead,.tabla.cr-cheques thead{display:none}
+  .tabla.cr-entidades tr,.tabla.cr-cheques tr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line-soft)}
+  .tabla.cr-entidades td,.tabla.cr-cheques td{padding:0;border:0}
+  .tabla.cr-entidades tbody td:first-child{grid-column:1/-1}
+  .tabla.cr-entidades tfoot tr{border-bottom:0;border-top:2px solid var(--line)}
+  .tabla.cr-cheques .ch-f{grid-area:1/1} .tabla.cr-cheques .ch-m{grid-area:1/2}
+  .tabla.cr-cheques .ch-c{grid-area:2/1/3/3} .tabla.cr-cheques .ch-n{grid-area:3/1;color:var(--muted)} .tabla.cr-cheques .ch-p{grid-area:3/2;text-align:right}
+  .tabla.cr-cheques .ch-n::before{content:"Cheque N° "}
+  .historia tbody th{max-width:104px}
+}
+
+@media (min-width:1140px){
+  .creditos{grid-template-columns:minmax(300px,340px) minmax(0,1fr);grid-template-rows:auto 1fr}  /* 1fr: el resultado alto no empuja el historial */
+  .cr-consulta{grid-column:1;grid-row:1}
+  .cr-historial{grid-column:1;grid-row:2}
+  .cr-resultado{grid-column:2;grid-row:1 / span 2}
+  .cr-vacio{display:grid;gap:6px;place-content:center;text-align:center;min-height:260px}
+}
 
 /* ───────── Ficha y paneles laterales ───────── */
 .scrim{position:fixed;inset:0;background:rgba(3,12,13,.64);z-index:10}

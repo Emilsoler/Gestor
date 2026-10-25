@@ -1,9 +1,11 @@
 // Interfaz de cobranzas. Los datos y la red viven en datos.js; las cuentas, en calculo.js; los
-// textos y mensajes, en textos.js.
+// textos y mensajes, en textos.js; lo que se muestra de una consulta al BCRA, en creditos.js.
 import {
   D, iniciar, reconectar, entrar, salir, cambiarClave, alCambiar, mensaje, ajustes, ESTADOS,
   crearDeudor, cambiarDeudor, borrarDeudor, crearModelo, guardarModelo, borrarModelo, guardarAjustes,
+  consultarBCRA, detalleConsulta, detalleGuardado, borrarConsulta,
 } from './datos.js';
+import { avisoCuit, soloDigitos, fichaConsulta, filaConsulta, textoConsulta, deudoresDelCuit } from './creditos.js';
 import {
   liquidar, resumen, armarPlan, estadoPlan, planVigente, sumarMeses, totalPago, TRAMOS, tramoDe, CADAS, nombrePropio, detalleCuotas, ES_FECHA,
 } from './calculo.js';
@@ -14,7 +16,7 @@ import {
 import { importe, enCelda, idNuevo, r2 } from '../liquidacion.js';
 import { xlsx } from '../excel.js';
 
-const VERSION = '1.0.2';
+const VERSION = '1.1.0';
 const CLAVE_MIN = 10;
 const TIPOS_GESTION = ['Llamada', 'WhatsApp', 'Visita', 'Email', 'Carta documento', 'Promesa de pago', 'Nota'];
 const MEDIOS = ['Efectivo', 'Transferencia', 'Depósito', 'Cheque', 'Débito', 'Otro'];
@@ -22,7 +24,8 @@ const CONCEPTOS = ['Tasa de justicia', 'Aportes Caja de Abogados', 'Martillero',
 const TABS = [['resumen', 'Resumen'], ['liquidacion', 'Liquidación'], ['pagos', 'Pagos'], ['plan', 'Plan'], ['gestiones', 'Gestiones'], ['mensaje', 'WhatsApp'], ['datos', 'Datos']];
 const CLASE = { mora: 's-bad', plan: 's-ok', 'plan-atrasado': 's-warn', 'plan-caer': 's-bad', 'plan-cumplido': 's-ok', juicio: 's-violet', 'al-dia': 's-info' };
 const CHIPS = [['activos', 'Activos'], ['mora', 'En mora'], ['plan', 'Con plan'], ['atrasados', 'Planes atrasados'], ['promesas', 'Promesas'], ['juicio', 'En juicio'], ['cerrados', 'Cancelados y archivados']];
-const VISTAS = { inicio: 'Inicio', deudores: 'Deudores', planes: 'Planes', cobros: 'Cobros' };
+const VISTAS = { inicio: 'Inicio', deudores: 'Deudores', planes: 'Planes', cobros: 'Cobros', creditos: 'Aprobación de créditos' };
+const AYUDA_CUIT = 'La situación en cada banco o financiera, los últimos 24 meses y los cheques rechazados.';
 const JUICIOS = '../'; // el gestor de juicios, en la misma base
 
 const S = {
@@ -30,6 +33,8 @@ const S = {
   abierto: null, tab: 'resumen', f: null, confirmar: '', // la ficha abierta y lo que se escribe en ella
   panel: '', nuevo: null, aj: null, modelos: {}, // paneles: 'nuevo' | 'mensajes' | 'ajustes' | 'clave'
   menu: false, instalar: null, ocupado: false, maxi: false,
+  // Aprobación de créditos: el CUIT que se escribe, la consulta que se está viendo y su estado.
+  cred: { cuit: '', abierta: null, consultando: false, confirmar: false, error: '', errorDetalle: '', filtro: '' },
 };
 try { S.vista = VISTAS[localStorage.getItem('cb.vista')] ? localStorage.getItem('cb.vista') : 'inicio'; } catch { /* sin almacenamiento */ }
 try { S.maxi = localStorage.getItem('cb.maxi') === '1'; } catch { /* sin almacenamiento */ }
@@ -238,8 +243,11 @@ function render() {
   insignia('#nPlanes', atrasados, 'urg', atrasados === 1 ? 'plan atrasado' : 'planes atrasados');
   const dia = hoy(), urgentes = todos.filter((x) => x.r.activo && pendientesDe(x.d, x.r).some((p) => p.tarde || (p.fecha && p.fecha <= dia))).length;
   insignia('#nDeudores', urgentes, 'pend', urgentes === 1 ? 'deudor con algo para hoy o atrasado' : 'deudores con algo para hoy o atrasado');
-  main.innerHTML = { inicio: vistaInicio, deudores: vistaDeudores, planes: vistaPlanes, cobros: vistaCobros }[S.vista](todos);
+  main.innerHTML = { inicio: vistaInicio, deudores: vistaDeudores, planes: vistaPlanes, cobros: vistaCobros, creditos: vistaCreditos }[S.vista](todos);
   aplicarAnchos(main);
+  $('#fabNuevo').hidden = S.vista === 'creditos'; // en el celular taparía el resultado, y ahí no hace falta
+  // Los 24 meses se ven desde el más reciente: si no entran (celular), el corrimiento arranca a la derecha.
+  main.querySelectorAll('.historia-caja').forEach((el) => { el.scrollLeft = el.scrollWidth; });
   devolverFoco(foco);
 }
 
@@ -435,6 +443,90 @@ function vistaCobros() {
     <div class="tablebox"><table class="lista cobros"><thead><tr><th>Fecha</th><th>Deudor</th><th class="num">Capital</th><th class="num">Intereses</th><th class="num">Honorarios</th><th class="num">Gastos</th><th class="num">Total</th></tr></thead>
     <tbody>${xs.map(fila).join('')}</tbody>
     <tfoot><tr><td></td><td>Total</td>${['capital', 'intereses', 'honorarios', 'gastos', 'total'].map((k) => `<td class="num mono">${esc(plata(tot(k)))}</td>`).join('')}</tr></tfoot></table></div>`;
+}
+
+// ───────────────────────── Aprobación de créditos ─────────────────────────
+// Se escribe un CUIT y "Consultar BCRA": la función `bcra` pregunta a la Central de Deudores, arma el
+// semáforo y guarda la consulta. Las anteriores quedan en el historial, como constancia de ese día.
+
+function vistaCreditos() {
+  const C = S.cred, xs = D.consultas_bcra;
+  subtitulo(xs.length ? cuantos(xs.length, 'consulta guardada', 'consultas guardadas') : 'Consulta en la Central de Deudores del BCRA');
+  if (!D.creditos) return vacio('Falta activar la aprobación de créditos', 'La base todavía no tiene dónde guardar las consultas al BCRA. Pedile a Claude que la active.');
+  const aviso = avisoCuit(C.cuit);
+  const form = `<section class="card cr-consulta">
+    <div class="card-cab"><h3>Consultar en el BCRA</h3></div>
+    <form id="fCredito" class="cr-form" novalidate>
+      <label class="f">CUIT o CUIL<input id="cr_cuit" ${atar('cred.cuit')} inputmode="numeric" autocomplete="off" placeholder="Ej.: 20-12345678-6" maxlength="20"></label>
+      <button class="btn primary" type="submit" id="cr_ir" ${C.consultando || !aviso.ok ? 'disabled' : ''}>${C.consultando ? 'Consultando…' : 'Consultar BCRA'}</button>
+    </form>
+    <p class="hint m0${aviso.mal ? ' malo' : ''}" id="cr_aviso" aria-live="polite">${esc(aviso.texto || AYUDA_CUIT)}</p>
+    ${C.error ? `<p class="aviso-chico" role="alert">${esc(C.error)}</p>` : ''}
+  </section>`;
+
+  const c = C.abierta ? xs.find((x) => x.id === C.abierta) : null;
+  const resultado = c
+    ? `<section class="card cr-resultado" id="crResultado">${fichaConsulta(c, detalleGuardado(c.id), { deudores: deudoresDelCuit(D.deudores, c.cuit), confirmar: C.confirmar, error: C.errorDetalle })}</section>`
+    : `<section class="card cr-resultado cr-vacio"><b>Elegí una consulta o hacé una nueva</b><span class="hint">Vas a ver el semáforo, la situación de la persona en cada entidad, los últimos 24 meses y los cheques rechazados.</span></section>`;
+
+  const q = C.filtro.trim().toLowerCase(), qd = soloDigitos(C.filtro);
+  const vistas = xs.filter((x) => !q || (x.denominacion || '').toLowerCase().includes(q) || (qd.length >= 3 && x.cuit.includes(qd)));
+  const historial = `<section class="card cr-historial">
+    <div class="card-cab"><h3>Consultas anteriores</h3>${xs.length ? `<span class="hint">${xs.length}</span>` : ''}</div>
+    ${xs.length > 6 ? `<input type="search" class="cr-filtro" ${atar('cred.filtro')} placeholder="Buscar por nombre o CUIT" aria-label="Buscar entre las consultas anteriores">` : ''}
+    ${vistas.length ? `<div class="cr-lista">${vistas.slice(0, 200).map((x) => filaConsulta(x, x.id === C.abierta)).join('')}</div>`
+      : `<p class="hint m0">${xs.length ? 'Ninguna consulta coincide.' : 'Las consultas que hagas quedan acá, con la fecha y lo que informaba el BCRA ese día.'}</p>`}
+  </section>`;
+  return `<div class="creditos">${form}${resultado}${historial}</div>`;
+}
+
+/** Mientras se escribe el CUIT: el aviso y el botón, sin redibujar (para no perder lo que se escribe). */
+function actualizarCuit() {
+  const a = avisoCuit(S.cred.cuit), p = $('#cr_aviso'), b = $('#cr_ir');
+  if (p) { p.textContent = a.texto || AYUDA_CUIT; p.classList.toggle('malo', !!a.mal); }
+  if (b && !S.cred.consultando) b.disabled = !a.ok;
+  if (S.cred.error) { S.cred.error = ''; $('.cr-consulta .aviso-chico')?.remove(); }
+}
+const verResultado = () => { if (movil.matches) $('#crResultado')?.scrollIntoView({ block: 'start' }); };
+
+async function consultarCuit(cuit) {
+  const d = soloDigitos(cuit), a = avisoCuit(d);
+  if (!a.ok) { toast(a.texto || 'Escribí el CUIT o CUIL'); return; }
+  if (S.cred.consultando) return;
+  S.cred.consultando = true; S.cred.error = ''; render();
+  try {
+    const c = await consultarBCRA(d);
+    Object.assign(S.cred, { abierta: c.id, cuit: '', confirmar: false, errorDetalle: '' });
+    toast('Consulta guardada');
+  } catch (e) {
+    S.cred.error = e.sinSesion ? mensaje(e) : e.message || 'No se pudo consultar al BCRA';
+  } finally {
+    S.cred.consultando = false;
+    render();
+  }
+  if (!S.cred.error) verResultado();
+}
+
+async function abrirConsulta(id) {
+  Object.assign(S.cred, { abierta: id, confirmar: false, errorDetalle: '' });
+  render(); verResultado();
+  if (detalleGuardado(id)) return;
+  try { await detalleConsulta(id); } catch (e) {
+    if (S.cred.abierta === id) S.cred.errorDetalle = e.sinRed ? 'Sin conexión: no se pudo leer el detalle de esta consulta.' : e.message || mensaje(e);
+  }
+  if (S.cred.abierta === id) render();
+}
+
+async function accionCredito(act, b) {
+  if (act === 'cr-repetir') { await consultarCuit(b.dataset.cuit); return; }
+  const c = D.consultas_bcra.find((x) => x.id === S.cred.abierta);
+  if (!c) return;
+  if (act === 'cr-copiar') copiar(textoConsulta(c));
+  else if (act === 'cr-confirmar' || act === 'cr-no') { S.cred.confirmar = act === 'cr-confirmar'; render(); }
+  else if (act === 'cr-borrar') {
+    try { await borrarConsulta(c.id); Object.assign(S.cred, { abierta: null, confirmar: false }); toast('Consulta eliminada'); } catch (e) { toast(mensaje(e, 'no se eliminó')); }
+    render();
+  }
 }
 
 // ───────────────────────── Ficha del deudor ─────────────────────────
@@ -1417,6 +1509,8 @@ document.addEventListener('submit', async (e) => {
     await conBoton(boton, 'Ingresando…', async () => {
       try { mostrar(await entrar(email, clave)); } catch (err) { errorIngreso(mensaje(err, 'no se pudo ingresar')); }
     });
+  } else if (e.target.id === 'fCredito') {
+    await consultarCuit(S.cred.cuit);
   } else if (e.target.id === 'fClave' || e.target.id === 'fClaveMenu') {
     const a = $('#n_clave').value, problema = claveValida(a, $('#n_clave2').value);
     if (problema) { errorIngreso(problema); return; }
@@ -1451,10 +1545,15 @@ document.addEventListener('click', async (e) => {
   const ms = t.closest('[data-mes]'); if (ms) { S.mes = mesMas(S.mes, +ms.dataset.mes); render(); return; }
   const tab = t.closest('[data-tab-ir]'); if (tab) { irATab(tab.dataset.tabIr); return; }
   const ab = t.closest('[data-abrir]'); if (ab) { e.stopPropagation(); abrirDeudor(ab.dataset.abrir, ab.dataset.tab || 'resumen', ab.dataset.con || ''); return; }
+  const cq = t.closest('[data-consulta]'); if (cq) { await abrirConsulta(cq.dataset.consulta); return; }
   const a = t.closest('[data-a]'); if (!a) return;
   const act = a.dataset.a;
   if (act === 'cerrar') { cerrarFicha(); return; }
   if (act === 'excel-cobros') { descargarCobros(); return; }
+  if (act.startsWith('cr-') && !S.panel && !S.abierto) {
+    if (act === 'cr-copiar') { accionCredito(act, a); return; } // sin esperas: el portapapeles lo pide así
+    await unaVez(a, (b) => accionCredito(act, b)); return;
+  }
   if (S.panel) {
     if (act === 'nuevo-crear') { await unaVez(a, crearNuevo); return; }
     if (act === 'ajustes-guardar') { await unaVez(a, guardarAjustesPanel); return; }
@@ -1474,6 +1573,8 @@ document.addEventListener('input', (e) => {
   if (el.id === 'q') { S.q = el.value; render(); return; }
   const k = el.dataset?.k; if (!k) return;
   poner(k, el.type === 'checkbox' ? el.checked : el.value);
+  if (k === 'cred.cuit') { actualizarCuit(); return; }
+  if (k === 'cred.filtro') { render(); return; }
   if (el.dataset.re) return; // fechas, casillas y listas: se redibuja con "change"
   if (k.startsWith('f.pago.')) actualizarPie();
   else if (k.startsWith('f.plan.')) {

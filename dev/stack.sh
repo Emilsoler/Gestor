@@ -42,7 +42,7 @@ stop_one() { # detiene el servicio y espera a que libere su puerto
 }
 
 down() {
-  stop_one gateway; stop_one postgrest; stop_one gotrue; stop_one chat; stop_one claude-falso
+  stop_one gateway; stop_one postgrest; stop_one gotrue; stop_one chat; stop_one claude-falso; stop_one bcra; stop_one bcra-falso
   if [ -d "$PGDATA" ]; then as_pg "$PGBIN/pg_ctl" -D "$PGDATA" -m fast stop >/dev/null 2>&1 || true; fi
 }
 
@@ -100,7 +100,7 @@ EOF
 create or replace function public._rt_local() returns trigger language plpgsql as $$
 begin perform pg_notify('gestor_rt', tg_table_name); return null; end $$;
 do $$ declare t text; begin
-  foreach t in array array['causas','acuerdos','plantillas','agenda','deudores','modelos_mensaje','ajustes_cobranzas'] loop
+  foreach t in array array['causas','acuerdos','plantillas','agenda','deudores','modelos_mensaje','ajustes_cobranzas','consultas_bcra'] loop
     if to_regclass('public.' || t) is not null and not exists
        (select 1 from pg_trigger where tgname = '_rt_local' and tgrelid = to_regclass('public.' || t)) then
       execute format('create trigger _rt_local after insert or update or delete on public.%I for each statement execute function public._rt_local()', t);
@@ -130,6 +130,17 @@ SQL
     echo $! > "$STACK/chat.pid"
   else
     echo "sin Deno en $DENO: la función chat no se levanta (ver dev/README.md)" >&2
+  fi
+
+  # La función `bcra` (supabase/functions/bcra), hablando con un doble del BCRA (bcra-falso.mjs).
+  stop_one bcra-falso; stop_one bcra
+  BCRA_FALSO_PORT=54341 nohup setsid node "$HERE/bcra-falso.mjs" > "$LOGS/bcra-falso.log" 2>&1 &
+  echo $! > "$STACK/bcra-falso.pid"
+  if [ -x "$DENO" ]; then
+    SUPABASE_URL=http://127.0.0.1:54321 SUPABASE_ANON_KEY="$ANON_KEY" BCRA_URL=http://127.0.0.1:54341 \
+    DENO_SERVE_ADDRESS=tcp:127.0.0.1:54332 \
+      nohup setsid "$DENO" run --allow-net --allow-env "$REPO/supabase/functions/bcra/index.ts" > "$LOGS/bcra.log" 2>&1 &
+    echo $! > "$STACK/bcra.pid"
   fi
 
   # Puerta de entrada

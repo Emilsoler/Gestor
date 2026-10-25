@@ -5,11 +5,11 @@
 // configuración, las cuentas de importes, el armado de Excel y las tipografías (../).
 //
 // Al cambiar la lista de archivos o una tipografía/ícono, subir VERSION para renovar la copia.
-const VERSION = 'cobranzas-v1';
+const VERSION = 'cobranzas-v2';
 const ESPERA_MS = 4000;
 
 const NUCLEO = [
-  './', 'styles.css', 'app.js', 'datos.js', 'calculo.js', 'textos.js', 'manifest.webmanifest',
+  './', 'styles.css', 'app.js', 'datos.js', 'calculo.js', 'textos.js', 'creditos.js', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
   '../vendor/supabase.js', '../config.js', '../liquidacion.js', '../excel.js',
   '../fonts/plex-sans-latin-300.woff2', '../fonts/plex-sans-latin-400.woff2', '../fonts/plex-sans-latin-500.woff2', '../fonts/plex-sans-latin-600.woff2',

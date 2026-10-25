@@ -14,8 +14,9 @@ Tiene tres piezas:
 - **El chat**, en `supabase/functions/chat/`: una función de Supabase que habla con la API de
   Claude (ver "Chat con Claude y escritos para el SAC").
 - **La app de cobranzas**, en `docs/cobranzas/`: otra app instalable (deudores en mora,
-  liquidaciones, pagos imputados por rubro, planes de pago, WhatsApp), con la misma base, el mismo
-  login y las mismas barreras de acceso. Ver "Cobranzas", al final.
+  liquidaciones, pagos imputados por rubro, planes de pago, WhatsApp, aprobación de créditos con
+  consulta al BCRA), con la misma base, el mismo login y las mismas barreras de acceso. Ver
+  "Cobranzas", al final; la consulta al BCRA la hace la función `supabase/functions/bcra/`.
 
 Este repositorio es **público**: acá no van datos de causas, exportaciones, claves secretas
 ni nada del estudio que no sea el código.
@@ -166,7 +167,7 @@ aplicarla con `apply_migration` y pasar `get_advisors` (seguridad).
   1. `public.gestor_puerta()`, que PostgREST ejecuta antes de cada pedido
      (`pgrst.db_pre_request` en el rol `authenticator`) y rechaza a quien no es miembro.
   2. Las políticas de filas de `causas`, `acuerdos`, `plantillas`, `agenda` y las de cobranzas
-     (`deudores`, `modelos_mensaje`, `ajustes_cobranzas`), todas con `public.es_miembro()`.
+     (`deudores`, `modelos_mensaje`, `ajustes_cobranzas`, `consultas_bcra`), todas con `public.es_miembro()`.
   3. Las estadísticas del planificador desactivadas en todas las columnas de esas tablas,
      para que los conteos estimados de la API no revelen contenido. Si una migración agrega
      columnas, termina con `select gestor.sin_estadisticas();`.
@@ -324,8 +325,37 @@ esperable).
 El listado y los datos no se guardan en el repositorio. Con el "N de M" de cada operación también
 se cargan las cuotas que faltan vencer, mes a mes.
 
+### Aprobación de créditos (vista "Créditos")
+
+Se escribe un CUIT o CUIL y se toca "Consultar BCRA". La app llama a la función `bcra`
+(`supabase/functions/bcra/`), que verifica la sesión con la base (mismas tres barreras), pide a la API
+pública de la Central de Deudores del BCRA (`https://api.bcra.gob.ar/CentralDeDeudores/v1.0/Deudas/{cuit}`,
+`…/Deudas/Historicas/{cuit}` y `…/Deudas/ChequesRechazados/{cuit}`, sin clave), arma el semáforo y guarda
+la consulta en `public.consultas_bcra` (migración 0010) con la sesión de la persona. No usa ningún secreto.
+
+- **Semáforo** (`bcra.ts`, `resumir`; lo explica también la ayuda de la vista): rojo con situación 3 o
+  peor en alguna entidad, o algún cheque rechazado sin pagar; amarillo con situación 2, o cheques
+  rechazados ya pagados; verde si todo está en situación 1; `sin_datos` sin deudas en el último período.
+  Decide la situación actual; lo peor de los últimos 24 meses queda entre los `motivos`. Cada consulta
+  guarda el color con el criterio de ese día: si el criterio cambia, las anteriores no se recalculan.
+- **Constancia**: la fila no se modifica (la API no tiene permiso de `update`) y la fecha y el autor los
+  pone la base (disparador `constancia`). Se puede eliminar, y recuperar con `gestor.deshacer`.
+  `resultado` guarda las respuestas del BCRA tal cual (montos de deudas en miles de pesos;
+  `deuda_total` ya está en pesos).
+- **CUIT**: el dígito verificador se controla antes de preguntar (en `creditos.js` y en `bcra.ts`): para
+  el BCRA un número que no existe "no figura", y eso se leería como una persona sin deudas.
+- **Desde SQL no se puede consultar al BCRA** (la base no sale a internet): lo hace el botón. Para leer
+  las consultas guardadas:
+  `select cuit, denominacion, semaforo, motivos, deuda_total, momento from public.consultas_bcra order by momento desc;`
+- **Publicar la función**: `deploy_edge_function` con nombre `bcra`, `verify_jwt: true` y los dos archivos
+  de `supabase/functions/bcra/` (entrada `index.ts`). Si la tabla todavía no está en la base, la app sigue
+  andando y la vista avisa que falta activarla.
+- Son datos personales: se consultan para evaluar un crédito y no salen de la app. En los registros de la
+  función no queda el CUIT.
+
 **Cambiar la app**: `docs/cobranzas/` (`app.js` interfaz, `datos.js` la base, `calculo.js` cuentas,
-`textos.js` fechas, importes y mensajes, `styles.css`). Si se toca una cuenta, también
+`textos.js` fechas, importes y mensajes, `creditos.js` lo que se muestra de una consulta al BCRA,
+`styles.css`). Si se toca una cuenta, también
 `gestor.liquidacion_deudor` (migración nueva). Probar con `npm run test:cobranzas` (y las del gestor);
 capturas en ancho de PC y de celular. Su service worker es `docs/cobranzas/sw.js` (`VERSION`
 propia); el del gestor no atiende nada de `cobranzas/`. Estilo: el del gestor, con verde petróleo y

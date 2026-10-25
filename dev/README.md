@@ -15,6 +15,9 @@ Nada de esta carpeta se publica con la app (GitHub Pages sirve solo `docs/`).
 | `tests/app.test.mjs` | La app de punta a punta en un navegador real (Playwright). |
 | `tests/cobranzas.test.mjs` | Cobranzas: las cuentas (contra la planilla de Excel y el listado de la Mutual), la liquidación de la base comparada con la de la app en cientos de casos al azar, las funciones para Claude, los permisos y la importación del listado (con uno inventado). |
 | `tests/cobranzas-app.test.mjs` | La app de cobranzas de punta a punta (`/cobranzas/`), en PC y en celular. |
+| `tests/creditos.test.mjs` | La función `bcra` de punta a punta: los pedidos al BCRA, el semáforo, lo que se guarda, los errores del BCRA y los permisos de `consultas_bcra`. |
+| `tests/creditos-app.test.mjs` | La vista "Créditos" de la app de cobranzas, en PC y en celular (también sin la tabla o sin la función publicadas). |
+| `bcra-falso.mjs`, `tests/casos-bcra.mjs` | Un doble de la API Central de Deudores del BCRA (127.0.0.1:54341) y sus casos, con CUITs inventados: las pruebas nunca consultan a personas reales. La función `bcra` corre en local apuntando a él (127.0.0.1:54332). |
 | `importar-listado.mjs` | Lee el listado de prendarios vencidos de la Mutual (texto de `pdftotext -layout`) y arma los deudores; con `--lotes <carpeta>`, el `insert` en lotes chicos para el conector y `verificar.sql` para confirmar que llegaron iguales (con `--sql`, todo en uno). |
 | `iconos-cobranzas.mjs` | Regenera los íconos de la app de cobranzas. |
 | `tests/mirar.mjs`, `tests/estados.mjs` | Capturas de pantalla para revisar la app a ojo. |
@@ -39,14 +42,16 @@ cd dev && npm install
 STACK=~/.stack ./stack.sh up            # base + login + API
 node serve.mjs &                        # la app en http://127.0.0.1:8080
 npm run test:db && npm run test:chat && npm run test:app     # todo tiene que pasar antes de publicar
-npm run test:cobranzas                                       # la app de cobranzas (en http://127.0.0.1:8080/cobranzas/)
+npm run test:cobranzas                                       # la app de cobranzas (en http://127.0.0.1:8080/cobranzas/), con la consulta al BCRA
+npm run test:creditos                                        # solo la consulta al BCRA (función bcra y vista "Créditos")
 ```
 
 `./stack.sh reset` borra la base local y la crea de nuevo. `./stack.sh psql -c "…"` corre SQL como `postgres`.
 
 ## Qué no cubre
 
-La API de Claude de verdad (las pruebas usan el doble) y, de la función `chat`, lo que pone la
-plataforma: el control de sesión previo (`verify_jwt`) y las variables `SUPABASE_*`. El Realtime de verdad y las particularidades de la plataforma (permisos del rol `postgres` sobre
+La API de Claude de verdad y la del BCRA (las pruebas usan los dobles) y, de las funciones `chat` y
+`bcra`, lo que pone la plataforma: el control de sesión previo (`verify_jwt`) y las variables `SUPABASE_*`.
+Que el BCRA responda desde los servidores de Supabase se ve recién con la primera consulta real. El Realtime de verdad y las particularidades de la plataforma (permisos del rol `postgres` sobre
 el esquema `auth`, pausa por inactividad) solo se ven en el proyecto real. Después de aplicar una
 migración ahí, conviene pasar los *advisors* de seguridad del conector de Supabase.

@@ -29,8 +29,14 @@ export const sb = configurado && !enMarco
 const SONDEO_RAPIDO = cfg.sondeoMs || 30_000; // sin tiempo real
 const SONDEO_LENTO = 5 * 60_000; // con tiempo real, por si se perdió algún aviso
 const CACHE = 'cb.cache';
-const FORMA = 1; // sube cuando cambia la forma de lo que se guarda en el dispositivo
-const TABLAS = ['deudores', 'modelos_mensaje', 'ajustes_cobranzas'];
+const FORMA = 2; // sube cuando cambia la forma de lo que se guarda en el dispositivo
+const TABLAS = ['deudores', 'modelos_mensaje', 'ajustes_cobranzas', 'consultas_bcra'];
+// Las consultas al BCRA se leen sin `resultado` (lo que respondió el BCRA, que puede ser largo): el
+// detalle se pide al abrir una. Si la base todavía no tiene la tabla, el resto de la app sigue andando.
+const COLUMNAS = { consultas_bcra: 'id,cuit,denominacion,momento,consultado_por,periodo,semaforo,peor_situacion,entidades,deuda_total,cheques,cheques_impagos,motivos,rev' };
+const OPCIONALES = new Set(['consultas_bcra']);
+const faltaTabla = (e) => e?.code === 'PGRST205' || e?.code === '42P01' || e?.status === 404;
+const DETALLES = new Map(); // id de consulta → resultado
 
 export const AJUSTES_BASE = { id: 1, tasa: 5, contado_pct: 80, oferta_dias: 7, gracia: 5, caducidad: 2, acreedor: 'Asociación Mutual Bell', firma: '' };
 
@@ -41,6 +47,8 @@ export const D = {
   deudores: [],
   modelos_mensaje: [],
   ajustes_cobranzas: [],
+  consultas_bcra: [], // sin `resultado` (ver detalleConsulta)
+  creditos: true, // la base tiene la tabla de consultas al BCRA
   cargado: false, // hay algo para mostrar (de la base o de la copia local)
   leido: null, // Date de la última lectura buena
   deCache: false, // lo que se ve es la copia del dispositivo
@@ -115,6 +123,7 @@ const DE = {
   }),
   modelos_mensaje: (f) => ({ ...f }),
   ajustes_cobranzas: (f) => ({ ...f, tasa: +f.tasa, contado_pct: +f.contado_pct }),
+  consultas_bcra: ({ resultado, ...f }) => ({ ...f, deuda_total: +f.deuda_total || 0, motivos: lista(f.motivos) }),
 };
 export const ESTADOS = ['En gestión', 'En juicio', 'Cancelado', 'Incobrable', 'Archivado'];
 const CAMPOS_DEUDOR = ['nombre', 'trato', 'dni', 'socio', 'domicilio', 'email', 'telefonos', 'acreedor', 'estado', 'expte', 'tasa', 'hon_pct',
@@ -131,6 +140,7 @@ const ORDEN = {
   deudores: (a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es') || a.id.localeCompare(b.id),
   modelos_mensaje: (a, b) => (a.orden - b.orden) || (a.titulo || '').localeCompare(b.titulo || '', 'es'),
   ajustes_cobranzas: (a, b) => a.id - b.id,
+  consultas_bcra: (a, b) => String(b.momento).localeCompare(String(a.momento)) || a.id.localeCompare(b.id), // la más nueva primero
 };
 const firma = (filas) => JSON.stringify([...filas].sort((a, b) => String(a.id).localeCompare(String(b.id))));
 
@@ -153,7 +163,7 @@ function guardarCache() {
   try {
     localStorage.setItem(CACHE, JSON.stringify({
       forma: FORMA, uid: D.usuario.id, email: D.usuario.email, ts: (D.leido || new Date()).getTime(),
-      deudores: D.deudores, modelos_mensaje: D.modelos_mensaje, ajustes_cobranzas: D.ajustes_cobranzas,
+      deudores: D.deudores, modelos_mensaje: D.modelos_mensaje, ajustes_cobranzas: D.ajustes_cobranzas, consultas_bcra: D.consultas_bcra,
     }));
   } catch { /* sin espacio o modo privado: la app sigue andando sin copia local */ }
 }
@@ -172,6 +182,7 @@ function vaciar() {
   D.usuario = null; D.acceso = null;
   for (const t of TABLAS) D[t] = [];
   D.cargado = false; D.leido = null; D.deCache = false; D.enVivo = false;
+  DETALLES.clear();
 }
 
 // ───────────────────────── Lectura ─────────────────────────
@@ -179,20 +190,32 @@ function vaciar() {
 async function leerTabla(t) {
   const filas = [];
   for (let desde = 0; ; desde += 1000) { // la API entrega de a 1000 filas como máximo
-    const tramo = await pedir(sb.from(t).select('*').order('id').range(desde, desde + 999));
+    const tramo = await pedir(sb.from(t).select(COLUMNAS[t] || '*').order('id').range(desde, desde + 999));
     filas.push(...tramo);
     if (tramo.length < 1000) break;
   }
   return filas.map(DE[t]);
 }
+/** Lee una tabla; si es opcional y la base todavía no la tiene, devuelve null en vez de fallar. */
+async function leerSiHay(t) {
+  try {
+    const filas = await leerTabla(t);
+    if (OPCIONALES.has(t)) D.creditos = true;
+    return filas;
+  } catch (e) {
+    if (!OPCIONALES.has(t) || e.sinRed || e.sinSesion || e.sinAcceso || !faltaTabla(e)) throw e;
+    D.creditos = false;
+    return null;
+  }
+}
 
 async function recargar(tablas = TABLAS) {
-  const [acceso, ...listas] = await Promise.all([pedir(sb.rpc('mi_acceso')), ...tablas.map(leerTabla)]);
+  const [acceso, ...listas] = await Promise.all([pedir(sb.rpc('mi_acceso')), ...tablas.map(leerSiHay)]);
   D.acceso = acceso;
   if (!acceso.autorizado) return false;
   let cambio = D.deCache || !D.cargado;
   tablas.forEach((t, i) => {
-    if (firma(D[t]) !== firma(listas[i])) { D[t] = listas[i].sort(ORDEN[t]); cambio = true; }
+    if (listas[i] && firma(D[t]) !== firma(listas[i])) { D[t] = listas[i].sort(ORDEN[t]); cambio = true; }
   });
   D.cargado = true; D.deCache = false; D.leido = new Date();
   guardarCache();
@@ -244,7 +267,8 @@ function conectar() {
   if (!canal) {
     try {
       canal = sb.channel('cobranzas');
-      for (const t of TABLAS) canal.on('postgres_changes', { event: '*', schema: 'public', table: t }, () => pedirSinc(t));
+      // Una tabla que la base todavía no tiene haría fallar el canal entero: se escucha solo si está.
+      for (const t of TABLAS) if (D.creditos || !OPCIONALES.has(t)) canal.on('postgres_changes', { event: '*', schema: 'public', table: t }, () => pedirSinc(t));
       canal.subscribe((estado) => {
         const vivo = estado === 'SUBSCRIBED';
         if (vivo === D.enVivo) return;
@@ -317,6 +341,7 @@ function sinAcceso() {
   D.acceso = { autorizado: false };
   for (const t of TABLAS) D[t] = [];
   D.cargado = false; D.leido = null; D.deCache = false;
+  DETALLES.clear();
 }
 
 async function cerrarLocal() {
@@ -418,3 +443,43 @@ export const crearModelo = (m) => agregar('modelos_mensaje', m);
 export const guardarModelo = (id, rev, campos) => modificar('modelos_mensaje', id, rev, campos);
 export const borrarModelo = (id) => eliminar('modelos_mensaje', id);
 export const guardarAjustes = (rev, campos) => modificar('ajustes_cobranzas', 1, rev, campos);
+
+// ───────────────────────── Aprobación de créditos ─────────────────────────
+// La consulta la hace la función `bcra` de Supabase (supabase/functions/bcra): pregunta al BCRA, arma
+// el semáforo y guarda la constancia. Acá solo se le pasa el CUIT y se muestra lo que devuelve.
+
+/** Consulta un CUIT en la Central de Deudores. Devuelve la consulta guardada, con su detalle. */
+export async function consultarBCRA(cuit) {
+  if (!sb) throw Object.assign(new Error('La app no está conectada a su base de datos'), { codigo: 'sin_configurar' });
+  let r;
+  try { r = await sb.functions.invoke('bcra', { body: { cuit } }); } catch (e) { throw marcar(e); }
+  if (r.error) {
+    let detalle = null;
+    try { detalle = await r.error.context?.json(); } catch { /* sin cuerpo */ }
+    const status = r.error.context?.status;
+    const sinRed = r.error.name === 'FunctionsFetchError';
+    const e = new Error(detalle?.mensaje || (sinRed ? 'Sin conexión: no se pudo consultar'
+      : status === 404 ? 'La consulta al BCRA todavía no está activada en la base. Avisale a Claude.'
+      : 'No se pudo consultar al BCRA. Probá de nuevo en un momento.'));
+    e.codigo = detalle?.error || (sinRed ? 'red' : 'bcra');
+    e.status = status;
+    if (sinRed) ponerEnLinea(false);
+    if (status === 401) e.sinSesion = true;
+    throw e;
+  }
+  ponerEnLinea(true);
+  const c = r.data.consulta;
+  DETALLES.set(c.id, c.resultado);
+  return ponerLocal('consultas_bcra', DE.consultas_bcra(c));
+}
+
+/** Lo que respondió el BCRA en una consulta (se lee una vez y queda en memoria). */
+export async function detalleConsulta(id) {
+  if (DETALLES.has(id)) return DETALLES.get(id);
+  const f = await pedir(sb.from('consultas_bcra').select('resultado').eq('id', id).maybeSingle());
+  if (!f) throw Object.assign(new Error('Esa consulta fue eliminada desde otro lugar'), { code: 'no-existe' });
+  DETALLES.set(id, f.resultado);
+  return f.resultado;
+}
+export const detalleGuardado = (id) => DETALLES.get(id) || null;
+export async function borrarConsulta(id) { await eliminar('consultas_bcra', id); DETALLES.delete(id); }
