@@ -10,7 +10,8 @@
     "vendor": "node vendor.mjs",
     "test:chat": "node --test tests/chat.test.mjs",
     "test:cobranzas": "node --test tests/cobranzas.test.mjs && node --test tests/cobranzas-app.test.mjs && npm run test:creditos",
-    "test:creditos": "node --test tests/creditos.test.mjs && node --test tests/creditos-app.test.mjs"
+    "test:creditos": "node --test tests/creditos.test.mjs && node --test tests/creditos-app.test.mjs",
+    "test:prenda": "node --test tests/prenda.test.mjs && node --test tests/prenda-app.test.mjs"
   },
   "devDependencies": {
     "@fontsource/ibm-plex-mono": "^5.3.0",

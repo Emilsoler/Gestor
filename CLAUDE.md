@@ -17,6 +17,10 @@ Tiene tres piezas:
   liquidaciones, pagos imputados por rubro, planes de pago, WhatsApp, aprobación de créditos con
   consultas al BCRA por CUIT y por cheque), con la misma base, el mismo login y las mismas barreras de
   acceso. Ver "Cobranzas", al final; las consultas al BCRA las hace la función `supabase/functions/bcra/`.
+- **La app Prenda**, en `docs/prenda/`: tercera app instalable, para geolocalizar los vehículos
+  prendados (con consentimiento del tomador): mapa, alertas, bitácora y constancias. Misma base,
+  mismo login y mismas barreras. Ver "Prenda", al final; la ubicación la pide la función
+  `supabase/functions/ubicar/`.
 
 Este repositorio es **público**: acá no van datos de causas, exportaciones, claves secretas
 ni nada del estudio que no sea el código.
@@ -167,8 +171,8 @@ aplicarla con `apply_migration` y pasar `get_advisors` (seguridad).
   1. `public.gestor_puerta()`, que PostgREST ejecuta antes de cada pedido
      (`pgrst.db_pre_request` en el rol `authenticator`) y rechaza a quien no es miembro.
   2. Las políticas de filas de `causas`, `acuerdos`, `plantillas`, `agenda` y las de cobranzas
-     (`deudores`, `modelos_mensaje`, `ajustes_cobranzas`, `consultas_bcra`, `consultas_cheques`), todas con
-     `public.es_miembro()`.
+     (`deudores`, `modelos_mensaje`, `ajustes_cobranzas`, `consultas_bcra`, `consultas_cheques`,
+     `vehiculos`, `ubicaciones`, `ajustes_prenda`), todas con `public.es_miembro()`.
   3. Las estadísticas del planificador desactivadas en todas las columnas de esas tablas,
      para que los conteos estimados de la API no revelen contenido. Si una migración agrega
      columnas, termina con `select gestor.sin_estadisticas();`.
@@ -383,3 +387,62 @@ de cada denuncia ("Denunciado por titular" o "por tercero").
 capturas en ancho de PC y de celular. Su service worker es `docs/cobranzas/sw.js` (`VERSION`
 propia); el del gestor no atiende nada de `cobranzas/`. Estilo: el del gestor, con verde petróleo y
 acento esmeralda (`--grad`); la barra de los gráficos (`--barra`) está validada contra la superficie.
+
+## Prenda (`docs/prenda/`)
+
+Tercera app, para geolocalizar los vehículos dados en garantía prendaria (con el consentimiento
+del tomador), al estilo de "Encontrar" del iPhone: un mapa con los vehículos, alertas, bitácora de
+consultas y constancias de ubicación. Publicada en https://emilsoler.github.io/Gestor/prenda/,
+instalable aparte (ícono de pin, cian). Comparte con las otras apps la base, el login (misma clave
+de sesión: quien entra en una está adentro de esta), `config.js`, `vendor/` y las tipografías. La
+persona es la única usuaria; se manejan las tres apps con `gestor.miembros`. Estética del gestor,
+con acento cian (azul → cian "de rastreo", `--grad`).
+
+- **Tablas** (migración 0012): `public.vehiculos` (una fila por vehículo con GPS: datos del bien y del
+  deudor, `situacion` al_dia|mora|ejecucion, `consentimiento` jsonb o null, datos del equipo e `imei`,
+  `traccar_id`, y `sim` para simular la posición mientras no hay equipo), `public.ubicaciones` (la
+  bitácora: una fila por consulta, **append-only** — solo select e insert; la fecha y el autor los
+  pone la base, no se puede antedatar ni firmar con otro nombre, ni deshacer) y `public.ajustes_prenda`
+  (una sola fila: `politica` mora|siempre, `zona_km`, centro de la zona). Mismas barreras, `rev`,
+  historial y `gestor.deshacer` (menos `ubicaciones`, que es constancia).
+- **La ubicación NO se pide con una consulta común**: la hace la función `ubicar`
+  (`supabase/functions/ubicar/`). Verifica la sesión (mismas barreras), controla que el vehículo
+  tenga `consentimiento` (sin eso no ubica), pide la posición al equipo por Traccar (o la **simula**
+  si no hay `traccar_id` o no hay servidor), y deja la constancia en `ubicaciones` con la sesión de
+  quien consulta. No usa clave secreta de la base. El mapa y la función calculan la posición simulada
+  igual (`docs/prenda/geo.js` y `supabase/functions/ubicar/traccar.ts`), para que coincidan.
+- **Consentimiento y privacidad**: sin consentimiento registrado, la app no muestra la ubicación.
+  Con política "mora", los vehículos al día se ven como **zona aproximada**; el punto exacto se ve
+  indicando un motivo, que queda en la bitácora. Las alertas (GPS desconectado, sin señal, fuera de
+  la zona habitual) llegan aunque el crédito esté al día. No hay corte de motor a distancia.
+
+Para Claude, por el conector (firman "Claude"):
+
+```sql
+select * from gestor.vehiculo('AE874LP');   -- busca por dominio o por deudor
+select gestor.agregar_vehiculo('AE874LP', 'Fiat', 'Cronos', 2021, 'Lucía Benítez', '0412', 'mora');
+select gestor.registrar_consentimiento('AE874LP', '2025-11-04');  -- recién con esto se ve la ubicación
+select * from gestor.ubicaciones_de('AE874LP');   -- la bitácora del vehículo
+```
+
+Otros cambios (datos, equipo, `sim`, `zona_km`): `update` directo dentro de una transacción con
+`set_config('gestor.autor', 'Claude', true)`. **Desde SQL no se puede ubicar** (la base no sale a
+internet): lo hace el botón de la app. El `sim` para probar: `{"modo":"quieto","pos":[lat,lon]}` o
+`{"modo":"ruta","ruta":[[lat,lon],…],"v":90,"t0":<epoch ms>}`, con opcionales `motor:"cortado"`,
+`bateria`, `senal:"sin"|"regular"|"buena"`. Hay vehículos de ejemplo cargados con nota
+"Ejemplo para probar — se puede borrar" (se pueden eliminar cuando haya vehículos reales).
+
+- **Publicar la función**: `deploy_edge_function` con nombre `ubicar`, `verify_jwt: true` y los dos
+  archivos de `supabase/functions/ubicar/` (entrada `index.ts`). Si la tabla todavía no está en la
+  base, la app sigue andando y avisa "Falta activar la geolocalización".
+- **Cuando haya equipo real (Traccar)**: cargar los secretos `TRACCAR_URL` y `TRACCAR_TOKEN` de la
+  función (panel de Supabase o `create_edge_function_secret`) y poner el `traccar_id` del dispositivo
+  en el vehículo. Con eso, ese vehículo usa la posición real; los que no tengan `traccar_id` se siguen
+  simulando. El aparato elegido es el Teltonika FMC920 (4G). Traccar es el servidor de rastreo (código
+  abierto) que recibe lo que manda el equipo y la función se lo pide por su API.
+
+**Cambiar la app**: `docs/prenda/` (`app.js` interfaz, `datos.js` la base y la función `ubicar`,
+`mapa.js` el mapa esquemático en SVG sin librerías, `mapa-datos.js` la geometría de base (rutas, río, localidades, límite) recortada de Natural Earth
+—dominio público—, `geo.js` las cuentas de coordenadas y la simulación, `textos.js` formato).
+Probar con `npm run test:prenda` (y las del gestor). Su service worker es `docs/prenda/sw.js`
+(`VERSION` propia); el del gestor no atiende nada de `prenda/`.

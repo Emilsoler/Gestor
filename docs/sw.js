@@ -6,7 +6,7 @@
 // - Todo lo que no es de este sitio (la base de datos) va directo a la red: acá no se guardan datos.
 //
 // Al cambiar la lista de archivos o una tipografía/ícono, subir VERSION para renovar la copia.
-const VERSION = 'gestor-v5';
+const VERSION = 'gestor-v6';
 const ESPERA_MS = 4000;
 
 const NUCLEO = [
@@ -31,8 +31,8 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const pedido = e.request, url = new URL(pedido.url);
   if (pedido.method !== 'GET' || url.origin !== self.location.origin) return;
-  // La app de cobranzas (cobranzas/) tiene su propio service worker: lo suyo no se toca acá.
-  if (url.pathname.includes('/cobranzas/')) return;
+  // Las otras apps (cobranzas/ y prenda/) tienen su propio service worker: lo suyo no se toca acá.
+  if (url.pathname.includes('/cobranzas/') || url.pathname.includes('/prenda/')) return;
   const fijo = /\/(fonts|icons)\//.test(url.pathname);
   e.respondWith(fijo ? copiaPrimero(pedido) : redPrimero(e, pedido));
 });
