@@ -1,31 +1,37 @@
 // Aprobación de créditos: la función `bcra` corriendo en local (dev/stack.sh up la levanta con Deno),
 // contra la base local y un doble del BCRA (dev/bcra-falso.mjs) con casos inventados: nunca se consulta
-// a personas reales. Verifican lo que se le pide al BCRA, el semáforo, lo que queda guardado y los permisos.
+// a personas ni cheques reales. Verifican lo que se le pide al BCRA, el semáforo, lo que queda guardado
+// y los permisos; las de cheques denunciados están al final.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { sql, sqlFalla, limpiar, crearCuenta, entrar, env, servicio } from './helpers.mjs';
-import { CUIT, CASOS, meses } from './casos-bcra.mjs';
+import { CUIT, CASOS, CHEQUE, meses } from './casos-bcra.mjs';
 
 const FALSO = 'http://127.0.0.1:54341';
 const BCRA = `${env.SUPABASE_URL}/functions/v1/bcra`;
 const casos = (c) => fetch(`${FALSO}/__casos`, { method: 'POST', body: JSON.stringify(c) });
 const pedidos = async () => (await fetch(`${FALSO}/__pedidos`)).json();
 const olvidar = () => fetch(`${FALSO}/__pedidos`, { method: 'DELETE' });
+const registro = () => readFileSync(`${process.env.STACK || '/home/claude/.stack'}/logs/bcra.log`, 'utf8');
 let token, cliente;
 
-async function consultar(cuit, { jwt = token, origen = 'http://127.0.0.1:8080' } = {}) {
+/** Un pedido a la función, con la sesión de Emi (o la que se indique). */
+async function pedirBCRA(cuerpo, { jwt = token, origen = 'http://127.0.0.1:8080' } = {}) {
   const r = await fetch(BCRA, {
     method: 'POST',
     headers: { apikey: env.ANON_KEY, 'content-type': 'application/json', origin: origen, ...(jwt ? { authorization: `Bearer ${jwt}` } : {}) },
-    body: JSON.stringify({ cuit }),
+    body: JSON.stringify(cuerpo),
   });
   return { status: r.status, datos: await r.json(), headers: r.headers };
 }
+const consultar = (cuit, opciones) => pedirBCRA({ cuit }, opciones);
 const filas = () => JSON.parse(sql(`select coalesce(json_agg(to_jsonb(c) - 'resultado' order by momento), '[]') from public.consultas_bcra c`));
+const filasCheques = () => JSON.parse(sql(`select coalesce(json_agg(to_jsonb(c) order by momento), '[]') from public.consultas_cheques c`));
 
 before(async () => {
   limpiar();
-  sql('delete from public.consultas_bcra');
+  sql('delete from public.consultas_bcra; delete from public.consultas_cheques;');
   await olvidar();
   await casos(CASOS);
   await crearCuenta('emi@test.local', 'Clave-de-prueba-2026', 'Emi');
@@ -175,8 +181,7 @@ test('si el BCRA falla no se guarda nada; si fallan solo los 24 meses, se guarda
   assert.equal(r.datos.consulta.resultado.historicas, null);
   assert.match(r.datos.consulta.resultado.errores.historicas, /BCRA respondió con un error/);
   // En los registros de la función no queda ningún CUIT.
-  const { readFileSync } = await import('node:fs');
-  const log = readFileSync(`${process.env.STACK || '/home/claude/.stack'}/logs/bcra.log`, 'utf8');
+  const log = registro();
   for (const c of Object.values(CUIT)) assert.ok(!log.includes(c), `el registro no tiene el CUIT ${c}`);
   assert.match(log, /"bcra":"error","tipo":"bcra"/);
 });
@@ -223,4 +228,147 @@ test('permisos de la tabla: se lee, se agrega y se elimina; cambiar, no; la fech
   assert.equal(sql(`select count(*) from pg_attribute where attrelid = 'public.consultas_bcra'::regclass and attnum > 0 and not attisdropped and attstattarget <> 0`), '0');
   // Y sin acceso anónimo.
   assert.ok(sqlFalla(`set role anon; select * from public.consultas_bcra;`).includes('permission denied'));
+});
+
+// ───────────────────────── Cheques denunciados ─────────────────────────
+
+test('cheques: la lista de bancos, ordenada y sin espacios de más; sin sesión, nada', async () => {
+  await olvidar(); await casos(CASOS);
+  assert.equal((await pedirBCRA({ accion: 'entidades' }, { jwt: null })).status, 401);
+  assert.deepEqual(await pedidos(), []);
+  const r = await pedirBCRA({ accion: 'entidades' });
+  assert.equal(r.status, 200, JSON.stringify(r.datos));
+  assert.deepEqual(r.datos.entidades, [
+    { codigo: 191, nombre: 'BANCO CREDICOOP COOPERATIVO LIMITADO' },
+    { codigo: 7, nombre: 'BANCO DE GALICIA Y BUENOS AIRES S.A.' },
+    { codigo: 11, nombre: 'BANCO DE LA NACION ARGENTINA' },
+    { codigo: 14, nombre: 'BANCO DE LA PROVINCIA DE BUENOS AIRES' },
+    { codigo: 20, nombre: 'BANCO DE LA PROVINCIA DE CORDOBA S.A.' },
+  ]);
+  assert.deepEqual(await pedidos(), ['/cheques/v1.0/entidades']);
+  // Si el BCRA no la da, se dice en palabras (y la próxima vez se vuelve a pedir).
+  await casos({ cheques: { entidades: { status: 500 } } });
+  const f = await pedirBCRA({ accion: 'entidades' });
+  assert.equal(f.status, 502);
+  assert.equal(f.datos.error, 'bcra_bcra');
+  assert.match(f.datos.mensaje, /BCRA respondió con un error/);
+  await casos(CASOS);
+  assert.equal((await pedirBCRA({ accion: 'otra cosa' })).status, 400);
+});
+
+test('cheque sin denuncias: lo que se le pide al BCRA y la constancia guardada', async () => {
+  await olvidar(); await casos(CASOS);
+  const r = await pedirBCRA({ accion: 'cheque', entidad: 11, numero: '0012.345.678' }); // ceros y puntos: se limpian
+  assert.equal(r.status, 200, JSON.stringify(r.datos));
+  assert.deepEqual(await pedidos(), [`/cheques/v1.0/denunciados/11/${CHEQUE.limpio}`]);
+  const c = r.datos.consulta;
+  assert.equal(c.entidad, 11);
+  assert.equal(c.numero, CHEQUE.limpio);
+  assert.equal(c.denunciado, false);
+  assert.equal(c.entidad_nombre, 'BANCO DE LA NACION ARGENTINA', 'sin los espacios que manda el BCRA');
+  assert.equal(c.fecha_bcra, '2026-10-24');
+  assert.equal(c.consultado_por, 'Emi');
+  assert.deepEqual(c.resultado.detalles, []);
+  assert.ok(Math.abs(Date.parse(c.momento) - Date.now()) < 60_000);
+  assert.equal(sql(`select autor || ' ' || operacion from gestor.cambios where tabla = 'consultas_cheques' and clave = '${c.id}'`), 'Emi alta');
+  // La entidad también llega como texto (es lo que tiene la lista de la app).
+  assert.equal((await pedirBCRA({ accion: 'cheque', entidad: '11', numero: CHEQUE.limpio })).status, 200);
+  assert.equal(filasCheques().length, 2);
+});
+
+test('cheque denunciado: queda con sus denuncias', async () => {
+  const r = await pedirBCRA({ accion: 'cheque', entidad: 20, numero: CHEQUE.denunciado });
+  assert.equal(r.status, 200, JSON.stringify(r.datos));
+  const c = r.datos.consulta;
+  assert.equal(c.denunciado, true);
+  assert.equal(c.entidad_nombre, 'BANCO DE LA PROVINCIA DE CORDOBA S.A.');
+  assert.deepEqual(c.resultado.detalles.map((d) => d.causal), ['Denunciado por titular', 'Denunciado por tercero']);
+  assert.equal(c.resultado.detalles[0].numeroCuenta, 3120055962);
+  assert.equal(c.resultado.detalles[0].sucursal, 312);
+});
+
+test('cheque sin banco o con un número que no sirve: se rechaza antes de preguntar', async () => {
+  await olvidar(); await casos(CASOS);
+  const antes = filasCheques().length;
+  for (const [cuerpo, error] of [
+    [{ accion: 'cheque', numero: CHEQUE.limpio }, 'entidad'],
+    [{ accion: 'cheque', entidad: 'Nación', numero: CHEQUE.limpio }, 'entidad'],
+    [{ accion: 'cheque', entidad: 0, numero: CHEQUE.limpio }, 'entidad'],
+    [{ accion: 'cheque', entidad: 11.5, numero: CHEQUE.limpio }, 'entidad'],
+    [{ accion: 'cheque', entidad: 11 }, 'numero'],
+    [{ accion: 'cheque', entidad: 11, numero: 'abc' }, 'numero'],
+    [{ accion: 'cheque', entidad: 11, numero: '0000' }, 'numero'],
+    [{ accion: 'cheque', entidad: 11, numero: '1234567890123456' }, 'numero'], // 16 cifras
+  ]) {
+    const r = await pedirBCRA(cuerpo);
+    assert.equal(r.status, 400, JSON.stringify(cuerpo));
+    assert.equal(r.datos.error, error, JSON.stringify(cuerpo));
+  }
+  assert.equal((await pedirBCRA({ accion: 'cheque', entidad: 11, numero: CHEQUE.limpio }, { jwt: null })).status, 401);
+  assert.deepEqual(await pedidos(), [], 'ningún pedido llegó al BCRA');
+  assert.equal(filasCheques().length, antes);
+});
+
+test('si el BCRA no tiene el banco, falla o responde algo raro, no se guarda nada', async () => {
+  await olvidar(); await casos(CASOS);
+  const antes = filasCheques().length;
+  let r = await pedirBCRA({ accion: 'cheque', entidad: 2222, numero: CHEQUE.limpio });
+  assert.equal(r.status, 400);
+  assert.equal(r.datos.error, 'bcra_entidad');
+  assert.match(r.datos.mensaje, /no tiene ese banco/);
+
+  r = await pedirBCRA({ accion: 'cheque', entidad: 11, numero: CHEQUE.caido });
+  assert.equal(r.status, 502);
+  assert.equal(r.datos.error, 'bcra_bcra');
+  assert.equal((await pedidos()).filter((p) => p === `/cheques/v1.0/denunciados/11/${CHEQUE.caido}`).length, 2, 'reintenta una vez');
+
+  r = await pedirBCRA({ accion: 'cheque', entidad: 11, numero: CHEQUE.corte });
+  assert.equal(r.status, 502);
+  assert.equal(r.datos.error, 'bcra_red');
+
+  r = await pedirBCRA({ accion: 'cheque', entidad: 11, numero: CHEQUE.raro });
+  assert.equal(r.status, 502);
+  assert.equal(r.datos.error, 'bcra_formato');
+  assert.equal(filasCheques().length, antes, 'nada guardado');
+
+  // En los registros de la función no queda ningún número de cheque ni de cuenta.
+  const log = registro();
+  for (const n of [...Object.values(CHEQUE), '3120055962']) assert.ok(!log.includes(n), `el registro no tiene el número ${n}`);
+  assert.match(log, /"cheque":"error","tipo":"entidad"/);
+  assert.match(log, /"cheque":"error","tipo":"red"/);
+  assert.match(log, /"cheque":"ok","ms":\d+,"denunciado":true/);
+});
+
+test('permisos de la tabla de cheques: se lee, se agrega y se elimina; cambiar, no; la fecha y el autor los pone la base', async () => {
+  const { data, error } = await cliente.from('consultas_cheques').select('id, numero, denunciado').order('momento');
+  assert.ifError(error);
+  assert.ok(data.length >= 3);
+  const id = data[0].id;
+  const cambio = await cliente.from('consultas_cheques').update({ denunciado: true }).eq('id', id).select();
+  assert.equal(cambio.error?.code, '42501', 'update rechazado');
+  // Desde la API, la fecha y el autor no se pueden elegir.
+  const alta = await cliente.from('consultas_cheques')
+    .insert({ entidad: 11, numero: '123', denunciado: false, resultado: {}, momento: '2020-01-01T00:00:00Z', consultado_por: 'Otro' }).select().single();
+  assert.ifError(alta.error);
+  assert.equal(alta.data.consultado_por, 'Emi');
+  assert.ok(Date.parse(alta.data.momento) > Date.parse('2026-01-01'));
+  // La base rechaza datos con otra forma.
+  for (const mala of [
+    { entidad: 11, numero: '0123', denunciado: false, resultado: {} },
+    { entidad: 0, numero: '123', denunciado: false, resultado: {} },
+    { entidad: 11, numero: '123', denunciado: false, resultado: [] },
+  ]) assert.equal((await cliente.from('consultas_cheques').insert(mala)).error?.code, '23514', JSON.stringify(mala));
+  // Eliminar sí, y se puede recuperar tal como era.
+  const original = JSON.parse(sql(`select to_jsonb(c) from public.consultas_cheques c where id = '${id}'`));
+  assert.ifError((await cliente.from('consultas_cheques').delete().eq('id', id)).error);
+  const cambioId = sql(`select id from gestor.cambios where tabla = 'consultas_cheques' and clave = '${id}' and operacion = 'baja'`);
+  assert.match(sql(`select gestor.deshacer(${cambioId})`), /volvió a como estaba/);
+  const vuelta = JSON.parse(sql(`select to_jsonb(c) from public.consultas_cheques c where id = '${id}'`));
+  for (const k of ['entidad', 'entidad_nombre', 'numero', 'denunciado', 'fecha_bcra', 'momento', 'consultado_por', 'resultado']) assert.deepEqual(vuelta[k], original[k], k);
+  // Sin estadísticas del planificador (barrera 3), sin acceso anónimo, y una cuenta sin autorizar no ve nada.
+  assert.equal(sql(`select count(*) from pg_attribute where attrelid = 'public.consultas_cheques'::regclass and attnum > 0 and not attisdropped and attstattarget <> 0`), '0');
+  assert.ok(sqlFalla(`set role anon; select * from public.consultas_cheques;`).includes('permission denied'));
+  const intruso = await entrar('intruso@test.local', 'Intruso-123456');
+  const visto = await intruso.from('consultas_cheques').select('id');
+  assert.ok(visto.error || visto.data.length === 0, 'la cuenta sin autorizar no ve las consultas');
 });

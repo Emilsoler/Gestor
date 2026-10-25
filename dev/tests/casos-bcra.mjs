@@ -57,3 +57,27 @@ export const CASOS = {
     cheques: { cuerpo: { status: 200, results: { identificacion: +CUIT.enCuerpo, denominacion: 'EMPRESA SIN DEUDAS S.A.', causales: [] } } },
   },
 };
+
+// ───────────────────────── Cheques denunciados ─────────────────────────
+// La lista viene del BCRA desordenada y con espacios de más, como la de verdad.
+export const ENTIDADES = [
+  { codigoEntidad: 11, denominacion: 'BANCO DE LA NACION ARGENTINA                  ' },
+  { codigoEntidad: 20, denominacion: 'BANCO DE LA PROVINCIA DE CORDOBA S.A.' },
+  { codigoEntidad: 7, denominacion: 'BANCO DE GALICIA Y BUENOS AIRES S.A.' },
+  { codigoEntidad: 191, denominacion: 'BANCO  CREDICOOP COOPERATIVO LIMITADO' },
+  { codigoEntidad: 14, denominacion: 'BANCO DE LA PROVINCIA DE BUENOS AIRES' },
+];
+/** Números de cheque inventados, con lo que responde el BCRA falso. */
+export const CHEQUE = { limpio: '12345678', denunciado: '87654321', caido: '55555555', corte: '66666666', raro: '77777777' };
+CASOS.cheques = {
+  entidades: { results: ENTIDADES },
+  denunciados: {
+    [`20/${CHEQUE.denunciado}`]: { results: {
+      numeroCheque: +CHEQUE.denunciado, denunciado: true, fechaProcesamiento: '2026-10-24', denominacionEntidad: 'BANCO DE LA PROVINCIA DE CORDOBA S.A.',
+      detalles: [{ sucursal: 312, numeroCuenta: 3120055962, causal: 'Denunciado por titular' }, { sucursal: 312, numeroCuenta: 3120055962, causal: 'Denunciado por tercero' }],
+    } },
+    [`11/${CHEQUE.caido}`]: { status: 500 },
+    [`11/${CHEQUE.corte}`]: { cortar: true },
+    [`11/${CHEQUE.raro}`]: { cuerpo: { status: 200, results: { numeroCheque: +CHEQUE.raro } } }, // sin `denunciado`: no se puede leer
+  },
+};

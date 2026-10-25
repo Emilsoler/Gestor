@@ -100,7 +100,7 @@ EOF
 create or replace function public._rt_local() returns trigger language plpgsql as $$
 begin perform pg_notify('gestor_rt', tg_table_name); return null; end $$;
 do $$ declare t text; begin
-  foreach t in array array['causas','acuerdos','plantillas','agenda','deudores','modelos_mensaje','ajustes_cobranzas','consultas_bcra'] loop
+  foreach t in array array['causas','acuerdos','plantillas','agenda','deudores','modelos_mensaje','ajustes_cobranzas','consultas_bcra','consultas_cheques'] loop
     if to_regclass('public.' || t) is not null and not exists
        (select 1 from pg_trigger where tgname = '_rt_local' and tgrelid = to_regclass('public.' || t)) then
       execute format('create trigger _rt_local after insert or update or delete on public.%I for each statement execute function public._rt_local()', t);

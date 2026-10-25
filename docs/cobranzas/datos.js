@@ -30,11 +30,13 @@ const SONDEO_RAPIDO = cfg.sondeoMs || 30_000; // sin tiempo real
 const SONDEO_LENTO = 5 * 60_000; // con tiempo real, por si se perdió algún aviso
 const CACHE = 'cb.cache';
 const FORMA = 2; // sube cuando cambia la forma de lo que se guarda en el dispositivo
-const TABLAS = ['deudores', 'modelos_mensaje', 'ajustes_cobranzas', 'consultas_bcra'];
+const TABLAS = ['deudores', 'modelos_mensaje', 'ajustes_cobranzas', 'consultas_bcra', 'consultas_cheques'];
 // Las consultas al BCRA se leen sin `resultado` (lo que respondió el BCRA, que puede ser largo): el
-// detalle se pide al abrir una. Si la base todavía no tiene la tabla, el resto de la app sigue andando.
+// detalle se pide al abrir una. Las de cheques son cortas y vienen enteras.
 const COLUMNAS = { consultas_bcra: 'id,cuit,denominacion,momento,consultado_por,periodo,semaforo,peor_situacion,entidades,deuda_total,cheques,cheques_impagos,motivos,rev' };
-const OPCIONALES = new Set(['consultas_bcra']);
+// Tablas que la base puede no tener todavía (migración sin aplicar): el resto de la app sigue andando, y
+// esta marca de D dice si está.
+const OPCIONALES = new Map([['consultas_bcra', 'creditos'], ['consultas_cheques', 'denunciados']]);
 const faltaTabla = (e) => e?.code === 'PGRST205' || e?.code === '42P01' || e?.status === 404;
 const DETALLES = new Map(); // id de consulta → resultado
 
@@ -48,7 +50,9 @@ export const D = {
   modelos_mensaje: [],
   ajustes_cobranzas: [],
   consultas_bcra: [], // sin `resultado` (ver detalleConsulta)
+  consultas_cheques: [],
   creditos: true, // la base tiene la tabla de consultas al BCRA
+  denunciados: true, // la base tiene la de consultas de cheques denunciados
   cargado: false, // hay algo para mostrar (de la base o de la copia local)
   leido: null, // Date de la última lectura buena
   deCache: false, // lo que se ve es la copia del dispositivo
@@ -124,6 +128,7 @@ const DE = {
   modelos_mensaje: (f) => ({ ...f }),
   ajustes_cobranzas: (f) => ({ ...f, tasa: +f.tasa, contado_pct: +f.contado_pct }),
   consultas_bcra: ({ resultado, ...f }) => ({ ...f, deuda_total: +f.deuda_total || 0, motivos: lista(f.motivos) }),
+  consultas_cheques: (f) => ({ ...f, numero: String(f.numero ?? ''), resultado: f.resultado && typeof f.resultado === 'object' ? f.resultado : {} }),
 };
 export const ESTADOS = ['En gestión', 'En juicio', 'Cancelado', 'Incobrable', 'Archivado'];
 const CAMPOS_DEUDOR = ['nombre', 'trato', 'dni', 'socio', 'domicilio', 'email', 'telefonos', 'acreedor', 'estado', 'expte', 'tasa', 'hon_pct',
@@ -141,6 +146,7 @@ const ORDEN = {
   modelos_mensaje: (a, b) => (a.orden - b.orden) || (a.titulo || '').localeCompare(b.titulo || '', 'es'),
   ajustes_cobranzas: (a, b) => a.id - b.id,
   consultas_bcra: (a, b) => String(b.momento).localeCompare(String(a.momento)) || a.id.localeCompare(b.id), // la más nueva primero
+  consultas_cheques: (a, b) => String(b.momento).localeCompare(String(a.momento)) || a.id.localeCompare(b.id),
 };
 const firma = (filas) => JSON.stringify([...filas].sort((a, b) => String(a.id).localeCompare(String(b.id))));
 
@@ -164,6 +170,7 @@ function guardarCache() {
     localStorage.setItem(CACHE, JSON.stringify({
       forma: FORMA, uid: D.usuario.id, email: D.usuario.email, ts: (D.leido || new Date()).getTime(),
       deudores: D.deudores, modelos_mensaje: D.modelos_mensaje, ajustes_cobranzas: D.ajustes_cobranzas, consultas_bcra: D.consultas_bcra,
+      consultas_cheques: D.consultas_cheques,
     }));
   } catch { /* sin espacio o modo privado: la app sigue andando sin copia local */ }
 }
@@ -200,11 +207,11 @@ async function leerTabla(t) {
 async function leerSiHay(t) {
   try {
     const filas = await leerTabla(t);
-    if (OPCIONALES.has(t)) D.creditos = true;
+    if (OPCIONALES.has(t)) D[OPCIONALES.get(t)] = true;
     return filas;
   } catch (e) {
     if (!OPCIONALES.has(t) || e.sinRed || e.sinSesion || e.sinAcceso || !faltaTabla(e)) throw e;
-    D.creditos = false;
+    D[OPCIONALES.get(t)] = false;
     return null;
   }
 }
@@ -268,7 +275,7 @@ function conectar() {
     try {
       canal = sb.channel('cobranzas');
       // Una tabla que la base todavía no tiene haría fallar el canal entero: se escucha solo si está.
-      for (const t of TABLAS) if (D.creditos || !OPCIONALES.has(t)) canal.on('postgres_changes', { event: '*', schema: 'public', table: t }, () => pedirSinc(t));
+      for (const t of TABLAS) if (!OPCIONALES.has(t) || D[OPCIONALES.get(t)]) canal.on('postgres_changes', { event: '*', schema: 'public', table: t }, () => pedirSinc(t));
       canal.subscribe((estado) => {
         const vivo = estado === 'SUBSCRIBED';
         if (vivo === D.enVivo) return;
@@ -445,14 +452,15 @@ export const borrarModelo = (id) => eliminar('modelos_mensaje', id);
 export const guardarAjustes = (rev, campos) => modificar('ajustes_cobranzas', 1, rev, campos);
 
 // ───────────────────────── Aprobación de créditos ─────────────────────────
-// La consulta la hace la función `bcra` de Supabase (supabase/functions/bcra): pregunta al BCRA, arma
-// el semáforo y guarda la constancia. Acá solo se le pasa el CUIT y se muestra lo que devuelve.
+// Las consultas las hace la función `bcra` de Supabase (supabase/functions/bcra): pregunta al BCRA (por
+// CUIT o por cheque), arma el semáforo y guarda la constancia. Acá solo se le pasa qué consultar y se
+// muestra lo que devuelve.
 
-/** Consulta un CUIT en la Central de Deudores. Devuelve la consulta guardada, con su detalle. */
-export async function consultarBCRA(cuit) {
+/** Un pedido a la función `bcra`. Los errores salen con el mensaje en palabras que manda la función. */
+async function invocarBCRA(cuerpo) {
   if (!sb) throw Object.assign(new Error('La app no está conectada a su base de datos'), { codigo: 'sin_configurar' });
   let r;
-  try { r = await sb.functions.invoke('bcra', { body: { cuit } }); } catch (e) { throw marcar(e); }
+  try { r = await sb.functions.invoke('bcra', { body: cuerpo }); } catch (e) { throw marcar(e); }
   if (r.error) {
     let detalle = null;
     try { detalle = await r.error.context?.json(); } catch { /* sin cuerpo */ }
@@ -463,15 +471,47 @@ export async function consultarBCRA(cuit) {
       : 'No se pudo consultar al BCRA. Probá de nuevo en un momento.'));
     e.codigo = detalle?.error || (sinRed ? 'red' : 'bcra');
     e.status = status;
+    e.sinRed = sinRed;
     if (sinRed) ponerEnLinea(false);
     if (status === 401) e.sinSesion = true;
     throw e;
   }
   ponerEnLinea(true);
-  const c = r.data.consulta;
+  return r.data;
+}
+
+/** Consulta un CUIT en la Central de Deudores. Devuelve la consulta guardada, con su detalle. */
+export async function consultarBCRA(cuit) {
+  const c = (await invocarBCRA({ cuit })).consulta;
   DETALLES.set(c.id, c.resultado);
   return ponerLocal('consultas_bcra', DE.consultas_bcra(c));
 }
+
+/** Pregunta si un cheque está denunciado (extraviado, sustraído o adulterado). Devuelve la consulta guardada. */
+export async function consultarCheque(entidad, numero) {
+  const c = (await invocarBCRA({ accion: 'cheque', entidad, numero })).consulta;
+  return ponerLocal('consultas_cheques', DE.consultas_cheques(c));
+}
+
+// Los bancos para elegir el del cheque: cambian muy de vez en cuando, así que la lista queda en el
+// dispositivo unos días (es la misma para todos: no es un dato de nadie).
+const ENTIDADES = 'cb.entidades';
+const ENTIDADES_MS = 7 * 24 * 3600_000;
+let entidadesEnMemoria = null;
+export async function entidadesCheques() {
+  if (entidadesEnMemoria) return entidadesEnMemoria;
+  try {
+    const c = JSON.parse(localStorage.getItem(ENTIDADES) || 'null'), guardada = bancosValidos(c?.lista);
+    if (guardada.length && Date.now() - c.ts < ENTIDADES_MS) return (entidadesEnMemoria = guardada);
+  } catch { /* sin almacenamiento: se pide */ }
+  const bancos = bancosValidos((await invocarBCRA({ accion: 'entidades' })).entidades);
+  if (!bancos.length) throw new Error('El BCRA no mandó la lista de bancos. Probá de nuevo en un momento.');
+  entidadesEnMemoria = bancos;
+  try { localStorage.setItem(ENTIDADES, JSON.stringify({ ts: Date.now(), lista: bancos })); } catch { /* sin espacio: queda en memoria */ }
+  return bancos;
+}
+const bancosValidos = (x) => lista(x).filter((e) => Number.isInteger(e?.codigo) && typeof e?.nombre === 'string');
+export const borrarConsultaCheque = (id) => eliminar('consultas_cheques', id);
 
 /** Lo que respondió el BCRA en una consulta (se lee una vez y queda en memoria). */
 export async function detalleConsulta(id) {

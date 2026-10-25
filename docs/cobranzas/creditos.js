@@ -1,5 +1,6 @@
-// Aprobación de créditos: lo que se muestra de una consulta a la Central de Deudores del BCRA.
-// Arma HTML (todo dato pasa por esc) y textos; no toca la pantalla ni la red. La consulta la hace la
+// Aprobación de créditos: lo que se muestra de una consulta a la Central de Deudores del BCRA y de una
+// a la Central de Cheques Denunciados (al final).
+// Arma HTML (todo dato pasa por esc) y textos; no toca la pantalla ni la red. Las consultas las hace la
 // función `bcra` de Supabase, que también decide el semáforo (supabase/functions/bcra/bcra.ts).
 import { esc, plata, fmtLargo, cuantos } from './textos.js';
 import { nombrePropio } from './calculo.js';
@@ -220,3 +221,112 @@ export function textoConsulta(c) {
 export const filaConsulta = (c, elegida) => `<button class="cr-fila${elegida ? ' elegida' : ''}" data-consulta="${esc(c.id)}" aria-pressed="${elegida}">
     ${luz(c.semaforo, true)}<span class="cr-fila-t"><b>${esc(c.denominacion || 'Sin nombre informado')}</b><span class="mono">${esc(cuitTexto(c.cuit))}</span></span>
     <span class="cr-fila-f"><span class="mono">${esc(momentoTexto(c.momento).slice(0, 10))}</span>${c.peor_situacion ? `<small>situación ${esc(String(c.peor_situacion))}</small>` : ''}</span></button>`;
+
+// ───────────────────────── Cheques denunciados ─────────────────────────
+// Si un cheque fue denunciado como extraviado, sustraído o adulterado (Central de Cheques Denunciados del
+// BCRA). Se elige el banco y se escribe el número; la consulta la hace la misma función `bcra`.
+
+/** El número de cheque como lo toma el BCRA: solo cifras y sin ceros adelante. El mismo control que la función. */
+export function numeroCheque(s) {
+  const d = soloDigitos(s).replace(/^0+/, '');
+  return /^[1-9]\d{0,14}$/.test(d) ? d : '';
+}
+
+/** Qué decirle a la persona mientras escribe el número del cheque (vacío: nada que decir). */
+export function avisoCheque(texto) {
+  const t = String(texto ?? '').trim();
+  if (!t) return { ok: false, texto: '' };
+  if (/[^\d\s.\-]/.test(t)) return { ok: false, texto: 'El número de cheque lleva solo números', mal: true };
+  const d = soloDigitos(t).replace(/^0+/, '');
+  if (!d) return { ok: false, texto: 'Ese número no sirve: es todo ceros', mal: true };
+  if (d.length > 15) return { ok: false, texto: 'Sobran números: revisalo', mal: true };
+  return { ok: true, texto: `Cheque N° ${d}` };
+}
+
+/** 20 → "020": el código como figura en la banda de abajo del cheque y en el CBU. */
+export const codigoBanco = (n) => String(n ?? '').padStart(3, '0');
+
+/** Los últimos bancos consultados, sin repetir (las consultas vienen de la más nueva a la más vieja). */
+export function bancosRecientes(consultas, n = 4) {
+  const vistos = new Map();
+  for (const c of consultas) {
+    if (vistos.size >= n) break;
+    if (Number.isInteger(c?.entidad) && !vistos.has(c.entidad)) vistos.set(c.entidad, { codigo: c.entidad, nombre: c.entidad_nombre || `Entidad ${codigoBanco(c.entidad)}` });
+  }
+  return [...vistos.values()];
+}
+
+/**
+ * Las opciones del banco: primero los usados hace poco y después todos (en los dos grupos, así se lo
+ * encuentra también por orden alfabético). Con `elegido` que no está en ninguno, queda sin elegir.
+ */
+export function opcionesBancos(todos, recientes, elegido) {
+  const nombre = new Map(todos.map((b) => [b.codigo, b.nombre]));
+  const rec = recientes.map((b) => ({ ...b, nombre: nombre.get(b.codigo) || b.nombre }));
+  let marcado = false;
+  const op = (b) => {
+    const sel = !marcado && String(b.codigo) === String(elegido);
+    if (sel) marcado = true;
+    return `<option value="${esc(String(b.codigo))}"${sel ? ' selected' : ''}>${esc(b.nombre)}</option>`;
+  };
+  const grupos = (rec.length ? `<optgroup label="Usados hace poco">${rec.map(op).join('')}</optgroup>` : '')
+    + (todos.length ? `<optgroup label="Todos los bancos">${todos.map(op).join('')}</optgroup>` : '');
+  return `<option value=""${marcado ? '' : ' selected'}>Elegí el banco…</option>${grupos}`;
+}
+/** Si `elegido` está entre las opciones (si no, el botón no se habilita con un banco que no se ve). */
+export const bancoEnLista = (todos, recientes, elegido) => !!elegido && [...recientes, ...todos].some((b) => String(b.codigo) === String(elegido));
+
+const RESULTADO_CHEQUE = {
+  si: { texto: 'Denunciado', detalle: 'Figura como extraviado, robado o adulterado', clase: 'rojo' },
+  no: { texto: 'Sin denuncias', detalle: 'No figura como extraviado, robado ni adulterado', clase: 'verde' },
+};
+const resultadoCheque = (c) => RESULTADO_CHEQUE[c?.denunciado ? 'si' : 'no'];
+const bancoDe = (c) => c.entidad_nombre || `Entidad ${codigoBanco(c.entidad)}`;
+
+/** La ficha de una consulta de cheque. `confirmar`: si se está por eliminar. */
+export function fichaCheque(c, { confirmar = false } = {}) {
+  const r = resultadoCheque(c), detalles = lista(c.resultado?.detalles);
+  const cab = `<div class="cr-cab">
+      <div class="cr-quien"><h3>Cheque N° <span class="mono">${esc(c.numero)}</span></h3><span>${esc(bancoDe(c))} <span class="mono">· ${esc(codigoBanco(c.entidad))}</span></span></div>
+      <div class="cr-luz luz-${r.clase}"><i aria-hidden="true"></i><div><b>${esc(r.texto)}</b><span>${esc(r.detalle)}</span></div></div>
+    </div>
+    <p class="hint m0">Consultado el ${esc(momentoTexto(c.momento))}${c.consultado_por ? ` por ${esc(c.consultado_por)}` : ''}${c.fecha_bcra ? ` · información del BCRA al ${esc(fecha(c.fecha_bcra))}` : ''}</p>`;
+
+  const denuncias = c.denunciado
+    ? `<section class="sec"><div class="sec-cab"><h4>Denuncias</h4><span class="hint">${esc(cuantos(detalles.length, 'denuncia', 'denuncias'))}</span></div>
+      ${detalles.length ? `<div class="scrollx"><table class="tabla cr-denuncias"><thead><tr><th>Causal</th><th>Sucursal</th><th>Cuenta</th></tr></thead><tbody>
+        ${detalles.map((d) => `<tr><td class="dn-q">${esc(d?.causal || 'Sin causal informada')}</td><td class="mono dn-s">${esc(String(d?.sucursal ?? '—'))}</td><td class="mono dn-c">${esc(String(d?.numeroCuenta ?? '—'))}</td></tr>`).join('')}
+      </tbody></table></div>` : '<p class="hint m0">El BCRA no informó el detalle de la denuncia.</p>'}
+      <p class="hint m0">La denuncia la hace ante el banco el titular de la cuenta o quien tenía el cheque y lo perdió o se lo robaron. El aviso por escrito impide que el banco lo pague (art. 5, Ley 24.452).</p></section>`
+    : `<div class="nota"><p><b>Sin denuncias no quiere decir con fondos.</b> Para saber si quien lo firmó tiene cheques rechazados o deudas con los bancos, consultá su CUIT.</p>
+      <div class="actions"><button class="btn small" data-a="ch-a-cuit">Consultar un CUIT</button></div></div>`;
+
+  const acciones = confirmar
+    ? `<div class="confirm"><span>¿Eliminar esta consulta? Se puede recuperar después desde el historial de cambios.</span><button class="btn small danger" data-a="ch-borrar" data-id="${esc(c.id)}">Sí, eliminar</button><button class="btn small" data-a="ch-no">Cancelar</button></div>`
+    : `<div class="actions"><button class="btn small primary" data-a="ch-repetir">Volver a consultar</button><button class="btn small" data-a="ch-copiar">Copiar resumen</button><span class="sep"></span><button class="btn small danger" data-a="ch-confirmar">Eliminar consulta</button></div>`;
+
+  return `${cab}${denuncias}
+    <details class="sec ayuda"><summary>¿Qué es un cheque denunciado?</summary>
+      <p class="hint m0">Es un cheque que el titular de la cuenta, o un tercero, denunció ante el banco como extraviado, sustraído (robado) o adulterado. La consulta muestra lo que los bancos informaron al BCRA hasta la fecha que figura arriba.</p>
+      <p class="hint m0">Que no esté denunciado no garantiza que tenga fondos ni que la firma sea auténtica. Fuente: BCRA, Central de Cheques Denunciados.</p></details>
+    ${acciones}`;
+}
+
+/** El resumen para copiar y pegar. */
+export function textoCheque(c) {
+  const r = resultadoCheque(c);
+  return [
+    'Consulta BCRA — Cheques denunciados',
+    `Cheque N° ${c.numero} · ${bancoDe(c)} (entidad ${codigoBanco(c.entidad)})`,
+    `Resultado: ${r.texto} (${r.detalle.toLowerCase()})`,
+    ...lista(c.resultado?.detalles).map((d) => `• ${d?.causal || 'Sin causal informada'} · sucursal ${d?.sucursal ?? '—'} · cuenta ${d?.numeroCuenta ?? '—'}`),
+    ...(c.fecha_bcra ? [`Información del BCRA al ${fecha(c.fecha_bcra)}`] : []),
+    `Consultado el ${momentoTexto(c.momento)}${c.consultado_por ? ` por ${c.consultado_por}` : ''}`,
+  ].join('\n');
+}
+
+/** Una consulta de cheque en el historial. */
+export const filaCheque = (c, elegida) => `<button class="cr-fila${elegida ? ' elegida' : ''}" data-cheque="${esc(c.id)}" aria-pressed="${elegida}">
+    <span class="luz luz-${resultadoCheque(c).clase} chica"><i aria-hidden="true"></i>${esc(resultadoCheque(c).texto)}</span>
+    <span class="cr-fila-t"><b>N° <span class="mono">${esc(c.numero)}</span></b><span class="sub" title="${esc(bancoDe(c))}">${esc(bancoDe(c))}</span></span>
+    <span class="cr-fila-f"><span class="mono">${esc(momentoTexto(c.momento).slice(0, 10))}</span></span></button>`;

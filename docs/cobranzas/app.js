@@ -3,9 +3,12 @@
 import {
   D, iniciar, reconectar, entrar, salir, cambiarClave, alCambiar, mensaje, ajustes, ESTADOS,
   crearDeudor, cambiarDeudor, borrarDeudor, crearModelo, guardarModelo, borrarModelo, guardarAjustes,
-  consultarBCRA, detalleConsulta, detalleGuardado, borrarConsulta,
+  consultarBCRA, detalleConsulta, detalleGuardado, borrarConsulta, consultarCheque, entidadesCheques, borrarConsultaCheque,
 } from './datos.js';
-import { avisoCuit, soloDigitos, fichaConsulta, filaConsulta, textoConsulta, deudoresDelCuit } from './creditos.js';
+import {
+  avisoCuit, soloDigitos, fichaConsulta, filaConsulta, textoConsulta, deudoresDelCuit,
+  avisoCheque, numeroCheque, bancosRecientes, opcionesBancos, bancoEnLista, fichaCheque, textoCheque, filaCheque,
+} from './creditos.js';
 import {
   liquidar, resumen, armarPlan, estadoPlan, planVigente, sumarMeses, totalPago, TRAMOS, tramoDe, CADAS, nombrePropio, detalleCuotas, ES_FECHA,
 } from './calculo.js';
@@ -16,7 +19,7 @@ import {
 import { importe, enCelda, idNuevo, r2 } from '../liquidacion.js';
 import { xlsx } from '../excel.js';
 
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 const CLAVE_MIN = 10;
 const TIPOS_GESTION = ['Llamada', 'WhatsApp', 'Visita', 'Email', 'Carta documento', 'Promesa de pago', 'Nota'];
 const MEDIOS = ['Efectivo', 'Transferencia', 'Depósito', 'Cheque', 'Débito', 'Otro'];
@@ -26,6 +29,8 @@ const CLASE = { mora: 's-bad', plan: 's-ok', 'plan-atrasado': 's-warn', 'plan-ca
 const CHIPS = [['activos', 'Activos'], ['mora', 'En mora'], ['plan', 'Con plan'], ['atrasados', 'Planes atrasados'], ['promesas', 'Promesas'], ['juicio', 'En juicio'], ['cerrados', 'Cancelados y archivados']];
 const VISTAS = { inicio: 'Inicio', deudores: 'Deudores', planes: 'Planes', cobros: 'Cobros', creditos: 'Aprobación de créditos' };
 const AYUDA_CUIT = 'La situación en cada banco o financiera, los últimos 24 meses y los cheques rechazados.';
+const AYUDA_CHEQUE = 'Si el cheque fue denunciado como extraviado, robado o adulterado.';
+const MODOS_CREDITO = [['cuit', 'Deudas por CUIT'], ['cheque', 'Cheques denunciados']];
 const JUICIOS = '../'; // el gestor de juicios, en la misma base
 
 const S = {
@@ -33,10 +38,16 @@ const S = {
   abierto: null, tab: 'resumen', f: null, confirmar: '', // la ficha abierta y lo que se escribe en ella
   panel: '', nuevo: null, aj: null, modelos: {}, // paneles: 'nuevo' | 'mensajes' | 'ajustes' | 'clave'
   menu: false, instalar: null, ocupado: false, maxi: false,
-  // Aprobación de créditos: el CUIT que se escribe, la consulta que se está viendo y su estado.
-  cred: { cuit: '', abierta: null, consultando: false, confirmar: false, error: '', errorDetalle: '', filtro: '' },
+  // Aprobación de créditos: por CUIT (el que se escribe, la consulta que se está viendo y su estado) o
+  // por cheque (ch…: el banco y el número que se escriben, la consulta abierta, la lista de bancos).
+  cred: {
+    modo: 'cuit', cuit: '', abierta: null, consultando: false, confirmar: false, error: '', errorDetalle: '', filtro: '',
+    entidad: '', numero: '', chAbierta: null, chConsultando: false, chConfirmar: false, chError: '', chFiltro: '',
+    bancos: null, bancosCargando: false, bancosError: '',
+  },
 };
 try { S.vista = VISTAS[localStorage.getItem('cb.vista')] ? localStorage.getItem('cb.vista') : 'inicio'; } catch { /* sin almacenamiento */ }
+try { if (localStorage.getItem('cb.credModo') === 'cheque') S.cred.modo = 'cheque'; } catch { /* sin almacenamiento */ }
 try { S.maxi = localStorage.getItem('cb.maxi') === '1'; } catch { /* sin almacenamiento */ }
 
 // ───────────────────────── Utilidades ─────────────────────────
@@ -446,10 +457,23 @@ function vistaCobros() {
 }
 
 // ───────────────────────── Aprobación de créditos ─────────────────────────
-// Se escribe un CUIT y "Consultar BCRA": la función `bcra` pregunta a la Central de Deudores, arma el
-// semáforo y guarda la consulta. Las anteriores quedan en el historial, como constancia de ese día.
+// Dos consultas al BCRA, cada una en su pestaña: por CUIT (la función `bcra` pregunta a la Central de
+// Deudores, arma el semáforo y guarda la consulta) y por cheque (si fue denunciado como extraviado, robado
+// o adulterado). Las anteriores quedan en el historial de cada una, como constancia de ese día.
 
 function vistaCreditos() {
+  const modos = `<nav class="tabs cr-modos" role="tablist" aria-label="Qué consultar">${MODOS_CREDITO.map(([k, l]) => `<button role="tab" data-cr-modo="${k}" aria-selected="${S.cred.modo === k}">${esc(l)}</button>`).join('')}</nav>`;
+  return `<div class="creditos">${modos}${S.cred.modo === 'cheque' ? vistaCheques() : vistaCuit()}</div>`;
+}
+
+function cambiarModo(m) {
+  if (S.cred.modo === m) return;
+  S.cred.modo = m;
+  try { localStorage.setItem('cb.credModo', m); } catch { /* sin almacenamiento */ }
+  render();
+}
+
+function vistaCuit() {
   const C = S.cred, xs = D.consultas_bcra;
   subtitulo(xs.length ? cuantos(xs.length, 'consulta guardada', 'consultas guardadas') : 'Consulta en la Central de Deudores del BCRA');
   if (!D.creditos) return vacio('Falta activar la aprobación de créditos', 'La base todavía no tiene dónde guardar las consultas al BCRA. Pedile a Claude que la active.');
@@ -477,7 +501,106 @@ function vistaCreditos() {
     ${vistas.length ? `<div class="cr-lista">${vistas.slice(0, 200).map((x) => filaConsulta(x, x.id === C.abierta)).join('')}</div>`
       : `<p class="hint m0">${xs.length ? 'Ninguna consulta coincide.' : 'Las consultas que hagas quedan acá, con la fecha y lo que informaba el BCRA ese día.'}</p>`}
   </section>`;
-  return `<div class="creditos">${form}${resultado}${historial}</div>`;
+  return `${form}${resultado}${historial}`;
+}
+
+function vistaCheques() {
+  const C = S.cred, xs = D.consultas_cheques;
+  subtitulo(xs.length ? cuantos(xs.length, 'cheque consultado', 'cheques consultados') : 'Consulta en la Central de Cheques Denunciados del BCRA');
+  if (!D.denunciados) return vacio('Falta activar la consulta de cheques', 'La base todavía no tiene dónde guardar las consultas de cheques. Pedile a Claude que la active.');
+  if (!C.bancos && !C.bancosCargando && !C.bancosError) setTimeout(pedirBancos, 0);
+  // Los bancos usados hace poco salen del historial: se pueden elegir aunque la lista del BCRA no llegue.
+  const recientes = bancosRecientes(xs), todos = C.bancos || [];
+  if (C.entidad && !C.bancosCargando && !bancoEnLista(todos, recientes, C.entidad)) C.entidad = '';
+  const sinBancos = !todos.length && !recientes.length;
+  const aviso = avisoCheque(C.numero), listo = aviso.ok && !!C.entidad;
+  const form = `<section class="card cr-consulta">
+    <div class="card-cab"><h3>Consultar un cheque</h3></div>
+    <form id="fCheque" class="cr-form cr-form-cheque" novalidate>
+      <label class="f banco">Banco del cheque<select id="ch_banco" data-k="cred.entidad" ${sinBancos ? 'disabled' : ''}>${sinBancos
+        ? `<option value="">${C.bancosError ? 'No se pudo traer la lista' : 'Cargando bancos…'}</option>` : opcionesBancos(todos, recientes, C.entidad)}</select></label>
+      <label class="f">Número de cheque<input id="ch_numero" ${atar('cred.numero')} inputmode="numeric" autocomplete="off" placeholder="Ej.: 12345678" maxlength="24"></label>
+      <button class="btn primary" type="submit" id="ch_ir" ${C.chConsultando || !listo ? 'disabled' : ''}>${C.chConsultando ? 'Consultando…' : 'Consultar cheque'}</button>
+    </form>
+    <p class="hint m0${aviso.mal ? ' malo' : ''}" id="ch_aviso" aria-live="polite">${esc(aviso.texto || AYUDA_CHEQUE)}</p>
+    ${C.bancosError ? `<div class="aviso-chico cr-reintentar"><span>${esc(C.bancosError)}</span><button class="btn small" type="button" data-a="ch-bancos">Reintentar</button></div>` : ''}
+    ${C.chError ? `<p class="aviso-chico" role="alert">${esc(C.chError)}</p>` : ''}
+  </section>`;
+
+  const c = C.chAbierta ? xs.find((x) => x.id === C.chAbierta) : null;
+  const resultado = c
+    ? `<section class="card cr-resultado" id="crResultado">${fichaCheque(c, { confirmar: C.chConfirmar })}</section>`
+    : `<section class="card cr-resultado cr-vacio"><b>Elegí una consulta o hacé una nueva</b><span class="hint">Vas a ver si el cheque figura como extraviado, robado o adulterado y, si figura, quién hizo la denuncia.</span></section>`;
+
+  const q = C.chFiltro.trim().toLowerCase(), qd = soloDigitos(C.chFiltro);
+  const vistas = xs.filter((x) => !q || (x.entidad_nombre || '').toLowerCase().includes(q) || (qd.length >= 3 && x.numero.includes(qd)));
+  const historial = `<section class="card cr-historial">
+    <div class="card-cab"><h3>Cheques consultados</h3>${xs.length ? `<span class="hint">${xs.length}</span>` : ''}</div>
+    ${xs.length > 6 ? `<input type="search" class="cr-filtro" ${atar('cred.chFiltro')} placeholder="Buscar por número o banco" aria-label="Buscar entre los cheques consultados">` : ''}
+    ${vistas.length ? `<div class="cr-lista">${vistas.slice(0, 200).map((x) => filaCheque(x, x.id === C.chAbierta)).join('')}</div>`
+      : `<p class="hint m0">${xs.length ? 'Ningún cheque coincide.' : 'Los cheques que consultes quedan acá, con la fecha y lo que informaba el BCRA ese día.'}</p>`}
+  </section>`;
+  return `${form}${resultado}${historial}`;
+}
+
+/** La lista de bancos del BCRA para elegir el del cheque (queda guardada unos días: ver datos.js). */
+function pedirBancos() {
+  const C = S.cred;
+  if (C.bancos || C.bancosCargando) return;
+  C.bancosCargando = true; C.bancosError = '';
+  entidadesCheques()
+    .then((l) => { C.bancos = l; })
+    .catch((e) => {
+      C.bancosError = e.sinRed ? 'Sin conexión: no se pudo traer la lista de bancos.' : e.sinSesion ? mensaje(e) : `No se pudo traer la lista de bancos. ${e.message || ''}`.trim();
+    })
+    .finally(() => { C.bancosCargando = false; if (S.vista === 'creditos' && C.modo === 'cheque') render(); });
+}
+
+/** Mientras se escribe el número o se elige el banco: el aviso y el botón, sin redibujar. */
+function actualizarCheque() {
+  const a = avisoCheque(S.cred.numero), p = $('#ch_aviso'), b = $('#ch_ir');
+  if (p) { p.textContent = a.texto || AYUDA_CHEQUE; p.classList.toggle('malo', !!a.mal); }
+  if (b && !S.cred.chConsultando) b.disabled = !(a.ok && S.cred.entidad);
+  if (S.cred.chError) { S.cred.chError = ''; $('.cr-consulta .aviso-chico[role=alert]')?.remove(); }
+}
+
+async function consultarChequeDe(entidad, numero) {
+  const C = S.cred, e = +entidad || 0, n = numeroCheque(numero);
+  if (!e) { toast('Elegí el banco del cheque'); return; }
+  if (!n) { toast(avisoCheque(numero).texto || 'Escribí el número del cheque'); return; }
+  if (C.chConsultando) return;
+  C.chConsultando = true; C.chError = ''; render();
+  try {
+    const c = await consultarCheque(e, n);
+    Object.assign(C, { chAbierta: c.id, numero: '', chConfirmar: false });
+    toast('Consulta guardada');
+  } catch (err) {
+    C.chError = err.sinSesion ? mensaje(err) : err.message || 'No se pudo consultar al BCRA';
+  } finally {
+    C.chConsultando = false;
+    render();
+  }
+  if (!C.chError) verResultado();
+}
+
+function abrirCheque(id) {
+  Object.assign(S.cred, { chAbierta: id, chConfirmar: false });
+  render(); verResultado();
+}
+
+async function accionCheque(act, b) {
+  const C = S.cred;
+  if (act === 'ch-bancos') { pedirBancos(); render(); return; }
+  if (act === 'ch-a-cuit') { cambiarModo('cuit'); $('#cr_cuit')?.focus(); return; }
+  const c = D.consultas_cheques.find((x) => x.id === C.chAbierta);
+  if (!c) return;
+  if (act === 'ch-copiar') copiar(textoCheque(c));
+  else if (act === 'ch-repetir') await consultarChequeDe(c.entidad, c.numero);
+  else if (act === 'ch-confirmar' || act === 'ch-no') { C.chConfirmar = act === 'ch-confirmar'; render(); }
+  else if (act === 'ch-borrar') {
+    try { await borrarConsultaCheque(c.id); Object.assign(C, { chAbierta: null, chConfirmar: false }); toast('Consulta eliminada'); } catch (e) { toast(mensaje(e, 'no se eliminó')); }
+    render();
+  }
 }
 
 /** Mientras se escribe el CUIT: el aviso y el botón, sin redibujar (para no perder lo que se escribe). */
@@ -1511,6 +1634,8 @@ document.addEventListener('submit', async (e) => {
     });
   } else if (e.target.id === 'fCredito') {
     await consultarCuit(S.cred.cuit);
+  } else if (e.target.id === 'fCheque') {
+    await consultarChequeDe(S.cred.entidad, S.cred.numero);
   } else if (e.target.id === 'fClave' || e.target.id === 'fClaveMenu') {
     const a = $('#n_clave').value, problema = claveValida(a, $('#n_clave2').value);
     if (problema) { errorIngreso(problema); return; }
@@ -1546,6 +1671,8 @@ document.addEventListener('click', async (e) => {
   const tab = t.closest('[data-tab-ir]'); if (tab) { irATab(tab.dataset.tabIr); return; }
   const ab = t.closest('[data-abrir]'); if (ab) { e.stopPropagation(); abrirDeudor(ab.dataset.abrir, ab.dataset.tab || 'resumen', ab.dataset.con || ''); return; }
   const cq = t.closest('[data-consulta]'); if (cq) { await abrirConsulta(cq.dataset.consulta); return; }
+  const cm = t.closest('[data-cr-modo]'); if (cm) { cambiarModo(cm.dataset.crModo); return; }
+  const chq = t.closest('[data-cheque]'); if (chq) { abrirCheque(chq.dataset.cheque); return; }
   const a = t.closest('[data-a]'); if (!a) return;
   const act = a.dataset.a;
   if (act === 'cerrar') { cerrarFicha(); return; }
@@ -1553,6 +1680,10 @@ document.addEventListener('click', async (e) => {
   if (act.startsWith('cr-') && !S.panel && !S.abierto) {
     if (act === 'cr-copiar') { accionCredito(act, a); return; } // sin esperas: el portapapeles lo pide así
     await unaVez(a, (b) => accionCredito(act, b)); return;
+  }
+  if (act.startsWith('ch-') && !S.panel && !S.abierto) {
+    if (act === 'ch-copiar') { accionCheque(act, a); return; } // ídem
+    await unaVez(a, (b) => accionCheque(act, b)); return;
   }
   if (S.panel) {
     if (act === 'nuevo-crear') { await unaVez(a, crearNuevo); return; }
@@ -1574,7 +1705,8 @@ document.addEventListener('input', (e) => {
   const k = el.dataset?.k; if (!k) return;
   poner(k, el.type === 'checkbox' ? el.checked : el.value);
   if (k === 'cred.cuit') { actualizarCuit(); return; }
-  if (k === 'cred.filtro') { render(); return; }
+  if (k === 'cred.numero' || k === 'cred.entidad') { actualizarCheque(); return; }
+  if (k === 'cred.filtro' || k === 'cred.chFiltro') { render(); return; }
   if (el.dataset.re) return; // fechas, casillas y listas: se redibuja con "change"
   if (k.startsWith('f.pago.')) actualizarPie();
   else if (k.startsWith('f.plan.')) {
@@ -1591,6 +1723,7 @@ document.addEventListener('change', (e) => {
   if (el.id === 'f_tasa' || el.id === 'f_hon') { guardarTasa(el.id === 'f_tasa' ? 'tasa' : 'hon', el); return; }
   if (!k) return;
   poner(k, el.type === 'checkbox' ? el.checked : el.value);
+  if (k === 'cred.entidad') { actualizarCheque(); return; } // por si el navegador no avisa con "input"
   if (k === 'f.msg.modelo') { const d = deudor(S.abierto); S.f.msg.propuesta = S.f.msg.propuesta && el.value === 'plan'; S.f.msg.texto = S.f.msg.base = generar(d, S.f.msg); renderFicha(); return; }
   if (k === 'f.msg.numero') { actualizarEnlace(); return; }
   if (el.dataset.re) rerender();

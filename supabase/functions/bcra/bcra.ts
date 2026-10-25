@@ -1,4 +1,5 @@
-// La consulta a la Central de Deudores del BCRA y el semáforo de la aprobación de créditos.
+// La consulta a la Central de Deudores del BCRA y el semáforo de la aprobación de créditos; y la de la
+// Central de Cheques Denunciados (más abajo).
 // Nada de Deno ni de la base: lo usa index.ts y lo prueban las pruebas locales contra un BCRA falso.
 //
 // API pública del BCRA (sin clave): https://api.bcra.gob.ar/CentralDeDeudores/v1.0/Deudas/{cuit}
@@ -23,7 +24,7 @@ export function cuitValido(c: string): boolean {
   return dv !== 10 && dv === Number(c[10]);
 }
 
-export type TipoError = 'red' | 'tiempo' | 'certificado' | 'limite' | 'bcra' | 'parametro' | 'formato';
+export type TipoError = 'red' | 'tiempo' | 'certificado' | 'limite' | 'bcra' | 'parametro' | 'formato' | 'entidad' | 'numero';
 const MENSAJES: Record<TipoError, string> = {
   red: 'No se pudo conectar con el BCRA. Probá de nuevo en un momento.',
   tiempo: 'El BCRA tardó demasiado en responder. Probá de nuevo en un momento.',
@@ -32,6 +33,8 @@ const MENSAJES: Record<TipoError, string> = {
   bcra: 'El BCRA respondió con un error. Probá de nuevo en un rato.',
   parametro: 'El BCRA no aceptó ese CUIT.',
   formato: 'El BCRA respondió algo que no se pudo leer. Probá de nuevo en un rato.',
+  entidad: 'El BCRA no tiene ese banco en su lista: elegilo de nuevo.',
+  numero: 'El BCRA no aceptó ese número de cheque.',
 };
 
 export class ErrorBCRA extends Error {
@@ -105,6 +108,62 @@ export async function consultar(cuit: string, { url = 'https://api.bcra.gob.ar' 
     return null;
   };
   return { deudas: de('deudas', deudas), historicas: de('historicas', historicas), cheques: de('cheques', cheques), errores, estados };
+}
+
+// ───────────────────────── Cheques denunciados ─────────────────────────
+// API pública del BCRA (sin clave): https://api.bcra.gob.ar/cheques/v1.0
+//   entidades                                   los bancos, con su código
+//   denunciados/{codigoEntidad}/{numeroCheque}  si ese cheque fue denunciado como extraviado, sustraído o adulterado
+// En denunciados, 404 quiere decir que la entidad no existe (no "que no figura") y 400, que el número no sirve.
+
+const RUTA_CHEQUES = '/cheques/v1.0';
+
+/** El número de cheque como lo toma el BCRA: solo cifras y sin ceros adelante (hasta 15). '' si no sirve. */
+export function numeroCheque(s: unknown): string {
+  const d = soloDigitos(s).replace(/^0+/, '');
+  return /^[1-9]\d{0,14}$/.test(d) ? d : '';
+}
+
+/** El código de una entidad, si es un número entero razonable; si no, 0. */
+export function codigoEntidad(x: unknown): number {
+  const n = typeof x === 'string' && /^\d{1,5}$/.test(x.trim()) ? Number(x) : x;
+  return Number.isInteger(n) && (n as number) >= 1 && (n as number) <= 99999 ? (n as number) : 0;
+}
+
+export type Entidad = { codigo: number; nombre: string };
+
+/** Los bancos que informan cheques, ordenados por nombre (el BCRA los manda con espacios de más). */
+export async function entidades({ url = 'https://api.bcra.gob.ar' } = {}): Promise<Entidad[]> {
+  const r = await pedir(`${url}${RUTA_CHEQUES}/entidades`);
+  if (!Array.isArray(r.results)) throw new ErrorBCRA('formato', r.status);
+  const vistos = new Set<number>();
+  return r.results
+    .map((e: any) => ({ codigo: codigoEntidad(e?.codigoEntidad), nombre: String(e?.denominacion ?? '').replace(/\s+/g, ' ').trim().slice(0, 200) }))
+    .filter((e: Entidad) => e.codigo && e.nombre && !vistos.has(e.codigo) && vistos.add(e.codigo))
+    .sort((a: Entidad, b: Entidad) => a.nombre.localeCompare(b.nombre, 'es'));
+}
+
+export type Cheque = { denunciado: boolean; entidad_nombre: string; fecha_bcra: string | null; resultado: any };
+
+/** Si un cheque está denunciado. `numero` ya pasó por numeroCheque. */
+export async function consultarCheque(entidad: number, numero: string, { url = 'https://api.bcra.gob.ar' } = {}): Promise<Cheque> {
+  let r: Respuesta;
+  try {
+    r = await pedir(`${url}${RUTA_CHEQUES}/denunciados/${entidad}/${numero}`);
+  } catch (e) {
+    if (e instanceof ErrorBCRA && e.tipo === 'parametro') throw new ErrorBCRA('numero', 400, e.detalle);
+    throw e;
+  }
+  if (r.status === 404) throw new ErrorBCRA('entidad', 404);
+  const x = r.results;
+  if (typeof x?.denunciado !== 'boolean') throw new ErrorBCRA('formato', 200);
+  const fecha = String(x.fechaProcesamiento ?? '').slice(0, 10);
+  return {
+    denunciado: x.denunciado,
+    entidad_nombre: String(x.denominacionEntidad ?? '').replace(/\s+/g, ' ').trim().slice(0, 200),
+    fecha_bcra: /^\d{4}-\d{2}-\d{2}$/.test(fecha) ? fecha : null,
+    resultado: x,
+  };
 }
 
 // ───────────────────────── Semáforo ─────────────────────────

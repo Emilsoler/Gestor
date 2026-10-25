@@ -15,8 +15,8 @@ Tiene tres piezas:
   Claude (ver "Chat con Claude y escritos para el SAC").
 - **La app de cobranzas**, en `docs/cobranzas/`: otra app instalable (deudores en mora,
   liquidaciones, pagos imputados por rubro, planes de pago, WhatsApp, aprobación de créditos con
-  consulta al BCRA), con la misma base, el mismo login y las mismas barreras de acceso. Ver
-  "Cobranzas", al final; la consulta al BCRA la hace la función `supabase/functions/bcra/`.
+  consultas al BCRA por CUIT y por cheque), con la misma base, el mismo login y las mismas barreras de
+  acceso. Ver "Cobranzas", al final; las consultas al BCRA las hace la función `supabase/functions/bcra/`.
 
 Este repositorio es **público**: acá no van datos de causas, exportaciones, claves secretas
 ni nada del estudio que no sea el código.
@@ -167,7 +167,8 @@ aplicarla con `apply_migration` y pasar `get_advisors` (seguridad).
   1. `public.gestor_puerta()`, que PostgREST ejecuta antes de cada pedido
      (`pgrst.db_pre_request` en el rol `authenticator`) y rechaza a quien no es miembro.
   2. Las políticas de filas de `causas`, `acuerdos`, `plantillas`, `agenda` y las de cobranzas
-     (`deudores`, `modelos_mensaje`, `ajustes_cobranzas`, `consultas_bcra`), todas con `public.es_miembro()`.
+     (`deudores`, `modelos_mensaje`, `ajustes_cobranzas`, `consultas_bcra`, `consultas_cheques`), todas con
+     `public.es_miembro()`.
   3. Las estadísticas del planificador desactivadas en todas las columnas de esas tablas,
      para que los conteos estimados de la API no revelen contenido. Si una migración agrega
      columnas, termina con `select gestor.sin_estadisticas();`.
@@ -327,6 +328,9 @@ se cargan las cuotas que faltan vencer, mes a mes.
 
 ### Aprobación de créditos (vista "Créditos")
 
+Dos pestañas: "Deudas por CUIT" (Central de Deudores) y "Cheques denunciados" (más abajo). La app
+recuerda en el dispositivo la última que se usó.
+
 Se escribe un CUIT o CUIL y se toca "Consultar BCRA". La app llama a la función `bcra`
 (`supabase/functions/bcra/`), que verifica la sesión con la base (mismas tres barreras), pide a la API
 pública de la Central de Deudores del BCRA (`https://api.bcra.gob.ar/CentralDeDeudores/v1.0/Deudas/{cuit}`,
@@ -353,8 +357,27 @@ la consulta en `public.consultas_bcra` (migración 0010) con la sesión de la pe
 - Son datos personales: se consultan para evaluar un crédito y no salen de la app. En los registros de la
   función no queda el CUIT.
 
+**Cheques denunciados** (pestaña "Cheques denunciados", migración 0011): se elige el banco y se escribe el
+número del cheque; la misma función `bcra` (pedido `{accion: 'cheque', entidad, numero}`) pregunta a la API
+pública de Cheques Denunciados del BCRA (`https://api.bcra.gob.ar/cheques/v1.0/denunciados/{entidad}/{numero}`,
+sin clave) si fue denunciado como extraviado, sustraído o adulterado, y guarda la constancia en
+`public.consultas_cheques` (mismas reglas que `consultas_bcra`: no se modifica, fecha y autor de la base, se
+recupera con `gestor.deshacer`). `resultado` es la respuesta del BCRA tal cual, con sucursal, cuenta y causal
+de cada denuncia ("Denunciado por titular" o "por tercero").
+
+- **Bancos**: la lista sale del BCRA (`…/cheques/v1.0/entidades`, pedido `{accion: 'entidades'}`, no se
+  guarda en la base) y la app la deja en el dispositivo una semana (`cb.entidades`). Arriba van los bancos
+  usados hace poco, que salen del historial: se pueden elegir aunque la lista no llegue.
+- **Número**: solo cifras y sin ceros adelante (`numeroCheque`, en `creditos.js` y en `bcra.ts`). Para el
+  BCRA, un 404 en esta consulta es "esa entidad no existe", no "el cheque no figura".
+- **Lo que no dice**: que un cheque no esté denunciado no quiere decir que tenga fondos; la ficha lo aclara
+  y lleva a consultar por CUIT a quien lo firmó (la API no da el CUIT del librador).
+- Para leer las consultas guardadas:
+  `select entidad, entidad_nombre, numero, denunciado, fecha_bcra, momento from public.consultas_cheques order by momento desc;`
+  En los registros de la función no queda el número del cheque ni el de la cuenta.
+
 **Cambiar la app**: `docs/cobranzas/` (`app.js` interfaz, `datos.js` la base, `calculo.js` cuentas,
-`textos.js` fechas, importes y mensajes, `creditos.js` lo que se muestra de una consulta al BCRA,
+`textos.js` fechas, importes y mensajes, `creditos.js` lo que se muestra de una consulta al BCRA (por CUIT y por cheque),
 `styles.css`). Si se toca una cuenta, también
 `gestor.liquidacion_deudor` (migración nueva). Probar con `npm run test:cobranzas` (y las del gestor);
 capturas en ancho de PC y de celular. Su service worker es `docs/cobranzas/sw.js` (`VERSION`

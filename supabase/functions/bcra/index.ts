@@ -1,13 +1,20 @@
-// Aprobación de créditos: consulta a la Central de Deudores del BCRA (función `bcra` de Supabase).
+// Aprobación de créditos: consultas al BCRA (función `bcra` de Supabase).
 //
-// La app manda un CUIT o CUIL. Acá se verifica la sesión (con la base: mismas barreras que la app), se
-// le pide al BCRA la situación actual, la de los últimos 24 meses y los cheques rechazados, se arma el
-// semáforo y se guarda la consulta en public.consultas_bcra con la sesión de quien consulta. Devuelve
-// la fila guardada.
+// La app manda uno de estos pedidos:
+//   { cuit }                              Central de Deudores: la situación actual, la de los últimos 24 meses y
+//                                         los cheques rechazados; se arma el semáforo y se guarda en
+//                                         public.consultas_bcra.
+//   { accion: 'cheque', entidad, numero } Central de Cheques Denunciados: si ese cheque fue denunciado como
+//                                         extraviado, sustraído o adulterado; se guarda en public.consultas_cheques.
+//   { accion: 'entidades' }               la lista de bancos para elegir el del cheque (no se guarda nada).
+// Antes de cualquier cosa se verifica la sesión con la base (mismas barreras que la app). Lo que se guarda va
+// con la sesión de quien consulta, y se devuelve la fila guardada.
 //
 // No usa ninguna clave secreta: la API del BCRA es pública y la base se usa con la sesión de la persona.
-// En los registros no queda el CUIT.
-import { ErrorBCRA, consultar, cuitValido, resumir, sinCuit, soloDigitos } from './bcra.ts';
+// En los registros no queda el CUIT ni el número de cheque.
+import {
+  ErrorBCRA, codigoEntidad, consultar, consultarCheque, cuitValido, entidades, numeroCheque, resumir, sinCuit, soloDigitos,
+} from './bcra.ts';
 
 const URL_BASE = Deno.env.get('SUPABASE_URL') || '';
 const URL_BCRA = Deno.env.get('BCRA_URL') || 'https://api.bcra.gob.ar'; // otra solo en las pruebas locales
@@ -56,7 +63,93 @@ async function base(jwt: string, ruta: string, cuerpo: unknown, prefer = '') {
   return datos;
 }
 
-const STATUS: Record<string, number> = { limite: 429, tiempo: 504, parametro: 400 };
+const STATUS: Record<string, number> = { limite: 429, tiempo: 504, parametro: 400, entidad: 400, numero: 400 };
+// Para los registros de los cheques: sin el número (ni el de la cuenta, si el BCRA lo repite en un error).
+const sinNumeros = (s: unknown) => sinCuit(s).replace(/\d{6,}/g, '…');
+
+type Cors = Record<string, string>;
+
+/** Guarda una constancia con la sesión de la persona: devuelve la fila guardada o la respuesta de error. */
+async function guardar(jwt: string, tabla: string, fila: unknown, cors: Cors): Promise<{ fila?: any; error?: Response }> {
+  try {
+    const [f] = await base(jwt, `${tabla}?select=*`, fila, 'return=representation');
+    return { fila: f };
+  } catch (e) {
+    console.error(`guardar ${tabla}:`, e instanceof ErrorBase ? `${e.status} ${e.codigo} ${e.message}` : e);
+    if (e instanceof ErrorBase && e.codigo === '42501') return { error: responder({ error: 'sin_acceso', mensaje: 'Esta cuenta no está autorizada para usar la app.' }, 403, cors) };
+    if (e instanceof ErrorBase && (e.codigo === 'PGRST205' || e.codigo === '42P01')) {
+      return { error: responder({ error: 'sin_tabla', mensaje: 'Esta consulta todavía no está activada en la base. Avisale a Claude.' }, 503, cors) };
+    }
+    return { error: responder({ error: 'base', mensaje: 'El BCRA respondió, pero la consulta no se pudo guardar. Probá de nuevo.' }, 502, cors) };
+  }
+}
+
+/** Central de Deudores: el CUIT, el semáforo y la constancia. */
+async function deudas(jwt: string, pedido: any, cors: Cors): Promise<Response> {
+  // Se rechaza un CUIT mal escrito antes de preguntar: para el BCRA un número que no existe "no figura",
+  // y eso se podría leer como una persona sin deudas.
+  const cuit = soloDigitos(pedido?.cuit).slice(0, 20);
+  if (cuit.length !== 11) return responder({ error: 'cuit', mensaje: 'El CUIT o CUIL tiene que tener 11 números.' }, 400, cors);
+  if (!cuitValido(cuit)) return responder({ error: 'cuit', mensaje: 'Ese CUIT o CUIL no existe: revisá los números (el último no coincide con los demás).' }, 400, cors);
+
+  const inicio = Date.now();
+  let r;
+  try {
+    r = await consultar(cuit, { url: URL_BCRA });
+  } catch (e) {
+    const err = e instanceof ErrorBCRA ? e : new ErrorBCRA('red', 0, sinCuit(String(e)));
+    console.error(JSON.stringify({ bcra: 'error', tipo: err.tipo, status: err.status, ms: Date.now() - inicio, detalle: err.detalle }));
+    return responder({ error: `bcra_${err.tipo}`, mensaje: err.message }, STATUS[err.tipo] || 502, cors);
+  }
+
+  const resumen = resumir(r.deudas, r.cheques, r.historicas);
+  const g = await guardar(jwt, 'consultas_bcra', {
+    cuit, ...resumen,
+    resultado: { deudas: r.deudas, historicas: r.historicas, cheques: r.cheques, errores: r.errores },
+  }, cors);
+  if (g.error) return g.error;
+  console.log(JSON.stringify({ bcra: 'ok', ms: Date.now() - inicio, ...r.estados, semaforo: resumen.semaforo }));
+  return responder({ consulta: g.fila }, 200, cors);
+}
+
+/** Central de Cheques Denunciados: el banco, el número y la constancia. */
+async function cheque(jwt: string, pedido: any, cors: Cors): Promise<Response> {
+  const entidad = codigoEntidad(pedido?.entidad);
+  if (!entidad) return responder({ error: 'entidad', mensaje: 'Elegí el banco del cheque.' }, 400, cors);
+  const numero = numeroCheque(pedido?.numero);
+  if (!numero) return responder({ error: 'numero', mensaje: 'El número de cheque tiene que tener solo números (hasta 15) y no puede ser cero.' }, 400, cors);
+
+  const inicio = Date.now();
+  let r;
+  try {
+    r = await consultarCheque(entidad, numero, { url: URL_BCRA });
+  } catch (e) {
+    const err = e instanceof ErrorBCRA ? e : new ErrorBCRA('red', 0, String(e));
+    console.error(JSON.stringify({ cheque: 'error', tipo: err.tipo, status: err.status, ms: Date.now() - inicio, detalle: sinNumeros(err.detalle) }));
+    return responder({ error: `bcra_${err.tipo}`, mensaje: err.message }, STATUS[err.tipo] || 502, cors);
+  }
+
+  const g = await guardar(jwt, 'consultas_cheques', {
+    entidad, numero, denunciado: r.denunciado, entidad_nombre: r.entidad_nombre, fecha_bcra: r.fecha_bcra, resultado: r.resultado,
+  }, cors);
+  if (g.error) return g.error;
+  console.log(JSON.stringify({ cheque: 'ok', ms: Date.now() - inicio, denunciado: r.denunciado }));
+  return responder({ consulta: g.fila }, 200, cors);
+}
+
+/** La lista de bancos para elegir el del cheque. La app la guarda unos días: se pide poco. */
+async function listaEntidades(cors: Cors): Promise<Response> {
+  const inicio = Date.now();
+  try {
+    const lista = await entidades({ url: URL_BCRA });
+    console.log(JSON.stringify({ entidades: 'ok', ms: Date.now() - inicio, cantidad: lista.length }));
+    return responder({ entidades: lista }, 200, cors);
+  } catch (e) {
+    const err = e instanceof ErrorBCRA ? e : new ErrorBCRA('red', 0, String(e));
+    console.error(JSON.stringify({ entidades: 'error', tipo: err.tipo, status: err.status, ms: Date.now() - inicio, detalle: sinNumeros(err.detalle) }));
+    return responder({ error: `bcra_${err.tipo}`, mensaje: err.message }, STATUS[err.tipo] || 502, cors);
+  }
+}
 
 export async function manejar(req: Request): Promise<Response> {
   const cors = cabeceras(req);
@@ -79,41 +172,14 @@ export async function manejar(req: Request): Promise<Response> {
   if (!acceso?.autorizado) return responder({ error: 'sin_acceso', mensaje: 'Esta cuenta no está autorizada para usar la app.' }, 403, cors);
   if (acceso.clave_temporal) return responder({ error: 'clave_temporal', mensaje: 'Antes de consultar, elegí tu contraseña definitiva.' }, 403, cors);
 
-  // 2. El CUIT. Se rechaza uno mal escrito antes de preguntar: para el BCRA un número que no existe
-  //    "no figura", y eso se podría leer como una persona sin deudas.
+  // 2. Qué pide.
   let pedido: any;
   try { pedido = await req.json(); } catch { return responder({ error: 'pedido', mensaje: 'El pedido no se pudo leer.' }, 400, cors); }
-  const cuit = soloDigitos(pedido?.cuit).slice(0, 20);
-  if (cuit.length !== 11) return responder({ error: 'cuit', mensaje: 'El CUIT o CUIL tiene que tener 11 números.' }, 400, cors);
-  if (!cuitValido(cuit)) return responder({ error: 'cuit', mensaje: 'Ese CUIT o CUIL no existe: revisá los números (el último no coincide con los demás).' }, 400, cors);
-
-  // 3. El BCRA.
-  const inicio = Date.now();
-  let r;
-  try {
-    r = await consultar(cuit, { url: URL_BCRA });
-  } catch (e) {
-    const err = e instanceof ErrorBCRA ? e : new ErrorBCRA('red', 0, sinCuit(String(e)));
-    console.error(JSON.stringify({ bcra: 'error', tipo: err.tipo, status: err.status, ms: Date.now() - inicio, detalle: err.detalle }));
-    return responder({ error: `bcra_${err.tipo}`, mensaje: err.message }, STATUS[err.tipo] || 502, cors);
-  }
-
-  // 4. El semáforo y la constancia.
-  const resumen = resumir(r.deudas, r.cheques, r.historicas);
-  let fila: any;
-  try {
-    [fila] = await base(jwt, 'consultas_bcra?select=*', {
-      cuit, ...resumen,
-      resultado: { deudas: r.deudas, historicas: r.historicas, cheques: r.cheques, errores: r.errores },
-    }, 'return=representation');
-  } catch (e) {
-    console.error('guardar:', e instanceof ErrorBase ? `${e.status} ${e.codigo} ${e.message}` : e);
-    if (e instanceof ErrorBase && e.codigo === '42501') return responder({ error: 'sin_acceso', mensaje: 'Esta cuenta no está autorizada para usar la app.' }, 403, cors);
-    return responder({ error: 'base', mensaje: 'El BCRA respondió, pero la consulta no se pudo guardar. Probá de nuevo.' }, 502, cors);
-  }
-
-  console.log(JSON.stringify({ bcra: 'ok', ms: Date.now() - inicio, ...r.estados, semaforo: resumen.semaforo }));
-  return responder({ consulta: fila }, 200, cors);
+  const accion = pedido?.accion ?? 'deudas';
+  if (accion === 'deudas') return deudas(jwt, pedido, cors);
+  if (accion === 'cheque') return cheque(jwt, pedido, cors);
+  if (accion === 'entidades') return listaEntidades(cors);
+  return responder({ error: 'pedido', mensaje: 'Esa consulta no existe.' }, 400, cors);
 }
 
 Deno.serve(manejar);

@@ -1,13 +1,17 @@
-// Un doble de la API Central de Deudores del BCRA para las pruebas locales (en 127.0.0.1:54341).
-// La función `bcra` corre en local apuntando acá (BCRA_URL), así se prueba de punta a punta sin
-// depender del BCRA ni consultar a personas reales.
+// Un doble de las APIs del BCRA para las pruebas locales (en 127.0.0.1:54341): la Central de Deudores y la
+// Central de Cheques Denunciados. La función `bcra` corre en local apuntando acá (BCRA_URL), así se prueba
+// de punta a punta sin depender del BCRA ni consultar a personas reales.
 //
-//   POST   /__casos     { "<cuit>": { deudas, historicas, cheques }, … }  reemplaza los casos. Cada endpoint:
+//   POST   /__casos     { "<cuit>": { deudas, historicas, cheques }, …, cheques: { entidades, denunciados } }
+//                       reemplaza los casos. Cada endpoint de la Central de Deudores:
 //                       { results: {…} }  responde 200 con eso, como el BCRA
 //                       null o ausente    responde 404 ("No se encontró datos…"), como el BCRA
 //                       { status: 500 }   responde ese error
 //                       { cuerpo: {…} }   responde 200 con ese cuerpo tal cual (p. ej. un 404 dentro de un 200)
 //                       { cortar: true }  corta la conexión sin responder
+//                       Cheques: `entidades` es lo que responde la lista (igual que arriba: { results: [...] },
+//                       { status }, { cortar }); `denunciados`, { "<entidad>/<número>": igual que arriba }. Un
+//                       cheque sin caso, de una entidad de la lista, no está denunciado; de una que no está, 404.
 //   GET    /__pedidos   las rutas pedidas, en orden
 //   DELETE /__pedidos   las olvida (y los casos)
 import http from 'node:http';
@@ -24,11 +28,39 @@ const MENSAJES = {
   500: 'Se produjo un error al ejecutar la acción.',
 };
 
+/** Responde un caso armado por la prueba. false si no hay caso (sigue lo de cada endpoint). */
+function responderCaso(req, res, caso) {
+  if (caso?.cortar) { req.socket.destroy(); return true; }
+  if (caso?.cuerpo) { json(res, 200, caso.cuerpo); return true; }
+  if (caso?.status) { json(res, caso.status, { status: caso.status, errorMessages: [MENSAJES[caso.status] || 'Error'] }); return true; }
+  if (caso?.results) { json(res, 200, { status: 200, results: caso.results }); return true; }
+  return false;
+}
+
+/** Central de Cheques Denunciados, como la del BCRA (sin distinguir mayúsculas). */
+function cheques(req, res) {
+  const ch = casos.cheques || {};
+  if (/^\/cheques\/v1\.0\/entidades$/i.test(req.url)) {
+    if (!responderCaso(req, res, ch.entidades)) json(res, 500, { status: 500, errorMessages: ['Error al consultar Maestros.'] });
+    return;
+  }
+  const m = /^\/cheques\/v1\.0\/denunciados\/([^/?]+)\/([^/?]+)$/i.exec(req.url);
+  if (!m) return json(res, 404, { status: 404, errorMessages: ['Ruta inexistente'] });
+  const [, entidad, numero] = m;
+  if (!/^\d+$/.test(entidad) || !/^\d+$/.test(numero)) return json(res, 400, { status: 400, errorMessages: ['Validar formato de los parámetros enviados.'] });
+  if (responderCaso(req, res, (ch.denunciados || {})[`${entidad}/${numero}`])) return;
+  const banco = (ch.entidades?.results || []).find((e) => String(e.codigoEntidad) === entidad);
+  if (!banco) return json(res, 404, { status: 404, errorMessages: ['Entidad informada inexistente.'] });
+  json(res, 200, { status: 200, results: { numeroCheque: +numero, denunciado: false, fechaProcesamiento: '2026-10-24', denominacionEntidad: banco.denominacion, detalles: [] } });
+}
+
 http.createServer(async (req, res) => {
   const cuerpo = await leer(req);
   if (req.url === '/__casos' && req.method === 'POST') { casos = JSON.parse(cuerpo || '{}'); return json(res, 200, { casos: Object.keys(casos).length }); }
   if (req.url === '/__pedidos' && req.method === 'GET') return json(res, 200, pedidos);
   if (req.url === '/__pedidos' && req.method === 'DELETE') { pedidos = []; casos = {}; return json(res, 200, {}); }
+
+  if (req.method === 'GET' && /^\/cheques\//i.test(req.url)) { pedidos.push(req.url); return cheques(req, res); }
 
   // Como el servidor del BCRA, sin distinguir mayúsculas.
   const m = /^\/centraldedeudores\/v1\.0\/deudas\/(?:(historicas|chequesrechazados)\/)?([^/?]+)$/i.exec(req.url);
@@ -37,10 +69,6 @@ http.createServer(async (req, res) => {
   const endpoint = { historicas: 'historicas', chequesrechazados: 'cheques' }[(m[1] || '').toLowerCase()] || 'deudas';
   const id = m[2];
   if (!/^\d{11}$/.test(id)) return json(res, 400, { status: 400, errorMessages: [MENSAJES[400]] });
-  const caso = casos[id]?.[endpoint];
-  if (caso?.cortar) return req.socket.destroy();
-  if (caso?.cuerpo) return json(res, 200, caso.cuerpo);
-  if (caso?.status) return json(res, caso.status, { status: caso.status, errorMessages: [MENSAJES[caso.status] || 'Error'] });
-  if (caso?.results) return json(res, 200, { status: 200, results: caso.results });
+  if (responderCaso(req, res, casos[id]?.[endpoint])) return;
   return json(res, 404, { status: 404, errorMessages: [MENSAJES[404]] });
 }).listen(PORT, '127.0.0.1', () => console.log('bcra falso en', PORT));

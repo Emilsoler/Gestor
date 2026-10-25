@@ -5,7 +5,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { sql, crearCuenta, limpiar } from './helpers.mjs';
-import { CUIT, CASOS } from './casos-bcra.mjs';
+import { CUIT, CASOS, CHEQUE } from './casos-bcra.mjs';
 
 const BASE = (process.env.BASE || 'http://127.0.0.1:8080/') + 'cobranzas/';
 const EMAIL = 'creditos-app@test.local', CLAVE = 'Clave-creditos-app-2026';
@@ -13,6 +13,7 @@ const FALSO = 'http://127.0.0.1:54341';
 // Los importes llevan espacio duro ("$\u00a01.500") y las celdas saltos de rengl\u00f3n: para comparar, espacios comunes.
 const norm = (t) => String(t ?? '').replace(/\s+/g, ' ');
 const cuantas = () => +sql('select count(*) from public.consultas_bcra');
+const cheques = () => +sql('select count(*) from public.consultas_cheques');
 
 let browser, page;
 const errores = [];
@@ -45,7 +46,7 @@ async function consultar(p, cuit) {
 
 before(async () => {
   limpiar();
-  sql('delete from public.consultas_bcra; delete from public.deudores;');
+  sql('delete from public.consultas_bcra; delete from public.consultas_cheques; delete from public.deudores;');
   await fetch(`${FALSO}/__pedidos`, { method: 'DELETE' });
   await fetch(`${FALSO}/__casos`, { method: 'POST', body: JSON.stringify(CASOS) });
   await crearCuenta(EMAIL, CLAVE, 'Emi');
@@ -227,6 +228,175 @@ test('celular: todo entra a lo ancho, las tablas se apilan y los 24 meses arranc
   assert.ok(medidas.alFinal, 'los 24 meses se ven desde el más reciente');
   assert.equal(medidas.cabecera, 'none');
   assert.ok(medidas.monto, 'el monto se ve sin correr la tabla');
+  await c.close();
+});
+
+// ───────────────────────── Cheques denunciados ─────────────────────────
+
+async function consultarCheque(p, banco, numero) {
+  await p.selectOption('#ch_banco', String(banco));
+  await p.fill('#ch_numero', numero);
+  await p.click('#ch_ir');
+  await p.waitForFunction(() => !document.querySelector('#ch_ir')?.textContent.includes('Consultando'), null, { timeout: 15000 });
+}
+const grupos = (p) => p.$$eval('#ch_banco optgroup', (gs) => gs.map((g) => [g.label, [...g.querySelectorAll('option')].map((o) => o.textContent)]));
+
+test('cheques: la pestaña, la lista de bancos y el número mal escrito', async () => {
+  await page.click('[data-cr-modo="cheque"]');
+  await page.waitForSelector('#ch_banco:not([disabled])');
+  assert.equal(await page.getAttribute('[data-cr-modo="cheque"]', 'aria-selected'), 'true');
+  assert.match(await page.textContent('#sub'), /Central de Cheques Denunciados/);
+  assert.match(await page.textContent('.cr-historial'), /Los cheques que consultes quedan acá/);
+  // La lista del BCRA, ordenada y sin espacios de más; todavía sin "usados hace poco".
+  assert.deepEqual(await grupos(page), [['Todos los bancos', [
+    'BANCO CREDICOOP COOPERATIVO LIMITADO', 'BANCO DE GALICIA Y BUENOS AIRES S.A.', 'BANCO DE LA NACION ARGENTINA',
+    'BANCO DE LA PROVINCIA DE BUENOS AIRES', 'BANCO DE LA PROVINCIA DE CORDOBA S.A.']]]);
+  assert.equal(await page.inputValue('#ch_banco'), '');
+  // Mientras se escribe el número.
+  await page.fill('#ch_numero', '12a4');
+  assert.match(await page.textContent('#ch_aviso'), /solo números/);
+  await page.fill('#ch_numero', '0000');
+  assert.match(await page.textContent('#ch_aviso'), /todo ceros/);
+  await page.fill('#ch_numero', '0012.345.678');
+  assert.equal(await page.textContent('#ch_aviso'), 'Cheque N° 12345678');
+  assert.equal(await page.isDisabled('#ch_ir'), true, 'falta el banco');
+  await page.selectOption('#ch_banco', '11');
+  assert.equal(await page.isDisabled('#ch_ir'), false);
+  await page.fill('#ch_numero', '');
+  assert.equal(await page.isDisabled('#ch_ir'), true);
+});
+
+test('cheque sin denuncias: se guarda, avisa que no quiere decir con fondos y lleva a consultar un CUIT', async () => {
+  await consultarCheque(page, 11, '0012345678');
+  await toast(page, 'Consulta guardada');
+  await page.waitForSelector('.cr-resultado .nota');
+  assert.match(norm(await page.textContent('.cr-resultado h3')), /Cheque N° 12345678/);
+  assert.match(norm(await page.textContent('.cr-resultado .cr-quien')), /BANCO DE LA NACION ARGENTINA · 011/);
+  assert.match(await page.textContent('.cr-luz'), /Sin denuncias/);
+  assert.match(norm(await page.textContent('.cr-resultado')), /información del BCRA al 24\/10\/2026/);
+  assert.match(await page.textContent('.cr-resultado .nota'), /Sin denuncias no quiere decir con fondos/);
+  assert.equal(cheques(), 1);
+  // El número se vacía para el próximo; el banco queda, y ya figura entre los usados hace poco.
+  assert.equal(await page.inputValue('#ch_numero'), '');
+  assert.equal(await page.inputValue('#ch_banco'), '11');
+  assert.deepEqual((await grupos(page))[0], ['Usados hace poco', ['BANCO DE LA NACION ARGENTINA']]);
+  assert.equal(await page.locator('.cr-historial .cr-fila').count(), 1);
+  // "Consultar un CUIT" pasa a la otra pestaña, con el cursor en el CUIT.
+  await page.click('[data-a="ch-a-cuit"]');
+  await page.waitForSelector('#cr_cuit');
+  assert.equal(await page.getAttribute('[data-cr-modo="cuit"]', 'aria-selected'), 'true');
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'cr_cuit');
+});
+
+test('cheque denunciado: las denuncias, el resumen para copiar y la pestaña que queda elegida al recargar', async () => {
+  await page.click('[data-cr-modo="cheque"]');
+  await page.waitForSelector('#ch_banco:not([disabled])');
+  await consultarCheque(page, 20, CHEQUE.denunciado);
+  await page.waitForSelector('.cr-resultado .cr-denuncias');
+  assert.match(await page.textContent('.cr-luz'), /Denunciado/);
+  const filas = await page.$$eval('.cr-denuncias tbody tr', (trs) => trs.map((tr) => [...tr.cells].map((td) => td.textContent.trim())));
+  assert.deepEqual(filas, [['Denunciado por titular', '312', '3120055962'], ['Denunciado por tercero', '312', '3120055962']]);
+  assert.match(await page.textContent('.cr-resultado'), /impide que el banco lo pague/);
+  assert.equal(await page.locator('.cr-historial .cr-fila').first().getAttribute('aria-pressed'), 'true', 'la más nueva arriba, elegida');
+  await page.click('[data-a="ch-copiar"]');
+  await toast(page, 'Copiado');
+  const copiado = await page.evaluate(() => navigator.clipboard.readText());
+  assert.match(copiado, /^Consulta BCRA — Cheques denunciados\nCheque N° 87654321 · BANCO DE LA PROVINCIA DE CORDOBA S\.A\. \(entidad 020\)\nResultado: Denunciado \(figura como extraviado, robado o adulterado\)\n• Denunciado por titular · sucursal 312 · cuenta 3120055962\n/);
+  // Al recargar, la app vuelve a la pestaña de cheques y la consulta se abre desde el historial.
+  await page.reload();
+  await page.waitForSelector('#ch_banco:not([disabled])');
+  await page.click('.cr-fila:has-text("87654321")');
+  await page.waitForSelector('.cr-resultado .cr-denuncias');
+  assert.equal(cheques(), 2);
+});
+
+test('cheque: si el BCRA falla, se avisa y no se guarda nada', async () => {
+  const antes = cheques();
+  await consultarCheque(page, 11, CHEQUE.caido);
+  await page.waitForSelector('.cr-consulta .aviso-chico[role=alert]');
+  assert.match(await page.textContent('.cr-consulta .aviso-chico[role=alert]'), /El BCRA respondió con un error/);
+  assert.equal(await page.inputValue('#ch_numero'), CHEQUE.caido, 'el número queda escrito para reintentar');
+  await page.fill('#ch_numero', '1');
+  assert.equal(await page.locator('.cr-consulta .aviso-chico[role=alert]').count(), 0, 'al corregir, el aviso se va');
+  await page.fill('#ch_numero', '');
+  assert.equal(cheques(), antes);
+});
+
+test('cheque: eliminar pide confirmación y queda en el historial de cambios', async () => {
+  const antes = cheques();
+  await page.click('.cr-fila:has-text("12345678")');
+  await page.waitForSelector('.cr-resultado .nota');
+  await page.click('[data-a="ch-confirmar"]');
+  await page.waitForSelector('.cr-resultado .confirm');
+  await page.click('[data-a="ch-no"]');
+  assert.equal(await page.locator('.cr-resultado .confirm').count(), 0);
+  await page.click('[data-a="ch-confirmar"]');
+  await page.click('[data-a="ch-borrar"]');
+  await toast(page, 'Consulta eliminada');
+  assert.equal(cheques(), antes - 1);
+  assert.equal(await page.locator('.cr-resultado.cr-vacio').count(), 1);
+  assert.equal(sql(`select count(*) from gestor.cambios where tabla = 'consultas_cheques' and operacion = 'baja' and autor = 'Emi'`), '1');
+});
+
+test('cheque: si la lista de bancos no llega, se reintenta; los usados hace poco se eligen igual', async () => {
+  const { c, p } = await nuevaPagina({ nombre: 'sin-bancos' });
+  let fallar = true;
+  await c.route('**/functions/v1/bcra', (r) => {
+    if (fallar && /"accion":"entidades"/.test(r.request().postData() || '')) {
+      return r.fulfill({ status: 502, contentType: 'application/json', body: JSON.stringify({ error: 'bcra_bcra', mensaje: 'El BCRA respondió con un error. Probá de nuevo en un rato.' }) });
+    }
+    return r.continue();
+  });
+  await ingresar(p);
+  await p.click('#v_creditos');
+  await p.click('[data-cr-modo="cheque"]');
+  await p.waitForSelector('.cr-reintentar');
+  assert.match(await p.textContent('.cr-reintentar'), /No se pudo traer la lista de bancos\. El BCRA respondió con un error/);
+  assert.deepEqual(await grupos(p), [['Usados hace poco', ['BANCO DE LA PROVINCIA DE CORDOBA S.A.']]], 'el de la consulta que quedó');
+  // Con un banco usado hace poco se puede consultar igual.
+  await consultarCheque(p, 20, CHEQUE.limpio);
+  await p.waitForSelector('.cr-resultado .nota');
+  fallar = false;
+  await p.click('[data-a="ch-bancos"]');
+  await p.waitForFunction(() => document.querySelectorAll('#ch_banco optgroup').length === 2);
+  assert.equal(await p.locator('.cr-reintentar').count(), 0);
+  // La lista queda guardada en el dispositivo: al recargar no se vuelve a pedir.
+  let pedidas = 0;
+  await c.route('**/functions/v1/bcra', (r) => { if (/"accion":"entidades"/.test(r.request().postData() || '')) pedidas++; return r.continue(); });
+  await p.reload();
+  await p.waitForFunction(() => document.querySelectorAll('#ch_banco optgroup').length === 2);
+  assert.equal(pedidas, 0);
+  await c.close();
+});
+
+test('si la base no tiene la tabla de cheques, esa pestaña lo avisa y la de CUIT anda', async () => {
+  const { c, p } = await nuevaPagina({ nombre: 'sin-tabla-cheques' });
+  await c.route('**/rest/v1/consultas_cheques*', (r) => r.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ code: 'PGRST205', message: "Could not find the table 'public.consultas_cheques' in the schema cache" }) }));
+  await ingresar(p);
+  await p.click('#v_creditos');
+  await p.click('[data-cr-modo="cheque"]');
+  assert.match(await p.textContent('#main'), /Falta activar la consulta de cheques/);
+  await p.click('[data-cr-modo="cuit"]');
+  await p.waitForSelector('#cr_cuit');
+  assert.ok((await p.locator('.cr-historial .cr-fila').count()) > 0, 'las consultas por CUIT se ven');
+  await c.close();
+});
+
+test('celular: la pestaña de cheques entra a lo ancho y las denuncias se apilan', async () => {
+  const { c, p } = await nuevaPagina({ nombre: 'celular-cheques', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  await ingresar(p);
+  await p.click('#v_creditos');
+  await p.click('[data-cr-modo="cheque"]');
+  await p.click('.cr-fila:has-text("87654321")');
+  await p.waitForSelector('.cr-resultado .cr-denuncias');
+  const medidas = await p.evaluate(() => ({
+    doc: document.documentElement.scrollWidth, vista: window.innerWidth,
+    cabecera: getComputedStyle(document.querySelector('.cr-denuncias thead')).display,
+    cuenta: document.querySelector('.cr-denuncias .dn-c').getBoundingClientRect().right <= window.innerWidth,
+  }));
+  assert.equal(medidas.doc, medidas.vista, 'nada se sale de costado');
+  assert.equal(medidas.cabecera, 'none');
+  assert.ok(medidas.cuenta, 'la cuenta se ve sin correr la tabla');
   await c.close();
 });
 
