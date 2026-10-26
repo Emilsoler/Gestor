@@ -426,16 +426,13 @@ de cada denuncia ("Denunciado por titular" o "por tercero").
   `select entidad, entidad_nombre, numero, denunciado, fecha_bcra, momento from public.consultas_cheques order by momento desc;`
   En los registros de la función no queda el número del cheque ni el de la cuenta.
 
-**Constancia de ARCA** (botón «Constancia en ARCA», al lado de «Consultar BCRA» y en la ficha de cada
-consulta): copia el CUIT (solo los números) y abre en otra pestaña la consulta pública de ARCA
-(`https://seti.afip.gob.ar/padron-puc-constancia-internet/ConsultaConstanciaAction.do`), que sirve igual
-para monotributistas y responsables inscriptos; ahí la persona pega el CUIT y completa el código de
-seguridad. La app no le pregunta nada a ARCA ni guarda lo que responde. Hubo una conexión por web service,
-con certificado digital (migración 0014); la persona pidió quitarla. 0015 borró el certificado y el permiso
-guardados y le cerró a la API las funciones `public.arca_config` y `public.arca_guardar_ticket`; la tabla
-`gestor.arca` y esas funciones (y `gestor.arca_certificado`) quedan vacías y sin uso, porque borrarlas
-(`drop`) pide una confirmación de la persona. Lo que ARCA había respondido se sacó de las consultas
-guardadas y del historial de cambios. No volver a armarla sin que la persona la pida.
+**Sin ARCA**: la vista Créditos consulta solo al BCRA. Hubo una conexión con ARCA por web service, con
+certificado digital (migración 0014), y después un botón que abría su constancia pública; la persona pidió
+quitar las dos cosas. 0015 borró el certificado y el permiso guardados y le cerró a la API las funciones
+`public.arca_config` y `public.arca_guardar_ticket`; la tabla `gestor.arca` y esas funciones (y
+`gestor.arca_certificado`) quedan vacías y sin uso, porque borrarlas (`drop`) pide una confirmación de la
+persona. Lo que ARCA había respondido se sacó de las consultas guardadas y del historial de cambios. No
+sumar nada de ARCA sin que la persona lo pida.
 
 **Cambiar la app**: `docs/cobranzas/` (`app.js` interfaz, `datos.js` la base, `calculo.js` cuentas,
 `textos.js` fechas, importes y mensajes, `creditos.js` lo que se muestra de una consulta al BCRA (por CUIT y por cheque),

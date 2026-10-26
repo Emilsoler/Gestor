@@ -189,7 +189,7 @@ export function fichaConsulta(c, detalle, { deudores = [], confirmar = false, er
 
   const acciones = confirmar
     ? `<div class="confirm"><span>¿Eliminar esta consulta? Se puede recuperar después desde el historial de cambios.</span><button class="btn small danger" data-a="cr-borrar" data-id="${esc(c.id)}">Sí, eliminar</button><button class="btn small" data-a="cr-no">Cancelar</button></div>`
-    : `<div class="actions"><button class="btn small primary" data-a="cr-repetir" data-cuit="${esc(c.cuit)}">Volver a consultar</button><button class="btn small" data-a="cr-copiar">Copiar resumen</button><button class="btn small" data-a="cr-arca" data-cuit="${esc(c.cuit)}">Constancia en ARCA</button><span class="sep"></span><button class="btn small danger" data-a="cr-confirmar">Eliminar consulta</button></div>`;
+    : `<div class="actions"><button class="btn small primary" data-a="cr-repetir" data-cuit="${esc(c.cuit)}">Volver a consultar</button><button class="btn small" data-a="cr-copiar">Copiar resumen</button><span class="sep"></span><button class="btn small danger" data-a="cr-confirmar">Eliminar consulta</button></div>`;
 
   return `${cab}${aviso}${motivos}${cifras}${enCobranzas}${cuerpo}
     <details class="sec ayuda"><summary>¿Qué significa cada situación?</summary>

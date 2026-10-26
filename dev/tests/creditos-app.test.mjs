@@ -74,11 +74,9 @@ test('la vista: CUIT mal escrito, CUIT bien escrito y nada guardado todavía', a
   await page.fill('#cr_cuit', '20-12345678-9');
   assert.match(await page.textContent('#cr_aviso'), /no existe/);
   assert.equal(await page.isDisabled('#cr_ir'), true);
-  assert.equal(await page.isDisabled('#cr_arca'), true);
   await page.fill('#cr_cuit', '20123456786');
   assert.equal(await page.textContent('#cr_aviso'), '20-12345678-6');
   assert.equal(await page.isDisabled('#cr_ir'), false);
-  assert.equal(await page.isDisabled('#cr_arca'), false);
   await page.fill('#cr_cuit', '');
 });
 
@@ -185,33 +183,6 @@ test('volver a consultar guarda otra constancia; eliminar pide confirmación', a
   assert.equal(cuantas(), antes);
   assert.equal(await page.locator('.cr-resultado.cr-vacio').count(), 1);
   assert.equal(sql(`select count(*) from gestor.cambios where tabla = 'consultas_bcra' and operacion = 'baja' and autor = 'Emi'`), '1', 'la baja queda en el historial de cambios');
-});
-
-test('constancia en ARCA: copia el CUIT y abre la consulta pública de ARCA, desde el formulario y desde una consulta', async () => {
-  const ARCA = 'https://seti.afip.gob.ar/padron-puc-constancia-internet/ConsultaConstanciaAction.do';
-  const ctx = page.context(), antes = cuantas();
-  await ctx.route('https://seti.afip.gob.ar/**', (r) => r.fulfill({ status: 200, contentType: 'text/html', body: '<p>ARCA</p>' }));
-  // Desde el formulario: el CUIT escrito, solo los números, y la página de ARCA en otra pestaña.
-  await page.fill('#cr_cuit', '20-12345678-6');
-  let [arca] = await Promise.all([ctx.waitForEvent('page'), page.click('#cr_arca')]);
-  await arca.waitForLoadState();
-  assert.equal(arca.url(), ARCA);
-  await arca.close();
-  await toast(page, 'CUIT copiado: pegalo en ARCA y completá el código de seguridad');
-  assert.equal(await page.evaluate(() => navigator.clipboard.readText()), '20123456786');
-  assert.equal(await page.inputValue('#cr_cuit'), '20-12345678-6', 'el CUIT queda escrito, por si después se consulta el BCRA');
-  await page.fill('#cr_cuit', '');
-  // Desde una consulta guardada: el CUIT de esa consulta.
-  const id = sql(`select id from public.consultas_bcra where cuit = '${CUIT.rojo}' order by momento desc limit 1`);
-  await page.click(`[data-consulta="${id}"]`);
-  await page.waitForSelector('.cr-resultado [data-a="cr-arca"]');
-  [arca] = await Promise.all([ctx.waitForEvent('page'), page.click('.cr-resultado [data-a="cr-arca"]')]);
-  await arca.waitForLoadState();
-  assert.equal(arca.url(), ARCA);
-  await arca.close();
-  assert.equal(await page.evaluate(() => navigator.clipboard.readText()), CUIT.rojo);
-  assert.equal(cuantas(), antes, 'no se guarda nada');
-  await ctx.unroute('https://seti.afip.gob.ar/**');
 });
 
 test('si la base todavía no tiene la tabla, el resto de la app anda igual', async () => {
