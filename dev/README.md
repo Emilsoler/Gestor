@@ -11,6 +11,9 @@ Nada de esta carpeta se publica con la app (GitHub Pages sirve solo `docs/`).
 | `serve.mjs` | Sirve `docs/` en `127.0.0.1:8080` apuntando al stack local. |
 | `tests/db.test.mjs` | Permisos, control de revisiones, historial de cambios, deshacer, agenda y funciones de Claude. |
 | `tests/chat.test.mjs` | La función `chat` de punta a punta: lo que manda a Claude, lo que hacen las herramientas y lo que vuelve. |
+| `tests/oficio.test.mjs` | Los oficios de las acciones cautelares (`docs/oficio.js`): importes en letras, datos de la causa, modelos (iguales a los de la migración 0013), el PDF (se lee con `pdftotext`), el texto seguro y `oficio-pdf.mjs`. No necesita el stack. |
+| `oficio-pdf.mjs`, `texto-seguro.mjs` | Arman el PDF de un oficio adjunto a partir de los renglones que devuelve `gestor.agenda_adjuntos` (texto de solo ASCII, en partes con control): lo usa la tarea del SAC. |
+| `tarea-sac.md` | Las instrucciones de la tarea programada que presenta en el SAC. |
 | `claude-falso.mjs` | Un doble de la API de Claude (127.0.0.1:54340) que contesta lo que cada prueba le guiona. La función `chat` corre en local apuntando a él. |
 | `tests/app.test.mjs` | La app de punta a punta en un navegador real (Playwright). |
 | `tests/cobranzas.test.mjs` | Cobranzas: las cuentas (contra la planilla de Excel y el listado de la Mutual), la liquidación de la base comparada con la de la app en cientos de casos al azar, las funciones para Claude, los permisos y la importación del listado (con uno inventado). |
@@ -41,7 +44,7 @@ mkdir -p deno && cd deno && npm init -y >/dev/null && npm i deno   # para correr
 cd dev && npm install
 STACK=~/.stack ./stack.sh up            # base + login + API
 node serve.mjs &                        # la app en http://127.0.0.1:8080
-npm run test:db && npm run test:chat && npm run test:app     # todo tiene que pasar antes de publicar
+npm run test:db && npm run test:chat && npm run test:oficio && npm run test:app     # todo tiene que pasar antes de publicar
 npm run test:cobranzas                                       # la app de cobranzas (en http://127.0.0.1:8080/cobranzas/), con la consulta al BCRA
 npm run test:creditos                                        # solo la consulta al BCRA (función bcra y vista "Créditos")
 ```

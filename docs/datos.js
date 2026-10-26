@@ -111,7 +111,7 @@ const DE = {
   causas: (f) => ({ ...f, vence: f.vence || '', fecha: f.fecha || '', historial: f.historial || [], demandados: f.demandados || [], titulos: f.titulos || [] }),
   acuerdos: (f) => ({ ...f, cuotas: f.cuotas || [] }),
   plantillas: (f) => ({ ...f }),
-  agenda: (f) => ({ ...f, realizar: f.realizar || '', resultado: f.resultado || '' }),
+  agenda: (f) => ({ ...f, realizar: f.realizar || '', resultado: f.resultado || '', adjuntos: f.adjuntos || [] }),
 };
 
 export const TIPOS_TITULO = ['pagare', 'cheque', 'prenda'];
@@ -445,6 +445,8 @@ export const borrarPlantilla = (id) => eliminar('plantillas', id);
 
 /** Un escrito de la agenda: confirmarlo, cambiarle la fecha o cancelarlo (con control de revisión). */
 export const actualizarAgenda = (id, rev, campos) => modificar('agenda', id, rev, campos);
+/** Un escrito nuevo en la agenda, que la persona ya confirmó en la app (acción cautelar, con su oficio adjunto). */
+export const crearEscrito = (fila) => agregar('agenda', fila);
 
 // ───────────────────────── Chat con Claude ─────────────────────────
 // La función `chat` de Supabase (supabase/functions/chat) habla con Claude con la clave de la API,

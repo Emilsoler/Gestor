@@ -3,9 +3,13 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { sql, servicio, limpiar, env, crearCuenta } from './helpers.mjs';
+import { MODELOS } from '../../docs/oficio.js';
 
 const BASE = process.env.BASE || 'http://127.0.0.1:8080/';
 const EMAIL = 'emi@test.local';
@@ -759,6 +763,138 @@ test('escritos para el SAC: uno que se cortó mientras se presentaba se puede ma
   await page.waitForSelector('#agendaFicha .agcard.error [data-ag=ahora]');
   await page.keyboard.press('Escape'); await cerrado(page);
   sql(`delete from public.agenda`);
+});
+
+// Las pruebas de las acciones cautelares cargan demandados y títulos en una causa y al final los dejan como estaban.
+const guardarFicha = (expte) => sql(`select demandados::text || '§' || titulos::text from public.causas where expte = '${expte}'`).split('§');
+const devolverFicha = (expte, [dem, tit]) => sql(`update public.causas set demandados = $j$${dem}$j$, titulos = $j$${tit}$j$ where expte = '${expte}'`);
+
+test('acción cautelar: embargo de haberes con su oficio, de la ficha a la agenda, y el mismo PDF para la tarea del SAC', async () => {
+  sql(`delete from public.agenda`);
+  const antes = guardarFicha('1001');
+  sql(`begin; select set_config('gestor.autor', 'Semilla', true);
+    update public.causas set demandados = '[{"nombre":"Alfa Ana","dni":"28.555.111","telefono":"","domicilio":"San Juan 1520, Villa María, Córdoba","notas":""},{"nombre":"Garante Gómez","dni":"20-30123456-7","telefono":"","domicilio":"Rivadavia 300, Bell Ville, Córdoba","notas":""}]',
+      titulos = '[{"tipo":"pagare","monto":1000000,"vence":"${dia(-30)}","descripcion":"Pagaré","vehiculo":""}]' where expte = '1001';
+    commit;`);
+  await page.reload(); await page.waitForSelector('#main .tablebox'); // con los datos recién cargados
+  await abrir(page, '1001');
+  await page.click('[data-act=cautelar]');
+  await page.waitForSelector('.cautelar .opcion');
+  assert.deepEqual(await page.locator('.cautelar .opcion b').allTextContents(), ['1. ¿Solicitar embargo de haberes?', '2. ¿Solicitar oficio de secuestro automotor?']);
+  await page.click('[data-cau=elegir][data-tipo=embargo]');
+  await page.waitForSelector('#cau_vista .of-hoja');
+  // lo que sale de la causa, y el monto propuesto: capital + intereses al día (5% por 30 días)
+  assert.equal(await page.inputValue('#cau_persona'), 'ALFA ANA');
+  assert.equal(await page.inputValue('#cau_dni'), '28.555.111');
+  assert.equal(await page.inputValue('#cau_monto'), '1.050.000');
+  // falta lo que la causa no tiene: se marca en la hoja y no deja confirmar
+  assert.match(await page.textContent('#cau_faltan'), /Falta completar: empleador, N° de cuenta judicial, CBU de la cuenta judicial/);
+  assert.ok(await page.locator('#cau_vista .of-falta').count() >= 3);
+  await page.click('[data-cau=confirmar]'); await toast(page, 'Falta completar');
+  assert.equal(await page.locator('#cau_empleador.falta').count(), 1);
+  assert.equal(sql(`select count(*) from public.agenda`), '0');
+  // a la garante
+  await page.selectOption('#cau_dem', '1');
+  assert.equal(await page.inputValue('#cau_persona'), 'GARANTE GÓMEZ');
+  assert.equal(await page.inputValue('#cau_dni'), '30.123.456', 'del CUIL sale el DNI');
+  await page.fill('#cau_empleador', 'EMPRESA DE PRUEBA SRL');
+  await page.fill('#cau_cuenta_judicial', '305/1234567');
+  await page.fill('#cau_cbu', '12345');
+  await page.click('[data-cau=confirmar]'); await toast(page, 'El CBU tiene que tener 22 números');
+  await page.fill('#cau_cbu', '0200305251000001234567');
+  assert.match(await page.textContent('#cau_faltan'), /Está todo/);
+  const vista = (await page.textContent('#cau_vista')).replace(/\s+/g, ' ');
+  for (const t of ['Sr. Titular Empresa EMPRESA DE PRUEBA SRL', '“ASOCIACION MUTUAL BELL C/ ALFA ANA - EJECUTIVO (Expte. Nº 1001)”', '1ra Nominación',
+    'GARANTE GÓMEZ DNI 30.123.456', 'Un Millón Cincuenta Mil ($ 1.050.000)', 'cuenta judicial nº 305/1234567 CBU 0200305251000001234567']) assert.ok(vista.includes(t), `falta "${t}"`);
+  assert.ok(!vista.includes('CUIT'), 'sin CUIT del empleador, esa línea no va');
+  // el escrito se arma con los mismos datos
+  assert.equal(await page.inputValue('#cau_tit'), 'Solicita embargo de haberes');
+  assert.match(await page.inputValue('#cau_cue'), /percibe el demandado GARANTE GÓMEZ DNI 30\.123\.456 como dependiente de EMPRESA DE PRUEBA SRL, hasta cubrir la suma de pesos Un Millón Cincuenta Mil \(\$ 1\.050\.000\)/);
+  // el PDF, como se va a adjuntar
+  const [d1] = await Promise.all([page.waitForEvent('download'), page.click('[data-cau=pdf]')]);
+  assert.equal(d1.suggestedFilename(), 'Oficio embargo de haberes - Expte 1001.pdf');
+  const pdf = await leer(d1);
+  assert.equal(pdf.subarray(0, 8).toString(), '%PDF-1.4');
+  // confirmar: queda agendado para hoy (todavía sin «Ahora»), con el oficio adjunto
+  await page.click('[data-cau=confirmar]');
+  await toast(page, 'quedó en Escritos para el SAC con el oficio adjunto');
+  await page.waitForSelector('#agendaFicha .agcard.pendiente .adj');
+  assert.match((await page.textContent('#agendaFicha')).replace(/\s+/g, ' '), /Solicita embargo de haberes ?Adjunto: Oficio embargo de haberes - Expte 1001\.pdf.*Va con el oficio adjunto/);
+  const [id, estado, sinAhora, hoyEs] = sql(`select id || '|' || estado || '|' || (ahora is null) || '|' || (fecha = gestor.hoy()) from public.agenda`).split('|');
+  assert.deepEqual([estado, sinAhora, hoyEs], ['pendiente', 'true', 'true']);
+  // la tarea del SAC copia los renglones de la base a un archivo y arma exactamente el mismo PDF
+  const dir = mkdtempSync(join(tmpdir(), 'cautelar-'));
+  writeFileSync(join(dir, 'oficio-1.txt'), sql(`select linea from gestor.agenda_adjuntos('${id}') where n = 1`) + '\n');
+  const r = spawnSync('node', [new URL('../oficio-pdf.mjs', import.meta.url).pathname, join(dir, 'oficio-1.txt'), join(dir, 'salida')], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(readFileSync(join(dir, 'salida', 'Oficio embargo de haberes - Expte 1001.pdf')).equals(pdf), 'el PDF de la tarea es el mismo que se vio en la app');
+  // "Ver PDF" en la tarjeta da el mismo archivo
+  const [d2] = await Promise.all([page.waitForEvent('download'), page.click('#agendaFicha [data-ag=oficio]')]);
+  assert.ok((await leer(d2)).equals(pdf));
+  // la próxima vez propone el empleador y la cuenta que se usaron, y avisa que ya hay uno
+  await page.click('[data-act=cautelar]'); await page.click('[data-cau=elegir][data-tipo=embargo]');
+  assert.equal(await page.inputValue('#cau_empleador'), 'EMPRESA DE PRUEBA SRL');
+  assert.equal(await page.inputValue('#cau_cbu'), '0200305251000001234567');
+  assert.match(await page.textContent('.cautelar'), /ya tiene “Solicita embargo de haberes” en Escritos para el SAC \(agendado\)/);
+  await page.click('[data-cau=volver]'); await page.waitForSelector('#secCautelar');
+  // "Presentar ahora" sigue el camino de siempre: lo toma la tarea y lo cierra
+  await espiarPestañas(page);
+  await page.click('#agendaFicha [data-ag=ahora]');
+  await toast(page, 'Listo. En Claude tocá');
+  assert.equal(sql(`select id from gestor.agenda_tomar(true)`), id);
+  assert.equal(sql(`select count(distinct n) from gestor.agenda_adjuntos('${id}')`), '1', 'un oficio adjunto');
+  sql(`select gestor.agenda_presentada('${id}', 'Presentado en el SAC con el oficio adjunto')`);
+  await enFicha(page, /Presentado en el SAC con el oficio adjunto/);
+  await page.keyboard.press('Escape'); await cerrado(page);
+  sql(`delete from public.agenda`);
+  devolverFicha('1001', antes);
+});
+
+test('acción cautelar: secuestro con los datos de la prenda; sin enervar, la cláusula no va. Los modelos no son escritos', async () => {
+  sql(`delete from public.agenda`);
+  const antes = guardarFicha('1002');
+  sql(`begin; select set_config('gestor.autor', 'Semilla', true);
+    update public.causas set demandados = '[{"nombre":"Beta Bruno","dni":"23456789","telefono":"","domicilio":"Int. Matienzo 812, Leones, Córdoba","notas":""}]',
+      titulos = '[{"tipo":"prenda","monto":15507800,"vence":"${dia(-90)}","descripcion":"Prenda","vehiculo":"FORD RANGER DC 4X4 XLT AT 3.2, dominio AA111BB, motor SA2SKJ000111, chasis 8AFAR23W5KJ000111"}]' where expte = '1002';
+    insert into public.plantillas (id, titulo, cuerpo) values
+      ('oficio-secuestro-automotor', $tx$${MODELOS['oficio-secuestro-automotor'].titulo}$tx$, $tx$${MODELOS['oficio-secuestro-automotor'].cuerpo}$tx$),
+      ('solicita-secuestro-automotor', $tx$${MODELOS['solicita-secuestro-automotor'].titulo}$tx$, $tx$${MODELOS['solicita-secuestro-automotor'].cuerpo}$tx$);
+    commit;`);
+  await page.reload(); await page.waitForSelector('#main .tablebox');
+  await abrir(page, '1002');
+  // en "Escritos" no aparece el modelo de oficio; el escrito del secuestro lleva a armarlo completo
+  const opciones = await page.locator('#tp_sel option').allTextContents();
+  assert.ok(!opciones.includes('Oficio de secuestro automotor') && opciones.includes('Solicita secuestro de vehículo automotor'));
+  await page.selectOption('#tp_sel', 'solicita-secuestro-automotor');
+  await page.click('.panel [data-act=cautelar][data-tipo=secuestro]');
+  await page.waitForSelector('#cau_vista .of-hoja');
+  assert.deepEqual(await Promise.all(['persona', 'dni', 'calle', 'numero', 'localidad', 'marca', 'modelo', 'dominio', 'motor', 'chasis'].map((k) => page.inputValue('#cau_' + k))),
+    ['BETA BRUNO', '23.456.789', 'Int. Matienzo', '812', 'Leones', 'FORD', 'RANGER DC 4X4 XLT AT 3.2', 'AA111BB', 'SA2SKJ000111', '8AFAR23W5KJ000111']);
+  assert.equal(await page.inputValue('#cau_monto'), '15.507.800', 'para enervar: el capital reclamado de la prenda');
+  let vista = (await page.textContent('#cau_vista')).replace(/\s+/g, ' ');
+  assert.ok(vista.includes('ASOCIACION MUTUAL BELL C/ BETA BRUNO – EJECUCIÓN PRENDARIA (Expte. Nº 1002”'));
+  assert.ok(vista.includes('pudiendo el ejecutado enervar el secuestro abonando la suma de Pesos Quince Millones Quinientos Siete Mil Ochocientos ($15.507.800) con más intereses y costas.'));
+  assert.ok(!/Sr\. Oficial de Justicia \S/.test(vista.replace('Sr. Oficial de Justicia S___', '')), 'sin sede, no hay renglón de sede');
+  await page.uncheck('#cau_enervar');
+  await page.waitForFunction(() => !document.querySelector('#cau_vista').textContent.includes('enervar'));
+  vista = (await page.textContent('#cau_vista')).replace(/\s+/g, ' ');
+  assert.ok(vista.includes('de propiedad del demandado BETA BRUNO DNI 23.456.789.'));
+  await page.fill('#cau_sede_oficial', 'Sede Bell Ville');
+  await page.waitForFunction(() => document.querySelector('#cau_vista .of-enc').textContent.includes('Sede Bell Ville'));
+  assert.equal(await page.inputValue('#cau_tit'), 'Solicita secuestro de vehículo automotor');
+  await page.click('[data-cau=confirmar]'); await toast(page, 'quedó en Escritos para el SAC');
+  const [doc, datos] = sql(`select (adjuntos->0->>'doc') || '§' || (adjuntos->0->'datos')::text from public.agenda where expte = '1002'`).split('§');
+  assert.ok(!doc.includes('enervar') && doc.includes('**SECUESTRAR**') && doc.includes('Sede Bell Ville'));
+  assert.equal(JSON.parse(datos).enervar, false);
+  await page.keyboard.press('Escape'); await cerrado(page);
+  // en Plantillas, los modelos de oficio van aparte
+  await page.click('#btnTpl'); await page.waitForSelector('.panel .tplgrupo');
+  assert.match(await page.textContent('.panel'), /Modelos de oficio · Acción cautelar/);
+  assert.equal(await page.locator('#pt_oficio-secuestro-automotor').count(), 1);
+  await page.keyboard.press('Escape'); await cerrado(page);
+  sql(`delete from public.agenda; delete from public.plantillas where id in ('oficio-secuestro-automotor', 'solicita-secuestro-automotor')`);
+  devolverFicha('1002', antes);
+  await page.waitForTimeout(2500); // que el sondeo traiga la causa como estaba
 });
 
 test('agenda: próximas acciones y escritos de todas las causas, por fecha; se abre la causa y se marca realizada', async () => {

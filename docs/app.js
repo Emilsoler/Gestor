@@ -4,11 +4,12 @@ import {
   crearCausa, guardarCausa, actualizarCausa, borrarCausa,
   crearAcuerdo, actualizarAcuerdo, borrarAcuerdo,
   crearPlantilla, guardarPlantilla, borrarPlantilla,
-  actualizarAgenda, preguntarAClaude, leerChat, guardarChat,
+  crearEscrito, actualizarAgenda, preguntarAClaude, leerChat, guardarChat,
 } from './datos.js';
 import { idNuevo, nuevaLiquidacion, cobradoRubro, totalPago, liqNormal, liqCalc, importe, pesos, enCelda, planillaExcel } from './liquidacion.js';
+import { MODELOS, ACCIONES, CAMPOS_OFICIO, esModeloOficio, rellenar, htmlOficio, pdfOficio, enLetras, cifra, ordinal, datosDeCausa, partirDomicilio, dniOficio, nombreArchivo } from './oficio.js';
 
-const VERSION = '1.9.0';
+const VERSION = '1.10.0';
 
 // Cuatro datos de cada causa, con valores fijos: los mismos que acepta la base (supabase/migrations/0007).
 const UBICACIONES = ['Casillero', 'A despacho'];
@@ -29,6 +30,7 @@ const S = {
   q: '', estado: '', nom: '', tag: '', quick: '', view: 'lista', sort: { k: 'dias', dir: -1 },
   open: null, isNew: false, confirmDel: false, choque: null, // ficha abierta
   planilla: false, liqSucia: false, // la planilla de liquidación está a la vista / tiene cambios sin guardar
+  cau: null, // la acción cautelar que se está armando desde la ficha (ver "Acción cautelar")
   tpl: false, tpSel: '', tplDel: '', clave: false, // otros paneles
   na: { deudor: '', expte: '', n: '', monto: '', fecha: '', cada: 'mes', notas: '' }, acDel: '',
   menu: false, instalar: null, ocupado: false,
@@ -410,12 +412,12 @@ function openCausa(id) {
   S.open = id ? copia(D.causas.find((c) => c.expte === id) || blank()) : blank();
   S.base = copia(S.open); // la causa como se abrió: para saber qué se cambió en la ficha
   S.isNew = !id; S.confirmDel = false; S.choque = null; S.tpl = false; S.clave = false; S.tpSel = '';
-  S.planilla = false; S.liqSucia = false;
+  S.planilla = false; S.liqSucia = false; S.cau = null;
   renderDrawer(true);
 }
 function closeDrawer() {
   S.open = null; S.tpl = false; S.clave = false; S.tpSel = ''; S.tplDel = ''; S.choque = null; S.confirmDel = false;
-  S.planilla = false; S.liqSucia = false;
+  S.planilla = false; S.liqSucia = false; S.cau = null;
   $('#drawer').hidden = true; $('#drawer').innerHTML = ''; document.body.style.overflow = '';
 }
 
@@ -614,6 +616,273 @@ function titulosHtml(c) {
    ${lista.length ? `<div class="totals"><div><span>Capital</span><b>${money(k.capital)}</b></div><div><span>Intereses al ${fmt(iso(today()))} (${Math.round(TASA_MENSUAL * 100)}% mensual simple)</span><b>${money(k.interes)}</b></div><div><span>Total reclamado</span><b>${money(k.total)}</b></div></div>` : ''}</div>`;
 }
 
+// ───────────────────────── Acción cautelar ─────────────────────────
+// Desde la ficha: embargo de haberes o secuestro automotor. La app completa el oficio (un modelo de
+// la biblioteca de plantillas) y el escrito "Solicita…" con los datos de la causa, y pide en un
+// formulario lo que la causa no tiene. Al confirmar, el escrito queda en la agenda agendado para
+// hoy, con el oficio adjunto: se presenta recién cuando la persona toca «Presentar ahora» y la
+// tarea de Claude lo sube al SAC junto con el oficio. Ver docs/oficio.js y la migración 0013.
+
+/** El modelo de la biblioteca (la persona lo puede corregir en Plantillas) o, si lo borró, el original. */
+const modeloDe = (id) => { const p = D.plantillas.find((x) => x.id === id); return p ? { titulo: p.titulo, cuerpo: p.cuerpo } : MODELOS[id]; };
+
+// Campos del formulario: [campo, etiqueta, clase, ayuda, teclado]
+const CAMPOS_CAU = {
+  embargo: [
+    ['persona', 'Demandado (como va en el oficio)', 'ancho'], ['dni', 'DNI'],
+    ['empleador', 'Empleador', 'ancho', 'Ej.: EMPRESA SRL'], ['cuit_empleador', 'CUIT del empleador', '', 'Opcional', 'numerico'],
+    ['domicilio_empleador', 'Domicilio del empleador', 'ancho', 'Opcional'],
+    ['monto', 'Hasta cubrir la suma de ($)', '', '', 'importe'], ['cuenta_judicial', 'Cuenta judicial N°', '', 'Ej.: 305/1234567'],
+    ['cbu', 'CBU de la cuenta judicial', 'ancho', '22 números', 'numerico'],
+  ],
+  secuestro: [
+    ['persona', 'Demandado (como va en el oficio)', 'ancho'], ['dni', 'DNI'],
+    ['calle', 'Calle del domicilio'], ['numero', 'Número'], ['localidad', 'Ciudad'],
+    ['marca', 'Marca'], ['dominio', 'Dominio'], ['anio_vehiculo', 'Año', '', 'Opcional', 'numerico'], ['modelo', 'Modelo', 'ancho'],
+    ['motor', 'N° de motor'], ['chasis', 'N° de chasis'],
+    ['sede_oficial', 'Sede del oficial de justicia', 'ancho', 'Opcional: si queda vacío, el oficio no lleva esa línea'],
+  ],
+  comunes: [['autos', 'Autos (actor c/ demandado)', 'ancho'], ['tipo_oficio', 'Tipo de juicio'], ['nom', 'Nominación', '', '', 'numerico'], ['ciudad', 'Ciudad de la fecha']],
+};
+// Lo que se repite de una vez a la otra en la misma causa: se propone lo último que se usó.
+const RECORDAR = { embargo: ['empleador', 'cuit_empleador', 'domicilio_empleador', 'cuenta_judicial', 'cbu'], secuestro: ['sede_oficial'] };
+
+/** Los datos del último oficio de ese modelo en la causa (si ya se pidió antes). */
+function ultimosDatos(expte, modelo) {
+  const previos = D.agenda.filter((a) => a.expte === expte && a.estado !== 'cancelado')
+    .flatMap((a) => (a.adjuntos || []).filter((x) => x.modelo === modelo).map((x) => ({ creado: a.creado || '', datos: x.datos || {} })))
+    .sort((a, b) => b.creado.localeCompare(a.creado));
+  return previos[0]?.datos || {};
+}
+
+/** Monto propuesto para el embargo: el total de la planilla si hay; si no, el reclamado con intereses al día. */
+function montoEmbargo(c) {
+  if (c.liquidacion) { const k = liqCalc(liqNormal(copia(c.liquidacion))); if (k.tot > 0) return { monto: k.tot, base: `Total de la planilla de liquidación: ${pesos(k.tot)}` }; }
+  const r = reclamo(c);
+  return r.total > 0 ? { monto: Math.round(r.total), base: `Capital ${money(r.capital)} + intereses al ${fmt(iso(today()))} ${money(r.interes)}` } : { monto: 0, base: '' };
+}
+
+let fuentesOficio = null, cargandoFuentes = null;
+/** Las tipografías del oficio se bajan una vez, cuando hacen falta (y quedan guardadas para usar sin conexión). */
+function cargarFuentes() {
+  if (fuentesOficio) return Promise.resolve(fuentesOficio);
+  if (!cargandoFuentes) {
+    cargandoFuentes = Promise.all(['eb-garamond-400', 'eb-garamond-700', 'caladea-400'].map((n) => fetch(`fonts/${n}.ttf`).then((r) => { if (!r.ok) throw new Error(n); return r.arrayBuffer(); })))
+      .then(([a, b, c]) => (fuentesOficio = { cuerpo: new Uint8Array(a), negrita: new Uint8Array(b), encabezado: new Uint8Array(c) }))
+      .finally(() => { cargandoFuentes = null; });
+  }
+  return cargandoFuentes;
+}
+
+/** Arma el PDF y lo entrega (menú de compartir en el celular, descarga en la computadora). */
+async function verPdf(doc, nombre) {
+  let f = fuentesOficio;
+  if (!f) { try { f = await cargarFuentes(); } catch { toast('No se pudo armar el PDF: faltan las tipografías del oficio. Revisá la conexión'); return; } }
+  let pdf;
+  try { pdf = pdfOficio(doc, f, { titulo: nombre.replace(/\.pdf$/i, '') }); } catch (e) { console.error(e); toast('No se pudo armar el PDF del oficio'); return; }
+  entregar(new Blob([pdf], { type: 'application/pdf' }), nombre).then((ok) => { if (ok) toast('PDF listo: ' + nombre); }, () => toast('No se pudo abrir el PDF en este dispositivo'));
+}
+
+function abrirCautelar(tipo = '') {
+  S.cau = { tipo: '' };
+  cargarFuentes().catch(() => { /* se reintenta al ver el PDF */ });
+  if (ACCIONES[tipo]) elegirCautelar(tipo, true); else renderDrawer(true);
+}
+
+/** Elige la acción y completa el formulario con lo que sale de la causa (y lo último que se usó en ella). */
+function elegirCautelar(tipo, entra = false) {
+  const c = S.open, def = ACCIONES[tipo];
+  const base = datosDeCausa(c, 0);
+  const campos = { ...base };
+  const antes = ultimosDatos(c.expte, def.oficio);
+  for (const k of RECORDAR[tipo]) if (antes[k]) campos[k] = antes[k];
+  let enervar = false, baseMonto = '';
+  if (tipo === 'embargo') {
+    const m = montoEmbargo(c);
+    campos.monto = m.monto ? enCelda(m.monto) : '';
+    baseMonto = m.base;
+  } else {
+    campos.monto = base.monto_prenda ? enCelda(base.monto_prenda) : '';
+    enervar = !!base.monto_prenda;
+  }
+  delete campos.monto_prenda;
+  S.cau = { tipo, dem: 0, campos, enervar, baseMonto, tocado: false, faltan: [] };
+  const e = escritoCau();
+  S.cau.titulo = e.titulo; S.cau.cuerpo = e.cuerpo;
+  renderDrawer(entra);
+  $('.panel').scrollTop = 0;
+}
+
+/** Cambia el demandado elegido: trae su nombre, DNI y (para el secuestro) su domicilio. */
+function elegirDemandado(i) {
+  const k = S.cau, d = (S.open.demandados || [])[i];
+  if (!d) return;
+  k.dem = i;
+  Object.assign(k.campos, { persona: String(d.nombre || '').trim().toLocaleUpperCase('es'), dni: dniOficio(d.dni) });
+  if (k.tipo === 'secuestro') Object.assign(k.campos, partirDomicilio(d.domicilio));
+  if (!k.tocado) Object.assign(k, escritoCau());
+  rerenderDrawer();
+}
+
+/** Los datos para completar el oficio y el escrito, con el monto escrito en números y en letras. */
+function datosCau() {
+  const k = S.cau, v = { ...k.campos }, c = S.open;
+  v.nom_ordinal = ordinal(v.nom);
+  const n = importe(v.monto);
+  const usar = k.tipo !== 'secuestro' || k.enervar;
+  v.monto = usar && n > 0 ? cifra(n) : '';
+  v.monto_letras = usar && n > 0 ? enLetras(n) : '';
+  // Los campos de siempre de las plantillas, por si el escrito los usa.
+  return { caratula: caratula(c), actor: c.actor, demandado: c.demandado, tipo: c.tipo, nominacion: c.nom ? c.nom + '°' : '', oficina: c.oficina, ...v, expediente: c.expte };
+}
+const oficioCau = (marcar = false) => rellenar(modeloDe(ACCIONES[S.cau.tipo].oficio).cuerpo, datosCau(), { marcar });
+function escritoCau() {
+  const m = modeloDe(ACCIONES[S.cau.tipo].escrito), v = datosCau();
+  return { titulo: rellenar(m.titulo, v).texto.trim(), cuerpo: rellenar(m.cuerpo, v).texto.replace(/\s+$/, '') };
+}
+
+/** Lo que dice el formulario pasa a S.cau (sin redibujar: no se pierde el foco). */
+function leerCautelar() {
+  const k = S.cau; if (!k?.tipo) return;
+  for (const [campo] of [...CAMPOS_CAU[k.tipo], ...CAMPOS_CAU.comunes]) { const el = document.getElementById('cau_' + campo); if (el) k.campos[campo] = el.value; }
+  const m = document.getElementById('cau_monto'); if (m) k.campos.monto = m.value;
+  const en = document.getElementById('cau_enervar'); if (en) k.enervar = en.checked;
+  const t = document.getElementById('cau_tit'), cu = document.getElementById('cau_cue');
+  if (t) k.titulo = t.value; if (cu) k.cuerpo = cu.value;
+}
+
+function faltanHtml(faltan) {
+  return faltan.length
+    ? `<span class="malo">Falta completar: ${esc(faltan.map((f) => CAMPOS_OFICIO[f] || f).join(', '))}.</span>`
+    : 'Está todo: el oficio se ve como va a quedar en el PDF.';
+}
+
+/** Vista previa, aviso de lo que falta y escrito (si la persona no lo tocó), mientras se escribe. */
+function refrescarCautelar() {
+  const k = S.cau; if (!k?.tipo) return;
+  const of = oficioCau(true);
+  k.faltan = of.faltan;
+  const vista = $('#cau_vista'); if (vista) vista.innerHTML = htmlOficio(of.texto);
+  const f = $('#cau_faltan'); if (f) f.innerHTML = faltanHtml(of.faltan);
+  document.querySelectorAll('.cautelar input.falta').forEach((el) => { if (el.value.trim()) el.classList.remove('falta'); });
+  if (!k.tocado) {
+    const e = escritoCau(); k.titulo = e.titulo; k.cuerpo = e.cuerpo;
+    const t = $('#cau_tit'), cu = $('#cau_cue');
+    if (t && t !== document.activeElement) t.value = e.titulo;
+    if (cu && cu !== document.activeElement) cu.value = e.cuerpo;
+  }
+}
+
+function cautelarHtml(c, entra) {
+  const k = S.cau, def = ACCIONES[k.tipo];
+  const cab = (titulo) => `<div class="phead"><div><div class="hint">Acción cautelar · Expte. ${esc(c.expte)}</div><h2>${esc(titulo)}</h2></div><div class="btns"><button class="btn small" data-cau="volver">Volver a la ficha</button></div></div>`;
+  if (!def) {
+    return `<div class="scrim"></div><aside class="panel cautelar${entra ? ' entra' : ''}" role="dialog" aria-modal="true" aria-label="Acción cautelar">
+     ${cab(caratula(c))}
+     <div class="sec"><h4>¿Qué acción cautelar querés pedir?</h4>
+      <div class="opciones">
+       <button class="opcion" data-cau="elegir" data-tipo="embargo"><b>1. ${esc(ACCIONES.embargo.pregunta)}</b><span>Oficio al empleador del demandado, para que retenga del sueldo la parte que permite la ley.</span></button>
+       <button class="opcion" data-cau="elegir" data-tipo="secuestro"><b>2. ${esc(ACCIONES.secuestro.pregunta)}</b><span>Oficio al oficial de justicia, para secuestrar el vehículo prendado y dejarlo al martillero.</span></button>
+      </div>
+      <p class="hint m0">La app arma el oficio y el escrito con los datos de la causa; lo que falte, te lo pide. Al confirmar, el escrito queda listo para presentar en el SAC con el oficio adjunto.</p>
+     </div><div class="pfin"></div></aside>`;
+  }
+  const campo = ([id, etiqueta, clase = '', ayuda = '', teclado = ''], extra = '') => `<label class="f${clase ? ' ' + clase : ''}">${esc(etiqueta)}<input id="cau_${id}" value="${esc(k.campos[id] ?? '')}"${ayuda ? ` placeholder="${esc(ayuda)}"` : ''}${teclado === 'importe' ? ' inputmode="decimal" data-importe' : teclado === 'numerico' ? ' inputmode="numeric"' : ''} autocomplete="off"${extra}></label>`;
+  const dems = c.demandados || [];
+  const elegir = dems.length > 1 ? `<label class="f ancho">¿A cuál de los demandados?<select id="cau_dem">${dems.map((d, i) => `<option value="${i}" ${i === k.dem ? 'selected' : ''}>${esc(d.nombre || 'Demandado ' + (i + 1))}${d.dni ? ' · ' + esc(d.dni) : ''}</option>`).join('')}</select></label>` : '';
+  let monto = '';
+  if (k.tipo === 'secuestro') {
+    monto = `<label class="chk ancho"><input type="checkbox" id="cau_enervar" ${k.enervar ? 'checked' : ''}><span>El demandado puede enervar el secuestro pagando una suma (el capital reclamado de la prenda)</span></label>
+     ${k.enervar ? campo(['monto', 'Suma para enervar el secuestro ($)', '', '', 'importe']) : ''}`;
+  }
+  const lista = CAMPOS_CAU[k.tipo].map((x) => campo(x)).join('');
+  const of = oficioCau(true);
+  k.faltan = of.faltan;
+  const repetido = agendaAbierta(c.expte).find((a) => a.titulo.trim().toLowerCase() === String(k.titulo || '').trim().toLowerCase());
+  return `<div class="scrim"></div><aside class="panel max cautelar${entra ? ' entra' : ''}" role="dialog" aria-modal="true" aria-label="${esc(def.titulo)}">
+   ${cab(def.titulo)}
+   <p class="hint m0">${esc(caratula(c))}</p>
+   ${repetido ? `<p class="sucio m0">Esta causa ya tiene “${esc(repetido.titulo)}” en Escritos para el SAC (${esc(estadoAg(repetido)[0].toLowerCase())}). Si confirmás, queda otro.</p>` : ''}
+   <div class="caugrid">
+    <div class="caucol">
+     <div class="sec"><h4>Datos del oficio</h4>
+      <div class="grid2">${elegir}${lista}${monto}</div>
+      ${k.tipo === 'embargo' && k.baseMonto ? `<p class="hint m0">Propuesto: ${esc(k.baseMonto)}. Cambialo si corresponde otro monto.</p>` : ''}
+      <details class="caumas"><summary>Carátula, nominación y fecha del oficio</summary><div class="grid2">${CAMPOS_CAU.comunes.map((x) => campo(x)).join('')}</div></details>
+     </div>
+     <div class="sec"><h4>Escrito para el SAC</h4>
+      <label class="f">Título<input id="cau_tit" value="${esc(k.titulo)}"></label>
+      <label class="f">Texto del escrito<textarea id="cau_cue" rows="11">${esc(k.cuerpo)}</textarea></label>
+      <p class="hint m0">Sale de la plantilla “${esc(modeloDe(def.escrito).titulo)}”. El encabezado (“Señor/a Juez: …”) lo pone el SAC.${k.tocado ? ' <button class="btn small" data-cau="rehacer">Volver a armarlo con los datos</button>' : ''}</p>
+     </div>
+    </div>
+    <div class="sec cauvista"><h4>Vista previa del oficio</h4>
+     <div class="ofmarco" id="cau_vista">${htmlOficio(of.texto)}</div>
+     <p class="hint m0" id="cau_faltan">${faltanHtml(of.faltan)}</p>
+     <div class="actions"><button class="btn small" data-cau="pdf">Ver el oficio en PDF</button></div>
+    </div>
+   </div>
+   <div class="ppie"><button class="btn primary" data-cau="confirmar">Confirmar solicitud</button><button class="btn" data-cau="otra">Elegir otra acción</button><span class="hint">Queda en “Escritos para el SAC” con el oficio adjunto. Para presentarlo, tocás “Presentar ahora”.</span></div>
+  </aside>`;
+}
+
+/** Lo que falta para confirmar: los campos del oficio, la suma (si puede enervar) y el CBU de 22 números. */
+function problemasCautelar() {
+  const k = S.cau, of = oficioCau(false), faltan = [...of.faltan];
+  if (k.tipo === 'secuestro' && k.enervar && !(importe(k.campos.monto) > 0) && !faltan.includes('monto')) faltan.push('monto');
+  const avisos = [];
+  if (faltan.length) avisos.push('Falta completar: ' + faltan.map((f) => CAMPOS_OFICIO[f] || f).join(', '));
+  const cbu = String(k.campos.cbu || '').replace(/\D/g, '');
+  if (k.tipo === 'embargo' && cbu && cbu.length !== 22) avisos.push('El CBU tiene que tener 22 números');
+  if (!String(k.titulo || '').trim() || !String(k.cuerpo || '').trim()) avisos.push('Falta el título o el texto del escrito');
+  return { faltan, avisos, doc: of.texto };
+}
+
+async function confirmarCautelar(boton) {
+  leerCautelar();
+  const k = S.cau, c = S.open, def = ACCIONES[k.tipo];
+  const p = problemasCautelar();
+  if (p.avisos.length) {
+    p.faltan.forEach((f) => document.getElementById('cau_' + f)?.classList.add('falta'));
+    if (p.faltan.some((f) => CAMPOS_CAU.comunes.some(([x]) => x === f))) { const d = $('.caumas'); if (d) d.open = true; }
+    toast(p.avisos.join('. '));
+    return;
+  }
+  // Se guardan los datos de esta acción (para proponerlos la próxima vez), no todo lo que salió de la causa.
+  const datos = Object.fromEntries([...CAMPOS_CAU[k.tipo], ...CAMPOS_CAU.comunes].map(([x]) => [x, k.campos[x] ?? '']));
+  datos.monto = k.campos.monto ?? '';
+  if (k.tipo === 'secuestro') datos.enervar = k.enervar;
+  const fila = {
+    expte: c.expte, titulo: k.titulo.trim(), cuerpo: k.cuerpo.replace(/\s+$/, ''), fecha: iso(today()), estado: 'pendiente', realizar: '',
+    adjuntos: [{ nombre: nombreArchivo(def.archivo, c.expte), modelo: def.oficio, doc: p.doc, datos }],
+  };
+  await conBoton(boton, 'Guardando…', async () => {
+    try {
+      await crearEscrito(fila);
+      S.cau = null;
+      renderDrawer();
+      $('#agendaFicha')?.scrollIntoView({ block: 'center' });
+      toast(`Listo: “${fila.titulo}” quedó en Escritos para el SAC con el oficio adjunto. Para presentarlo, tocá “Presentar ahora”`);
+    } catch (e) { toast(mensaje(e)); }
+  });
+}
+
+async function cauAct(b) {
+  const a = b.dataset.cau;
+  if (a === 'volver') { S.cau = null; renderDrawer(); $('#secCautelar')?.scrollIntoView({ block: 'center' }); return; }
+  if (a === 'otra') { S.cau = { tipo: '' }; renderDrawer(); $('.panel').scrollTop = 0; return; }
+  if (a === 'elegir') { elegirCautelar(b.dataset.tipo); return; }
+  leerCautelar();
+  if (a === 'rehacer') { S.cau.tocado = false; Object.assign(S.cau, escritoCau()); rerenderDrawer(); return; }
+  if (a === 'pdf') {
+    const p = problemasCautelar();
+    if (p.faltan.length) { toast('Para ver el PDF, completá: ' + p.faltan.map((f) => CAMPOS_OFICIO[f] || f).join(', ')); return; }
+    await verPdf(p.doc, nombreArchivo(ACCIONES[S.cau.tipo].archivo, S.open.expte));
+    return;
+  }
+  if (a === 'confirmar') await confirmarCautelar(b);
+}
+
 // Aviso dentro de la ficha cuando la causa cambió desde otro lado (Claude, otro dispositivo).
 function notaHtml() {
   const c = S.open;
@@ -637,6 +906,8 @@ function renderDrawer(entra = false) {
   if (c.liquidacion) liqNormal(c.liquidacion);
   if (S.planilla && c.liquidacion) { d.innerHTML = planillaHtml(c, entra); return; }
   S.planilla = false;
+  if (S.cau && !S.isNew) { d.innerHTML = cautelarHtml(c, entra); return; }
+  S.cau = null;
   const hist =(c.historial || []).map((h, i) => ({ ...h, i })).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '') || b.i - a.i);
   const meta = !S.isNew && c.actualizado ? ` · último cambio ${cuando(new Date(c.actualizado))}${c.actualizado_por ? ' (' + esc(c.actualizado_por) + ')' : ''}` : '';
   d.innerHTML = `<div class="scrim" data-act="close"></div><aside class="panel${entra ? ' entra' : ''}${S.maxi ? ' max' : ''}" role="dialog" aria-modal="true" aria-label="Ficha de la causa">
@@ -662,6 +933,8 @@ function renderDrawer(entra = false) {
    <label class="f ancho">Qué hay que hacer<input id="c_proxima" value="${esc(c.proxima)}" placeholder="Ej.: Pedir embargo de la garantía"></label>
    <label class="f">Vence / recordar el<input type="date" id="c_vence" value="${esc(c.vence)}"></label></div>
    ${S.isNew ? '' : `<div><button class="btn small donebtn" data-act="done">✓ Marcar como realizada</button> <span class="hint">Pasa a los movimientos con su fecha de vencimiento (o la de hoy, si no tiene o todavía no venció) y se guarda.</span></div>`}</div>
+
+  ${S.isNew ? '' : `<div class="sec" id="secCautelar"><h4>Acción cautelar</h4><div class="liqpie"><span class="hint">Embargo de haberes o secuestro del vehículo: la app arma el oficio y el escrito con los datos de la causa, para presentarlos en el SAC.</span><button class="btn small primary" data-act="cautelar">Acción cautelar</button></div></div>`}
 
   <div class="sec"><h4>Movimientos</h4>
    <div class="addrow"><input type="date" id="h_fecha" value="${iso(today())}" aria-label="Fecha"><input id="h_texto" placeholder="Ej.: Dimos cédula a Franco" aria-label="Acción realizada"><button class="btn small primary" data-act="histadd">Registrar</button></div>
@@ -805,23 +1078,34 @@ function fill(t, c) {
   return String(t || '').replace(/\{\{\s*([a-záéíóúñ]+)\s*\}\}/gi, (x, k) => { k = k.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); return k in m ? (m[k] || '') : x; });
 }
 function tplHtml(c) {
-  const ps = D.plantillas, p = ps.find((x) => x.id === S.tpSel);
+  // Los modelos de oficio no son escritos: los completa la ficha desde "Acción cautelar".
+  const ps = D.plantillas.filter((x) => !esModeloOficio(x.id)), p = ps.find((x) => x.id === S.tpSel);
+  const cau = p && Object.entries(ACCIONES).find(([, d]) => d.escrito === p.id);
   return `<div class="sec"><h4>Escritos</h4>${ps.length ? `<label class="f">Plantilla<select id="tp_sel"><option value="">Elegí una plantilla…</option>${ps.map((x) => `<option value="${esc(x.id)}" ${x.id === S.tpSel ? 'selected' : ''}>${esc(x.titulo)}</option>`).join('')}</select></label>` : '<p class="hint m0">Todavía no hay plantillas. Creá la primera desde “Plantillas”.</p>'}
+  ${cau ? `<div class="sucio liqpie"><span>Este escrito va con su oficio adjunto: armalo completo desde Acción cautelar.</span><button class="btn small" data-act="cautelar" data-tipo="${cau[0]}">Armarlo ahí</button></div>` : ''}
   ${p ? `<label class="f">Título / sumario<input id="tp_tit" readonly value="${esc(fill(p.titulo, c))}"></label>
    <label class="f">Cuerpo<textarea id="tp_cue" rows="12" readonly>${esc(fill(p.cuerpo, c))}</textarea></label>
    <div class="actions"><button class="btn small" data-tp="copy" data-src="tp_tit">Copiar título</button><button class="btn small primary" data-tp="copy" data-src="tp_cue">Copiar cuerpo</button></div>` : ''}</div>`;
 }
 function renderTpl(entra = false) {
   const d = $('#drawer'), sc = entra ? 0 : ($('.panel')?.scrollTop || 0); d.hidden = false; document.body.style.overflow = 'hidden';
-  const item = (x) => `<div class="sec"><h4>${x.id ? 'Plantilla' : 'Nueva plantilla'}</h4>
+  // Las cuatro de las acciones cautelares se pueden corregir; si algo se rompe, vuelven al texto original.
+  const original = (x) => (MODELOS[x.id] && (x.titulo !== MODELOS[x.id].titulo || x.cuerpo !== MODELOS[x.id].cuerpo)
+    ? `<button class="btn small" data-tp="original" data-id="${esc(x.id)}">Volver al texto original</button>` : '');
+  const item = (x) => `<div class="sec"><h4>${x.id ? (esModeloOficio(x.id) ? 'Modelo de oficio' : 'Plantilla') : 'Nueva plantilla'}</h4>
     <label class="f">Título<input id="pt_${esc(x.id || 'new')}" value="${esc(x.titulo || '')}" placeholder="Ej.: Solicita aprobación de liquidación y designa martillero"></label>
-    <label class="f">Cuerpo<textarea id="pc_${esc(x.id || 'new')}" rows="${x.id ? 10 : 6}" placeholder="Texto del escrito…">${esc(x.cuerpo || '')}</textarea></label>
-    <div class="actions"><button class="btn small primary" data-tp="save" data-id="${esc(x.id || '')}">${x.id ? 'Guardar cambios' : 'Crear plantilla'}</button>
+    <label class="f">Cuerpo<textarea id="pc_${esc(x.id || 'new')}" rows="${x.id ? (esModeloOficio(x.id) ? 16 : 10) : 6}" placeholder="Texto del escrito…">${esc(x.cuerpo || '')}</textarea></label>
+    <div class="actions"><button class="btn small primary" data-tp="save" data-id="${esc(x.id || '')}">${x.id ? 'Guardar cambios' : 'Crear plantilla'}</button>${x.id ? original(x) : ''}
     ${x.id ? (S.tplDel === x.id ? `<button class="btn small danger" data-tp="delyes" data-id="${esc(x.id)}">Sí, eliminar</button><button class="btn small" data-tp="delno">Cancelar</button>` : `<button class="btn small danger" data-tp="del" data-id="${esc(x.id)}">Eliminar</button>`) : ''}</div></div>`;
+  const escritos = D.plantillas.filter((x) => !esModeloOficio(x.id)), oficios = D.plantillas.filter((x) => esModeloOficio(x.id));
   d.innerHTML = `<div class="scrim" data-act="close"></div><aside class="panel${entra ? ' entra' : ''}" role="dialog" aria-modal="true" aria-label="Plantillas de escritos">
    <div class="phead"><div><div class="hint">Biblioteca</div><h2>Plantillas de escritos</h2></div><button class="btn small" data-act="close">Cerrar</button></div>
-   <p class="hint m0">Podés usar campos que se completan con los datos de cada causa: ${CAMPOS.map((k) => '{{' + k + '}}').join(', ')}.</p>
-   ${D.plantillas.map(item).join('') || '<p class="hint">Todavía no hay plantillas guardadas.</p>'}${item({})}<div class="pfin"></div></aside>`;
+   <p class="hint m0">Podés usar campos que se completan con los datos de cada causa: ${CAMPOS.map((k) => '{{' + k + '}}').join(', ')}. Los escritos de Acción cautelar usan además los del formulario: {{persona}}, {{dni}}, {{empleador}}, {{monto}}, {{monto_letras}}, {{marca}}, {{modelo}}, {{dominio}}…</p>
+   ${escritos.map(item).join('') || '<p class="hint">Todavía no hay plantillas guardadas.</p>'}${item({})}
+   <h3 class="tplgrupo">Modelos de oficio · Acción cautelar</h3>
+   <p class="hint m0">La ficha los completa con los datos de la causa y del formulario. Marcas: el primer bloque es el encabezado (un renglón por línea); los párrafos van separados por una línea en blanco; “&gt;” al empezar un párrafo le pone sangría y “&gt;&gt;”, el lugar de la despedida; **texto** va en negrita; lo que está entre [[ y ]] va solo si sus campos tienen dato. Campos: ${Object.keys(CAMPOS_OFICIO).map((k) => '{{' + k + '}}').join(', ')}.</p>
+   ${oficios.map(item).join('') || '<p class="hint m0">No hay modelos de oficio en la biblioteca: la ficha usa los originales.</p>'}
+   <div class="pfin"></div></aside>`;
   if (sc) $('.panel').scrollTop = sc;
 }
 // Redibuja las plantillas porque cambió algo en la base, sin perder lo que se esté escribiendo en otra.
@@ -838,6 +1122,13 @@ async function tplAct(b) {
   if (a === 'delno') { S.tplDel = ''; renderTpl(); return; }
   try {
     if (a === 'delyes') { await borrarPlantilla(id); S.tplDel = ''; toast('Plantilla eliminada'); return; }
+    if (a === 'original') {
+      const m = MODELOS[id], p = D.plantillas.find((x) => x.id === id);
+      if (!m || !p) return;
+      const r = await guardarPlantilla(id, p.rev, { titulo: m.titulo, cuerpo: m.cuerpo });
+      toast(r.conflicto ? 'La plantilla cambió recién. Revisala y probá de nuevo' : 'Volvió al texto original');
+      return;
+    }
     if (a === 'save') {
       const t = document.getElementById('pt_' + (id || 'new')).value.trim(), c = document.getElementById('pc_' + (id || 'new')).value; if (!t || !c.trim()) { toast('Completá título y cuerpo'); return; }
       if (!id) {
@@ -906,7 +1197,7 @@ function tarjetaAgenda(a, donde) {
     </div>`;
   }
   const hhmm = (s) => (s ? hora(new Date(s)) : '');
-  const realizar = a.realizar ? ` Al presentarlo, da por realizada “${esc(a.realizar)}”.` : '';
+  const realizar = (a.adjuntos?.length ? ' Va con el oficio adjunto.' : '') + (a.realizar ? ` Al presentarlo, da por realizada “${esc(a.realizar)}”.` : '');
   const ahora = (clase = '') => `<button class="btn small ${clase}" data-ag="ahora" data-id="${k}">Presentar ahora</button>`;
   const cancelar = `<button class="btn small danger" data-ag="cancelar" data-id="${k}">Cancelar</button>`;
   let detalle = 'No se va a presentar.', botones = '';
@@ -931,7 +1222,15 @@ function tarjetaAgenda(a, donde) {
     botones = ahora('primary') + cancelar;
   }
   const ahoraClase = a.estado === 'pendiente' && a.ahora ? ' ahora' : '';
-  return `<div class="sec agcard ${esc(a.estado)}${ahoraClase}" data-ag-id="${k}">${cab}<b>${esc(a.titulo)}</b><p class="m0 ${a.estado === 'error' ? 'malo' : 'hint'}">${detalle}</p>${botones ? `<div class="actions">${botones}</div>` : ''}</div>`;
+  return `<div class="sec agcard ${esc(a.estado)}${ahoraClase}" data-ag-id="${k}">${cab}<b>${esc(a.titulo)}</b>${adjuntosHtml(a)}<p class="m0 ${a.estado === 'error' ? 'malo' : 'hint'}">${detalle}</p>${botones ? `<div class="actions">${botones}</div>` : ''}</div>`;
+}
+
+/** Los oficios que van adjuntos al escrito (acciones cautelares), con el botón para verlos en PDF. */
+function adjuntosHtml(a) {
+  const xs = a.adjuntos || [];
+  if (!xs.length) return '';
+  cargarFuentes().catch(() => { /* se reintenta al tocar "Ver PDF" */ }); // así el PDF sale en el toque (el menú de compartir lo exige)
+  return `<div class="adjuntos">${xs.map((x, n) => `<div class="adj"><span class="adjnom">Adjunto: ${esc(x.nombre)}</span><button class="btn small" data-ag="oficio" data-id="${esc(a.id)}" data-n="${n}">Ver PDF</button></div>`).join('')}</div>`;
 }
 
 function agendaFichaHtml(c) {
@@ -998,6 +1297,10 @@ async function agAct(b) {
       }
     } else if (b.dataset.ag === 'tarea') {
       abrirTarea();
+      return;
+    } else if (b.dataset.ag === 'oficio') {
+      const x = (a.adjuntos || [])[+b.dataset.n];
+      if (x) await verPdf(x.doc, x.nombre);
       return;
     } else if (b.dataset.ag === 'nopresentado') {
       r = await actualizarAgenda(id, a.rev, { estado: 'error', resultado: `Se interrumpió mientras se presentaba (empezó a las ${a.actualizado ? hora(new Date(a.actualizado)) : '?'}). Antes de volver a mandarlo, fijate en el SAC si quedó presentado.` });
@@ -1252,6 +1555,7 @@ document.addEventListener('click', async (e) => {
   if (e.target.closest('#btnReintentar')) { await reintentar(e.target.closest('#btnReintentar')); if (D.enLinea) toast('Conexión recuperada'); return; }
   const mn = e.target.closest('[data-m]'); if (mn) { if (mn.dataset.m === 'cerrar') { S.menu = false; renderMenu(); } else await menuAct(mn); return; }
   const cb = e.target.closest('[data-chat]'); if (cb) { chatAct(cb); return; }
+  const cu = e.target.closest('[data-cau]'); if (cu) { if (S.open && S.cau) await unaVez(cu, cauAct); return; }
   const ag = e.target.closest('[data-ag]'); if (ag) { await unaVez(ag, agAct); return; }
   const tp = e.target.closest('[data-tp]'); if (tp) { await unaVez(tp, tplAct); return; }
   const acb = e.target.closest('[data-ac]'); if (acb) { await unaVez(acb, acAct); return; }
@@ -1270,6 +1574,7 @@ document.addEventListener('click', async (e) => {
   if (act === 'choque-pisar' && S.planilla && S.choque?.actual) { await guardarPlanilla(a, true); return; }
   if (act === 'plexcel') { descargarPlanilla(); return; } // antes de cualquier espera: el menú de compartir del celular lo exige
   if (act === 'planilla') { abrirPlanilla(); return; }
+  if (act === 'cautelar') { abrirCautelar(a.dataset.tipo || ''); return; }
   if (act === 'plvolver') { volverAFicha(); return; }
   if (act === 'plsave') { await guardarPlanilla(a); return; }
   if (act === 'choque-pisar') { S.choque = null; await save({ forzar: true }); return; }
@@ -1303,6 +1608,12 @@ document.addEventListener('click', async (e) => {
 document.addEventListener('input', (e) => {
   if (e.target.id === 'chatTexto') { ajustarAlto(e.target); return; }
   if (/^pl_/.test(e.target.id)) { recalcPlanilla(); return; }
+  if (/^cau_/.test(e.target.id) && S.cau) {
+    leerCautelar();
+    if (e.target.id === 'cau_tit' || e.target.id === 'cau_cue') S.cau.tocado = true; // desde acá, el escrito no se rehace solo
+    refrescarCautelar();
+    return;
+  }
   if (/^t_(monto|vence)\d+$/.test(e.target.id)) { // recalcular los totales sin perder el foco
     clearTimeout(S.lt); S.lt = setTimeout(() => { if (!S.open) return; const id = document.activeElement?.id; readForm(); rerenderDrawer(); if (id) { const el = document.getElementById(id); if (el) el.focus(); } }, 700);
   }
@@ -1321,13 +1632,15 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.key === 'Escape') {
     if (S.chat?.abierto) { cerrarChat(); return; }
-    if (S.menu) { S.menu = false; renderMenu(); } else if (S.planilla && S.open) { readForm(); volverAFicha(); } else if (S.open || S.tpl || S.clave) closeDrawer();
+    if (S.menu) { S.menu = false; renderMenu(); } else if (S.planilla && S.open) { readForm(); volverAFicha(); } else if (S.cau && S.open) { S.cau = null; renderDrawer(); } else if (S.open || S.tpl || S.clave) closeDrawer();
   }
   if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('tr[data-id], .fila[data-id]')) { e.preventDefault(); openCausa(e.target.dataset.id); }
   if (e.key === 'Enter' && e.target.id === 'h_texto') document.querySelector('[data-act="histadd"]').click();
   if (e.key === 'Enter' && e.target.id === 'chatTexto' && !e.shiftKey && !movil.matches && !e.isComposing) { e.preventDefault(); $('#fChat').requestSubmit(); }
 });
 document.addEventListener('change', (e) => {
+  if (e.target.id === 'cau_dem' && S.cau) { leerCautelar(); elegirDemandado(+e.target.value); return; }
+  if (e.target.id === 'cau_enervar' && S.cau) { leerCautelar(); if (!S.cau.tocado) Object.assign(S.cau, escritoCau()); rerenderDrawer(); return; }
   if (/^t_tipo\d+$/.test(e.target.id)) { readForm(); rerenderDrawer(); return; }
   if (e.target.id === 'tp_sel') { readForm(); S.tpSel = e.target.value; rerenderDrawer(); }
 });

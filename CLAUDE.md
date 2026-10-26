@@ -104,7 +104,8 @@ Después de escribir, leer la fila y contar qué quedó. La app abierta lo muest
 - **Plantillas**: `select id, titulo, cuerpo from public.plantillas`. Los campos `{{caratula}}`,
   `{{expediente}}`, `{{actor}}`, `{{demandado}}`, `{{tipo}}`, `{{nominacion}}` y `{{oficina}}`
   se completan con la causa; la carátula es `actor c/ demandado – tipo` (sin demandado,
-  `actor – tipo`).
+  `actor – tipo`). Las de id `oficio-…` son modelos de oficio y `solicita-embargo-haberes` /
+  `solicita-secuestro-automotor` sus escritos: ver "Acciones cautelares".
 - **Escritos para el SAC** (`public.agenda`): ver "Chat con Claude y escritos para el SAC".
   Para la tarea que los presenta:
 
@@ -154,9 +155,9 @@ Después de escribir, leer la fila y contar qué quedó. La app abierta lo muest
 
 1. Editar en `docs/` (`app.js` interfaz, `datos.js` todo lo que habla con la base, `styles.css`,
    `liquidacion.js` cuentas de la liquidación e importes escritos a la argentina, `excel.js` el armado
-   de archivos .xlsx sin librerías).
+   de archivos .xlsx sin librerías, `oficio.js` los oficios de las acciones cautelares y su PDF).
 2. Probar en local: `dev/README.md` explica cómo levantar la base y correr las pruebas.
-   `npm run test:db`, `npm run test:chat` y `npm run test:app` tienen que pasar; si el cambio se ve, mirar capturas
+   `npm run test:db`, `npm run test:chat`, `npm run test:oficio` y `npm run test:app` tienen que pasar; si el cambio se ve, mirar capturas
    (`node tests/mirar.mjs`), también en ancho de celular.
 3. `git commit` y `git push` a `main`. No hay paso de compilación.
 
@@ -203,7 +204,9 @@ aplicarla con `apply_migration` y pasar `get_advisors` (seguridad).
   `googlechromes://…` y se abre en Chrome (el iPhone puede preguntar antes si abrirlo). Si el
   gestor ya está abierto en Chrome del iPhone (`CriOS`), queda el enlace común.
 - **Terceros**: `docs/vendor/supabase.js` y las tipografías se copian desde `dev/node_modules`
-  con `node dev/vendor.mjs`; no se cargan de ningún CDN.
+  con `node dev/vendor.mjs`; no se cargan de ningún CDN. Las de los oficios (EB Garamond 400 y 700,
+  Caladea 400) quedan como `.ttf`: `vendor.mjs` las rearma desde el WOFF, porque un PDF solo
+  acepta TrueType.
 
 ## Chat con Claude y escritos para el SAC
 
@@ -232,8 +235,10 @@ aplicarla con `apply_migration` y pasar `get_advisors` (seguridad).
   "Presentar escritos agendados en el SAC" (`TAREA_SAC`, claude.ai/scheduled-task/trig_…). Ahí la
   persona toca "Ejecutar ahora": la corrida toma lo listo con `agenda_tomar(true)`, lo presenta con
   Claude in Chrome (el Chrome donde está abierta la sesión del SAC) y lo cierra con
-  `agenda_presentada` o `agenda_fallida`. No adjunta archivos. Si una corrida se corta con un
-  escrito tomado, a la media hora la tarjeta ofrece "Marcar como no presentado".
+  `agenda_presentada` o `agenda_fallida`. Adjunta solo los oficios guardados en `agenda.adjuntos`
+  (ver "Acciones cautelares"); un escrito que dice acompañar otra cosa lo deja con error, para
+  presentarlo a mano. Si una corrida se corta con un escrito tomado, a la media hora la tarjeta
+  ofrece "Marcar como no presentado". Sus instrucciones completas están en `dev/tarea-sac.md`.
 - **Por qué no se dispara solo**: la tarea es una "tarea programada" de claude.ai y en esta cuenta
   su "Activador" solo ofrece "Programación" (no hay activador por API ni token). Por pedido de la
   persona no tiene horario: quedó activa con una sola ejecución el 31/12/2099, así que corre solo
@@ -249,6 +254,47 @@ aplicarla con `apply_migration` y pasar `get_advisors` (seguridad).
   `needs_device_approval` y no cambia nada). No borrarla ni crearla de nuevo: pierde la compu.
   La anterior (`trig_01EX9sLZMbvqDtgqTNJFGTg5`) se había creado sin ese requisito: corría en la
   nube y no llegaba al Chrome. Quedó desactivada.
+
+## Acciones cautelares (botón de la ficha)
+
+En la ficha, "Acción cautelar" pregunta "¿Solicitar embargo de haberes?" o "¿Solicitar oficio de
+secuestro automotor?". La app completa el oficio y el escrito "Solicita…" con los datos de la causa
+(demandado elegido, DNI —de un CUIL sale el del medio—, domicilio, vehículo de la prenda, monto) y
+pide en un formulario lo que falta (empleador, cuenta judicial y CBU; sede del oficial de justicia).
+Al lado se ve el oficio como hoja, con lo que falta marcado. Al confirmar, el escrito queda en la
+agenda **agendado para hoy** (`pendiente`, sin `ahora`) con el oficio en `adjuntos`: se presenta
+recién cuando la persona toca "Presentar ahora" y después "Ejecutar ahora" en la tarea.
+
+- **Modelos**: cuatro plantillas con id fijo (migración 0013, y una copia en `MODELOS` de
+  `docs/oficio.js` que se usa si la persona las borra): `oficio-embargo-haberes`,
+  `oficio-secuestro-automotor`, `solicita-embargo-haberes`, `solicita-secuestro-automotor`. Los
+  oficios son los modelos de Word del estudio, al pie de la letra (los dos del Drive de Emi; el de
+  secuestro es el del comando "haz OS", con la cláusula para enervar el secuestro opcional y el año
+  y la sede si hay dato). No cambiar su texto sin que la persona lo pida. Los modelos de oficio no
+  aparecen como escritos en la ficha; en Plantillas van aparte y tienen "Volver al texto original".
+- **Marcas de un modelo de oficio** (`docs/oficio.js`): primer bloque = encabezado (un renglón por
+  línea); párrafos separados por línea en blanco; `>` sangría de primera línea, `>>` despedida;
+  `**negrita**`; `{{campo}}` (lista en `CAMPOS_OFICIO`); `[[ … ]]` (en un renglón) solo si sus campos
+  tienen dato, y si el renglón era solo eso desaparece.
+- **El PDF** lo arma `pdfOficio` sin librerías: carta, márgenes del modelo de Word, cuerpo en EB
+  Garamond 12 justificado con interlineado 1,5, encabezado en Caladea 11, tipografías embebidas, sin
+  fecha. El mismo texto da siempre el mismo PDF byte por byte, en la app y en Node.
+- **`agenda.adjuntos`**: `[{nombre, modelo, doc, sha256, datos}]`. `doc` es el oficio completado
+  (con las marcas), `sha256` lo pone la base (`gestor.tg_adjuntos`), `datos` son los del
+  formulario (la app propone los últimos de la causa: empleador, cuenta, CBU, sede). Los adjuntos
+  no cambian una vez que la tarea tomó el escrito. `gestor.deshacer` los restaura.
+- **La tarea del SAC** no llega a la base desde la línea de comandos: lee
+  `select n, nombre, linea from gestor.agenda_adjuntos('<id>')` y copia los renglones de cada adjunto
+  a un archivo. Son de solo ASCII, sin comillas ni barras (`gestor.texto_seguro`, espejo de
+  `dev/texto-seguro.mjs`), porque el resultado del conector viene dentro de capas de JSON que
+  escaparían cualquier otra cosa; van en partes cortas con su control, para que un error de copia
+  diga qué renglón repetir. `node dev/oficio-pdf.mjs <renglones.txt> <carpeta>` (desde un clon del
+  repositorio) controla todo antes de armar el PDF (si no, sale con código 2) y la tarea lo sube al
+  SAC con la herramienta de subir archivos de Claude in Chrome. Las pruebas comparan ese PDF con el
+  que baja la app, y la codificación de la base con la de JS.
+- **Para Claude, por el conector**: un escrito con oficio también se puede dejar armado por SQL
+  (`insert into public.agenda (…, adjuntos)` con el `doc` completado con las marcas), pero lo normal es
+  que la persona lo confirme desde la ficha, que muestra la hoja.
 
 ## Estilo
 

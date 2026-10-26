@@ -561,8 +561,68 @@ test('tarea del SAC: toma de a uno, primero lo pedido «Ahora», y nunca lo mism
   sql(`delete from public.agenda; delete from public.causas where expte in ('891', '892')`);
 });
 
+test('acciones cautelares: el escrito con su oficio adjunto, la huella y lo que lee la tarea', async () => {
+  const { createHash } = await import('node:crypto');
+  sql(`delete from public.agenda; delete from public.causas where expte = '895'`);
+  sql(`insert into public.causas (expte, actor, demandado, tipo, ubicacion, historial) values ('895', 'AMB', 'PÉREZ JUAN', 'EJECUTIVO', 'Casillero', '[]')`);
+  const doc = 'Bell Ville,     de               de 2026\nSr. Titular Empresa ÑANDÚ SRL\nS _________ /____________D\n\n>Se hace saber a Ud. que en los autos **“AMB C/ PÉREZ” (Expte. Nº 895)**\n\n>>Saluda a Ud. atentamente';
+  const huella = createHash('sha256').update(doc, 'utf8').digest('hex');
+  const adjunto = (extra = {}) => ({ nombre: 'Oficio embargo de haberes - Expte 895.pdf', modelo: 'oficio-embargo-haberes', doc, sha256: 'la que mande la app no vale', datos: { empleador: 'ÑANDÚ SRL' }, ...extra });
+  // la app lo crea ya confirmado (agendado para hoy), con el oficio adjunto; la huella la pone la base
+  let r = await emi.from('agenda').insert({ expte: '895', titulo: 'Solicita embargo de haberes', cuerpo: 'Que vengo…', fecha: sql(`select gestor.hoy()`), estado: 'pendiente', adjuntos: [adjunto()] }).select().single();
+  assert.ifError(r.error);
+  const id = r.data.id;
+  assert.equal(r.data.adjuntos[0].sha256, huella);
+  assert.equal(r.data.adjuntos[0].datos.empleador, 'ÑANDÚ SRL');
+  // lo que no es un oficio no entra
+  for (const malo of [[adjunto({ nombre: 'Oficio ñandú.pdf' })], [adjunto({ nombre: 'oficio.docx' })], [adjunto({ doc: '  ' })], ['texto suelto'], [adjunto(), adjunto(), adjunto(), adjunto()]]) {
+    r = await emi.from('agenda').update({ adjuntos: malo }).eq('id', id).select();
+    assert.ok(r.error, `no tendría que aceptarse: ${JSON.stringify(malo).slice(0, 80)}`);
+  }
+  // lo que lee la tarea: renglones de solo ASCII, sin comillas ni barras, iguales a los del espejo en JS,
+  // que vuelven a dar exactamente el texto guardado
+  const { renglones, leerRenglones, codificar } = await import('../texto-seguro.mjs');
+  const filas = sql(`select n || '|' || nombre || '|' || linea from gestor.agenda_adjuntos('${id}')`).split('\n').map((l) => l.split('|'));
+  assert.ok(filas.every(([n, nombre]) => n === '1' && nombre === 'Oficio embargo de haberes - Expte 895.pdf'));
+  const lineas = filas.map((f) => f.slice(2).join('|'));
+  assert.deepEqual(lineas, renglones(doc, 'Oficio embargo de haberes - Expte 895.pdf'));
+  assert.match(lineas[0], new RegExp(`^oficio ${huella.slice(0, 16)} \\d+ Oficio embargo de haberes - Expte 895\\.pdf$`));
+  assert.ok(lineas.every((l) => /^[\x20-\x7e]+$/.test(l) && !/["\\]/.test(l)), 'solo ASCII, sin comillas ni barras');
+  assert.equal(leerRenglones(lineas.join('\n')).doc, doc);
+  // el código de la base y el de JS escriben igual cualquier texto: acentos, comillas, barras,
+  // marcas, espacios seguidos (también al principio y al final), tabuladores y letras de más allá de U+FFFF
+  const raros = [' “Ñandú” \\ ~ <b> & "x" \tº ' + ' '.repeat(120) + '😀\n\n>>fin ', 'a  b', '  ', ' ', 'x', '~s05~n', 'L'.repeat(700) + ' ' + 'M'.repeat(300)];
+  for (const t of raros) {
+    assert.equal(sql(`select gestor.texto_seguro($t$${t}$t$)`), codificar(t), JSON.stringify(t).slice(0, 40));
+  }
+  // y corta igual en partes: un texto largo, sin espacios en los cortes
+  const largo = 'Se hace saber a Ud. ' + 'que en los autos “X” '.repeat(80);
+  r = await emi.from('agenda').update({ adjuntos: [adjunto({ doc: largo })] }).eq('id', id).select().single();
+  assert.ifError(r.error);
+  const lineasLargo = sql(`select linea from gestor.agenda_adjuntos('${id}')`).split('\n');
+  assert.deepEqual(lineasLargo, renglones(largo, 'Oficio embargo de haberes - Expte 895.pdf'));
+  assert.ok(lineasLargo.length > 5 && lineasLargo.slice(1).every((l) => l.length <= 260 && !/ $/.test(l)));
+  assert.equal(leerRenglones(lineasLargo.join('\n')).doc, largo);
+  r = await emi.from('agenda').update({ adjuntos: [adjunto()] }).eq('id', id).select().single();
+  assert.ifError(r.error);
+  // un escrito sin adjuntos no devuelve filas
+  const otro = sql(`insert into public.agenda (expte, titulo, cuerpo, fecha, estado) values ('895', 'Otro', 'Texto', gestor.hoy(), 'pendiente') returning id`);
+  assert.equal(sql(`select count(*) from gestor.agenda_adjuntos('${otro}')`), '0');
+  // deshacer restaura también los adjuntos
+  sql(`update public.agenda set adjuntos = '[]' where id = '${id}'`);
+  sql(`select gestor.deshacer((select max(id) from gestor.cambios where tabla = 'agenda' and clave = '${id}'))`);
+  assert.equal(sql(`select adjuntos -> 0 ->> 'sha256' from public.agenda where id = '${id}'`), huella);
+  // una vez que la tarea lo tomó, el oficio ya no cambia
+  sql(`update public.agenda set ahora = now() where id = '${id}'`);
+  assert.equal(sql(`select id from gestor.agenda_tomar(true)`), id);
+  assert.match(sqlFalla(`update public.agenda set adjuntos = '[]' where id = '${id}'`), /se está presentando: sus adjuntos ya no se cambian/);
+  assert.match(sql(`select gestor.agenda_presentada('${id}', 'Presentado con el oficio adjunto')`), /quedó A despacho/);
+  assert.match(sqlFalla(`update public.agenda set adjuntos = '[]' where id = '${id}'`), /ya se presentó/);
+  sql(`delete from public.agenda; delete from public.causas where expte = '895'`);
+});
+
 test('las funciones de la tarea del SAC no se alcanzan desde la API', async () => {
-  for (const f of ['agenda_del_dia', 'agenda_presentada', 'agenda_fallida', 'agenda_tomar', 'agenda_a_tiempo', 'hora_tarea']) {
+  for (const f of ['agenda_del_dia', 'agenda_presentada', 'agenda_fallida', 'agenda_tomar', 'agenda_a_tiempo', 'hora_tarea', 'agenda_adjuntos', 'texto_seguro']) {
     assert.ok((await emi.schema('gestor').rpc(f, {})).error, `gestor.${f} no debería ser accesible`);
     assert.ok((await emi.rpc(f, {})).error, `${f} tampoco existe como función pública`);
   }

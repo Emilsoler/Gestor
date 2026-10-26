@@ -497,3 +497,46 @@ body.con-chat .toast{bottom:calc(var(--abajo) + 84px)}  /* que el aviso no tape 
   .hist li{grid-template-columns:1fr auto}
   .hist li .mono{grid-column:1/-1}
 }
+
+/* ───────── Acción cautelar ─────────
+   Se elige embargo o secuestro, se completan los datos y al lado se ve el oficio como una hoja
+   de papel, con las tipografías del PDF (Garamond para el cuerpo, Caladea —las medidas de
+   Cambria— para el encabezado). */
+@font-face{font-family:"Oficio Garamond";font-style:normal;font-weight:400;font-display:swap;src:url(fonts/eb-garamond-400.ttf) format("truetype")}
+@font-face{font-family:"Oficio Garamond";font-style:normal;font-weight:700;font-display:swap;src:url(fonts/eb-garamond-700.ttf) format("truetype")}
+@font-face{font-family:"Oficio Caladea";font-style:normal;font-weight:400;font-display:swap;src:url(fonts/caladea-400.ttf) format("truetype")}
+.opciones{display:grid;gap:10px}
+.opcion{display:grid;gap:4px;text-align:left;padding:14px 16px;border:1px solid var(--line);border-radius:var(--r);background:var(--sunken);color:var(--fg);cursor:pointer}
+.opcion b{font-size:15px;font-weight:600}
+.opcion span{font-size:12.5px;color:var(--muted)}
+.opcion:hover,.opcion:focus-visible{border-color:var(--accent);background:var(--accent-soft)}
+.caugrid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
+.caucol{display:grid;gap:16px;min-width:0}
+.caumas summary{cursor:pointer;font-size:12.5px;color:var(--accent-txt)}
+.caumas[open] summary{margin-bottom:12px}
+label.f input.falta{border-color:var(--bad);box-shadow:0 0 0 1px var(--bad)}
+.ofmarco{background:#dcd8cf;border-radius:var(--r-s);padding:16px;overflow:auto}
+.of-hoja{background:#fff;color:#1b1b1b;max-width:640px;margin:0 auto;padding:40px 24px 44px 68px;box-shadow:0 6px 22px rgba(0,0,0,.4);
+  font:15px/1.75 "Oficio Garamond",Garamond,"Times New Roman",serif;text-align:justify;overflow-wrap:break-word}
+.of-enc{font:14px/1.65 "Oficio Caladea",Cambria,Georgia,serif;text-align:left;margin-bottom:14px}
+.of-enc p{margin:0 0 4px;white-space:pre-wrap}
+.of-p{margin:0 0 6px}
+.of-p.sangria{text-indent:26%}  /* 2211 twips del modelo de Word, sobre el ancho del texto */
+.of-p.cierre{margin:16px 0 0 16.5%;text-align:left}
+.of-falta{background:#ffe08a;color:#5c3d00;border-radius:3px;padding:0 4px;font:600 12px/1.4 var(--f-body);text-indent:0}
+.adjuntos{display:grid;gap:6px}
+.adj{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:var(--sunken);border:1px solid var(--line-soft);border-radius:var(--r-s);padding:6px 6px 6px 11px}
+.adjnom{font-size:12.5px;color:var(--soft);overflow-wrap:anywhere}
+.tplgrupo{margin:8px 0 0;font-size:15px;font-weight:600}
+@media (min-width:1000px){
+  .caugrid{grid-template-columns:minmax(0,1fr) minmax(0,1.1fr)}
+  .cauvista{position:sticky;top:0}
+  .ofmarco{max-height:calc(100dvh - 260px)}
+}
+@media (max-width:720px){
+  .cautelar .phead{flex-direction:column;align-items:stretch}
+  .cautelar .phead .btns{justify-content:flex-start}
+  .ofmarco{padding:8px}
+  .of-hoja{padding:22px 14px 26px 24px;font-size:14px}
+  .of-enc{font-size:13px}
+}
