@@ -10,7 +10,7 @@
     "vendor": "node vendor.mjs",
     "test:chat": "node --test tests/chat.test.mjs",
     "test:oficio": "node --test tests/oficio.test.mjs",
-    "test:cobranzas": "node --test tests/cobranzas.test.mjs && node --test tests/cobranzas-app.test.mjs && npm run test:creditos",
+    "test:cobranzas": "node --test tests/cobranzas.test.mjs && node --test tests/cobranzas-app.test.mjs && node --test tests/certificado-app.test.mjs && npm run test:creditos",
     "test:creditos": "node --test tests/creditos.test.mjs && node --test tests/creditos-app.test.mjs",
     "test:prenda": "node --test tests/prenda.test.mjs && node --test tests/prenda-app.test.mjs"
   },

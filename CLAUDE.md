@@ -426,6 +426,15 @@ de cada denuncia ("Denunciado por titular" o "por tercero").
   `select entidad, entidad_nombre, numero, denunciado, fecha_bcra, momento from public.consultas_cheques order by momento desc;`
   En los registros de la función no queda el número del cheque ni el de la cuenta.
 
+**Certificado de ARCA** (menú de la cuenta → «Certificado de ARCA», `certificado.js`): para sumar más
+adelante la constancia de inscripción de ARCA (web service `ws_sr_constancia_inscripcion`, que pide
+certificado). El panel arma en el navegador, con WebCrypto, una clave RSA de 2048 y la solicitud PKCS#10
+(sujeto `C=AR, O=<nombre>, CN=<alias>, serialNumber=CUIT <cuit>`, alias por omisión `CobranzasSoler`; sale
+igual byte a byte a la de `openssl req`). Se bajan los dos archivos: la solicitud (.csr) se sube a ARCA; la
+clave (.key) es secreta y se carga una sola vez como secreto de la función (`create_edge_function_secret`: la
+pega la persona en el panel de Supabase). La clave nunca va al chat, al repositorio ni al almacenamiento del
+navegador, y se olvida al cerrar el panel. La consulta a ARCA todavía no está hecha.
+
 **Cambiar la app**: `docs/cobranzas/` (`app.js` interfaz, `datos.js` la base, `calculo.js` cuentas,
 `textos.js` fechas, importes y mensajes, `creditos.js` lo que se muestra de una consulta al BCRA (por CUIT y por cheque),
 `styles.css`). Si se toca una cuenta, también

@@ -18,6 +18,7 @@ Nada de esta carpeta se publica con la app (GitHub Pages sirve solo `docs/`).
 | `tests/app.test.mjs` | La app de punta a punta en un navegador real (Playwright). |
 | `tests/cobranzas.test.mjs` | Cobranzas: las cuentas (contra la planilla de Excel y el listado de la Mutual), la liquidación de la base comparada con la de la app en cientos de casos al azar, las funciones para Claude, los permisos y la importación del listado (con uno inventado). |
 | `tests/cobranzas-app.test.mjs` | La app de cobranzas de punta a punta (`/cobranzas/`), en PC y en celular. |
+| `tests/certificado-app.test.mjs` | El panel «Certificado de ARCA»: arma la clave y la solicitud en el navegador, las baja y OpenSSL las revisa (firma, sujeto, que la clave sea la de la solicitud); la clave no queda guardada. |
 | `tests/creditos.test.mjs` | La función `bcra` de punta a punta: los pedidos al BCRA (por CUIT, por cheque y la lista de bancos), el semáforo, lo que se guarda, los errores del BCRA y los permisos de `consultas_bcra` y `consultas_cheques`. |
 | `tests/creditos-app.test.mjs` | La vista "Créditos" de la app de cobranzas, sus dos pestañas, en PC y en celular (también sin las tablas, sin la lista de bancos o sin la función publicadas). |
 | `bcra-falso.mjs`, `tests/casos-bcra.mjs` | Un doble de las APIs Central de Deudores y Cheques Denunciados del BCRA (127.0.0.1:54341) y sus casos, con CUITs y cheques inventados: las pruebas nunca consultan a personas ni cheques reales. La función `bcra` corre en local apuntando a él (127.0.0.1:54332). |

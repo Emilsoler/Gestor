@@ -16,10 +16,11 @@ import {
   esc, hoy, fmt, fmtLargo, fmtDia, nombreMes, mesDe, mesMas, plata, compacto, porciento, cuantos, telefonos, TIPOS_OPERACION,
   vehiculoTexto, operacionTexto, CAMPOS_MENSAJE, planDetalle, contextoMensaje, completar, SITUACION_PLAN, frecuencia,
 } from './textos.js';
+import { ALIAS_ARCA, armarSolicitud } from './certificado.js';
 import { importe, enCelda, idNuevo, r2 } from '../liquidacion.js';
 import { xlsx } from '../excel.js';
 
-const VERSION = '1.2.0';
+const VERSION = '1.3.0';
 const CLAVE_MIN = 10;
 const TIPOS_GESTION = ['Llamada', 'WhatsApp', 'Visita', 'Email', 'Carta documento', 'Promesa de pago', 'Nota'];
 const MEDIOS = ['Efectivo', 'Transferencia', 'Depósito', 'Cheque', 'Débito', 'Otro'];
@@ -36,7 +37,7 @@ const JUICIOS = '../'; // el gestor de juicios, en la misma base
 const S = {
   pantalla: 'arranque', vista: 'inicio', q: '', chip: 'activos', tramo: '', orden: 'deuda', mes: mesDe(hoy()),
   abierto: null, tab: 'resumen', f: null, confirmar: '', // la ficha abierta y lo que se escribe en ella
-  panel: '', nuevo: null, aj: null, modelos: {}, // paneles: 'nuevo' | 'mensajes' | 'ajustes' | 'clave'
+  panel: '', nuevo: null, aj: null, modelos: {}, arca: null, // paneles: 'nuevo' | 'mensajes' | 'ajustes' | 'clave' | 'arca'
   menu: false, instalar: null, ocupado: false, maxi: false,
   // Aprobación de créditos: por CUIT (el que se escribe, la consulta que se está viendo y su estado) o
   // por cheque (ch…: el banco y el número que se escriben, la consulta abierta, la lista de bancos).
@@ -674,6 +675,7 @@ function abrirDeudor(id, tab = 'resumen', con = '') {
 }
 function cerrarFicha() {
   S.abierto = null; S.f = null; S.confirmar = ''; S.panel = ''; S.nuevo = null; S.aj = null;
+  S.arca = null; // la clave de ARCA solo vive mientras su panel está abierto
   const dr = $('#drawer'); dr.hidden = true; dr.innerHTML = ''; document.body.style.overflow = '';
 }
 function irATab(tab) {
@@ -1462,12 +1464,13 @@ function abrirPanel(p) {
   if (p === 'nuevo') S.nuevo = { nombre: '', dni: '', socio: '', telefono: '', domicilio: '', acreedor: aj.acreedor, tasa: String(aj.tasa), hon: '0', tipo: 'Ayuda económica con prenda', numero: '', n0: '1', de: '', vto: '', importe: '', cant: '' };
   if (p === 'ajustes') S.aj = { tasa: String(aj.tasa), contado_pct: String(aj.contado_pct), oferta_dias: String(aj.oferta_dias), gracia: String(aj.gracia), caducidad: String(aj.caducidad), acreedor: aj.acreedor, firma: aj.firma };
   if (p === 'mensajes') S.modelos = {};
+  if (p === 'arca') S.arca = { cuit: '', nombre: '', alias: ALIAS_ARCA, generando: false, csr: '', clave: '', bajada: { csr: false, clave: false } };
   renderPanel(true);
 }
 function renderPanel(entra = false) {
   const box = $('#drawer'), antes = box.querySelector('.panel'), sc = antes && !entra ? antes.scrollTop : 0, foco = guardarFoco(box);
   box.hidden = false; document.body.style.overflow = 'hidden';
-  const cuerpo = { nuevo: panelNuevo, mensajes: panelMensajes, ajustes: panelAjustes, clave: panelClave }[S.panel]();
+  const cuerpo = { nuevo: panelNuevo, mensajes: panelMensajes, ajustes: panelAjustes, clave: panelClave, arca: panelArca }[S.panel]();
   box.innerHTML = `<div class="scrim" data-a="cerrar"></div><aside class="panel${entra ? ' entra' : ''}" role="dialog" aria-modal="true">${cuerpo}<div class="pfin"></div></aside>`;
   if (sc) box.querySelector('.panel').scrollTop = sc;
   devolverFoco(foco);
@@ -1590,6 +1593,67 @@ function panelClave() {
    </form>`;
 }
 
+// ───────────────────────── Certificado de ARCA ─────────────────────────
+// Arma en este navegador la clave y la solicitud del certificado para el padrón de ARCA (certificado.js).
+// La clave queda solo en memoria mientras el panel está abierto: no se guarda en el dispositivo ni se
+// manda a ningún lado, y al cerrar el panel se olvida.
+
+const AYUDA_ARCA_CUIT = 'Es el CUIT con el que vas a entrar a ARCA para subir la solicitud.';
+function panelArca() {
+  const A = S.arca, aviso = avisoCuit(A.cuit), listo = !!A.csr, bloqueo = listo ? ' disabled' : '';
+  const datos = `<form id="fArca" class="sec" novalidate>
+    <label class="f">CUIT<input id="arca_cuit" ${atar('arca.cuit')} inputmode="numeric" autocomplete="off" placeholder="Ej.: 20-12345678-6" maxlength="20"${bloqueo}></label>
+    <p class="hint m0${aviso.mal ? ' malo' : ''}" id="arca_aviso" aria-live="polite">${esc(aviso.texto || AYUDA_ARCA_CUIT)}</p>
+    <label class="f">Nombre o razón social<input id="arca_nombre" ${atar('arca.nombre')} autocomplete="off" placeholder="Como figura en ARCA" maxlength="64"${bloqueo}></label>
+    <label class="f">Alias del certificado<input id="arca_alias" ${atar('arca.alias')} autocomplete="off" maxlength="50"${bloqueo}></label>
+    <p class="hint m0">Solo letras y números. Es el nombre que vas a escribir en ARCA al subir la solicitud.</p>
+    ${listo ? '' : `<div class="actions"><button class="btn primary" type="submit" id="arca_ir"${A.generando ? ' disabled' : ''}>${A.generando ? 'Generando…' : 'Generar los archivos'}</button></div>`}
+  </form>`;
+  const boton = (que, texto) => `<button class="btn${A.bajada[que] ? '' : ' primary'}" data-a="arca-${que}">${texto}</button>${A.bajada[que] ? '<span class="hint">Descargada</span>' : ''}`;
+  const archivos = listo ? `<div class="nota"><p><b>Listo. Descargá los dos archivos:</b></p>
+    <div class="actions">${boton('csr', 'Descargar solicitud (.csr)')}${boton('clave', 'Descargar clave (.key)')}</div>
+    <p class="hint m0">Van a la carpeta de descargas. La clave no queda guardada en ningún otro lado: si cerrás este panel sin bajarla, hay que generar los dos de nuevo.</p>
+    ${A.bajada.csr && A.bajada.clave ? `<p class="m0">Ahora, en ARCA: «Administración de Certificados Digitales» → «Agregar alias» → alias <b>${esc(A.alias)}</b> → elegí el archivo <b>${esc(A.alias)}.csr</b> → «Agregar alias».</p>` : ''}</div>` : '';
+  return `${cabPanel('Aprobación de créditos', 'Certificado de ARCA')}
+  <div class="sec"><p class="m0">Para consultar la constancia de inscripción de un CUIT, ARCA le pide a la app un certificado. Acá se arman los dos archivos para pedirlo. Hacelo en la computadora con la que entrás a ARCA.</p>
+    <ul class="campos">
+      <li><b>La solicitud (.csr)</b> se sube a ARCA. No es secreta.</li>
+      <li><b>La clave (.key)</b> es secreta: guardala en la compu y no la mandes por chat ni por mail. Se pega una sola vez en Supabase.</li>
+    </ul></div>
+  ${datos}${archivos}`;
+}
+function actualizarArca() {
+  const a = avisoCuit(S.arca?.cuit), p = $('#arca_aviso');
+  if (p) { p.textContent = a.texto || AYUDA_ARCA_CUIT; p.classList.toggle('malo', !!a.mal); }
+}
+async function generarArca() {
+  const A = S.arca;
+  if (!A || A.generando || A.csr) return;
+  A.generando = true; renderPanel();
+  try {
+    const alias = String(A.alias || '').trim(), r = await armarSolicitud({ cuit: A.cuit, nombre: A.nombre, alias });
+    Object.assign(A, { csr: r.csr, clave: r.clave, alias });
+    toast('Archivos listos para descargar');
+  } catch (e) {
+    toast(e.message || 'No se pudieron generar los archivos');
+  } finally {
+    A.generando = false;
+    if (S.arca === A && S.panel === 'arca') renderPanel();
+  }
+}
+/** Descarga directa, sin el menú de compartir del celular: la clave no tiene que terminar en un chat. */
+function bajarArca(act) {
+  const A = S.arca;
+  if (!A?.csr) return;
+  const que = act === 'arca-csr' ? 'csr' : 'clave';
+  const url = URL.createObjectURL(new Blob([que === 'csr' ? A.csr : A.clave], { type: 'application/octet-stream' }));
+  const a = Object.assign(document.createElement('a'), { href: url, download: `${A.alias}.${que === 'csr' ? 'csr' : 'key'}` });
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  A.bajada[que] = true;
+  toast(que === 'csr' ? 'Solicitud descargada' : 'Clave descargada');
+  renderPanel();
+}
+
 // ───────────────────────── Cuenta ─────────────────────────
 
 const instalada = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
@@ -1604,6 +1668,7 @@ function renderMenu() {
    <button class="op solo-movil" role="menuitem" data-m="mensajes">Modelos de mensaje</button>
    <button class="op solo-movil" role="menuitem" data-m="ajustes">Ajustes</button>
    <button class="op" role="menuitem" data-m="exportar">Descargar deudores en Excel</button>
+   <button class="op" role="menuitem" data-m="arca">Certificado de ARCA</button>
    <a class="op" role="menuitem" href="${JUICIOS}" target="_blank" rel="noopener">Abrir el gestor de juicios</a>
    ${S.instalar ? '<button class="op" role="menuitem" data-m="instalar">Instalar la app en este dispositivo</button>' : ''}
    ${ios ? '<div class="menu-pie hint">Para instalarla en el iPhone: abrila en Safari, tocá Compartir y después “Agregar a inicio”.</div>' : ''}
@@ -1614,7 +1679,7 @@ function renderMenu() {
 }
 async function menuAct(b) {
   const a = b.dataset.m; S.menu = false; renderMenu();
-  if (a === 'mensajes' || a === 'ajustes' || a === 'clave') { abrirPanel(a); if (a === 'clave') $('#n_clave')?.focus(); return; }
+  if (['mensajes', 'ajustes', 'clave', 'arca'].includes(a)) { abrirPanel(a); if (a === 'clave') $('#n_clave')?.focus(); return; }
   if (a === 'exportar') { descargarDeudores(); return; }
   if (a === 'instalar' && S.instalar) { const ev = S.instalar; S.instalar = null; ev.prompt(); return; }
   if (a === 'salir') { await salir(); mostrar('ingreso'); toast('Sesión cerrada'); }
@@ -1636,6 +1701,8 @@ document.addEventListener('submit', async (e) => {
     await consultarCuit(S.cred.cuit);
   } else if (e.target.id === 'fCheque') {
     await consultarChequeDe(S.cred.entidad, S.cred.numero);
+  } else if (e.target.id === 'fArca') {
+    await generarArca();
   } else if (e.target.id === 'fClave' || e.target.id === 'fClaveMenu') {
     const a = $('#n_clave').value, problema = claveValida(a, $('#n_clave2').value);
     if (problema) { errorIngreso(problema); return; }
@@ -1686,6 +1753,7 @@ document.addEventListener('click', async (e) => {
     await unaVez(a, (b) => accionCheque(act, b)); return;
   }
   if (S.panel) {
+    if (act === 'arca-csr' || act === 'arca-clave') { bajarArca(act); return; } // sin esperas: la descarga lo pide así
     if (act === 'nuevo-crear') { await unaVez(a, crearNuevo); return; }
     if (act === 'ajustes-guardar') { await unaVez(a, guardarAjustesPanel); return; }
     if (act === 'modelo-guardar' || act === 'modelo-borrar') { await unaVez(a, (b) => accionModelo(act, b)); return; }
@@ -1705,6 +1773,7 @@ document.addEventListener('input', (e) => {
   const k = el.dataset?.k; if (!k) return;
   poner(k, el.type === 'checkbox' ? el.checked : el.value);
   if (k === 'cred.cuit') { actualizarCuit(); return; }
+  if (k === 'arca.cuit') { actualizarArca(); return; }
   if (k === 'cred.numero' || k === 'cred.entidad') { actualizarCheque(); return; }
   if (k === 'cred.filtro' || k === 'cred.chFiltro') { render(); return; }
   if (el.dataset.re) return; // fechas, casillas y listas: se redibuja con "change"
