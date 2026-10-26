@@ -42,7 +42,7 @@ stop_one() { # detiene el servicio y espera a que libere su puerto
 }
 
 down() {
-  stop_one gateway; stop_one postgrest; stop_one gotrue; stop_one chat; stop_one claude-falso; stop_one bcra; stop_one bcra-falso; stop_one ubicar; stop_one traccar-falso
+  stop_one gateway; stop_one postgrest; stop_one gotrue; stop_one chat; stop_one claude-falso; stop_one bcra; stop_one bcra-falso; stop_one arca-falso; stop_one ubicar; stop_one traccar-falso
   if [ -d "$PGDATA" ]; then as_pg "$PGBIN/pg_ctl" -D "$PGDATA" -m fast stop >/dev/null 2>&1 || true; fi
 }
 
@@ -132,12 +132,24 @@ SQL
     echo "sin Deno en $DENO: la función chat no se levanta (ver dev/README.md)" >&2
   fi
 
-  # La función `bcra` (supabase/functions/bcra), hablando con un doble del BCRA (bcra-falso.mjs).
-  stop_one bcra-falso; stop_one bcra
+  # La función `bcra` (supabase/functions/bcra), hablando con un doble del BCRA (bcra-falso.mjs) y otro de
+  # ARCA (arca-falso.mjs). Para ARCA, una clave y un certificado de prueba, autofirmado y con un CUIT
+  # inventado: el certificado lo cargan las pruebas en la base, como el de verdad.
+  if [ ! -s "$STACK/arca-prueba.key" ] || [ ! -s "$STACK/arca-prueba.crt" ]; then
+    openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -keyout "$STACK/arca-prueba.key" -out "$STACK/arca-prueba.crt" \
+      -subj "/CN=CobranzasPrueba/serialNumber=CUIT 20111111112" >/dev/null 2>&1
+  fi
+  stop_one bcra-falso; stop_one arca-falso; stop_one bcra
   BCRA_FALSO_PORT=54341 nohup setsid node "$HERE/bcra-falso.mjs" > "$LOGS/bcra-falso.log" 2>&1 &
   echo $! > "$STACK/bcra-falso.pid"
+  ARCA_FALSO_PORT=54343 nohup setsid node "$HERE/arca-falso.mjs" > "$LOGS/arca-falso.log" 2>&1 &
+  echo $! > "$STACK/arca-falso.pid"
+  # El padrón con dos direcciones, como en producción: la primera contesta una página de error que no es
+  # SOAP, así cada consulta pasa por la de respaldo.
   if [ -x "$DENO" ]; then
     SUPABASE_URL=http://127.0.0.1:54321 SUPABASE_ANON_KEY="$ANON_KEY" BCRA_URL=http://127.0.0.1:54341 \
+    ARCA_CLAVE="$(cat "$STACK/arca-prueba.key")" ARCA_WSAA_URL=http://127.0.0.1:54343/ws/services/LoginCms \
+    ARCA_PADRON_URL=http://127.0.0.1:54343/sr-padron/no-atiende,http://127.0.0.1:54343/sr-padron/webservices/personaServiceA5 \
     DENO_SERVE_ADDRESS=tcp:127.0.0.1:54332 \
       nohup setsid "$DENO" run --allow-net --allow-env "$REPO/supabase/functions/bcra/index.ts" > "$LOGS/bcra.log" 2>&1 &
     echo $! > "$STACK/bcra.pid"

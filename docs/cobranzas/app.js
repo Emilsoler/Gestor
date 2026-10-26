@@ -3,10 +3,10 @@
 import {
   D, iniciar, reconectar, entrar, salir, cambiarClave, alCambiar, mensaje, ajustes, ESTADOS,
   crearDeudor, cambiarDeudor, borrarDeudor, crearModelo, guardarModelo, borrarModelo, guardarAjustes,
-  consultarBCRA, detalleConsulta, detalleGuardado, borrarConsulta, consultarCheque, entidadesCheques, borrarConsultaCheque,
+  consultarBCRA, detalleConsulta, detalleGuardado, borrarConsulta, consultarCheque, entidadesCheques, borrarConsultaCheque, probarArca,
 } from './datos.js';
 import {
-  avisoCuit, soloDigitos, fichaConsulta, filaConsulta, textoConsulta, deudoresDelCuit,
+  avisoCuit, soloDigitos, cuitTexto, fichaConsulta, filaConsulta, textoConsulta, deudoresDelCuit,
   avisoCheque, numeroCheque, bancosRecientes, opcionesBancos, bancoEnLista, fichaCheque, textoCheque, filaCheque,
 } from './creditos.js';
 import {
@@ -20,7 +20,7 @@ import { ALIAS_ARCA, armarSolicitud } from './certificado.js';
 import { importe, enCelda, idNuevo, r2 } from '../liquidacion.js';
 import { xlsx } from '../excel.js';
 
-const VERSION = '1.3.0';
+const VERSION = '1.4.0';
 const CLAVE_MIN = 10;
 const TIPOS_GESTION = ['Llamada', 'WhatsApp', 'Visita', 'Email', 'Carta documento', 'Promesa de pago', 'Nota'];
 const MEDIOS = ['Efectivo', 'Transferencia', 'Depósito', 'Cheque', 'Débito', 'Otro'];
@@ -645,7 +645,7 @@ async function accionCredito(act, b) {
   if (act === 'cr-repetir') { await consultarCuit(b.dataset.cuit); return; }
   const c = D.consultas_bcra.find((x) => x.id === S.cred.abierta);
   if (!c) return;
-  if (act === 'cr-copiar') copiar(textoConsulta(c));
+  if (act === 'cr-copiar') copiar(textoConsulta(c, detalleGuardado(c.id)));
   else if (act === 'cr-confirmar' || act === 'cr-no') { S.cred.confirmar = act === 'cr-confirmar'; render(); }
   else if (act === 'cr-borrar') {
     try { await borrarConsulta(c.id); Object.assign(S.cred, { abierta: null, confirmar: false }); toast('Consulta eliminada'); } catch (e) { toast(mensaje(e, 'no se eliminó')); }
@@ -1464,7 +1464,7 @@ function abrirPanel(p) {
   if (p === 'nuevo') S.nuevo = { nombre: '', dni: '', socio: '', telefono: '', domicilio: '', acreedor: aj.acreedor, tasa: String(aj.tasa), hon: '0', tipo: 'Ayuda económica con prenda', numero: '', n0: '1', de: '', vto: '', importe: '', cant: '' };
   if (p === 'ajustes') S.aj = { tasa: String(aj.tasa), contado_pct: String(aj.contado_pct), oferta_dias: String(aj.oferta_dias), gracia: String(aj.gracia), caducidad: String(aj.caducidad), acreedor: aj.acreedor, firma: aj.firma };
   if (p === 'mensajes') S.modelos = {};
-  if (p === 'arca') S.arca = { cuit: '', nombre: '', alias: ALIAS_ARCA, generando: false, csr: '', clave: '', bajada: { csr: false, clave: false } };
+  if (p === 'arca') S.arca = { cuit: '', nombre: '', alias: ALIAS_ARCA, generando: false, csr: '', clave: '', bajada: { csr: false, clave: false }, prueba: null };
   renderPanel(true);
 }
 function renderPanel(entra = false) {
@@ -1614,13 +1614,33 @@ function panelArca() {
     <div class="actions">${boton('csr', 'Descargar solicitud (.csr)')}${boton('clave', 'Descargar clave (.key)')}</div>
     <p class="hint m0">Van a la carpeta de descargas. La clave no queda guardada en ningún otro lado: si cerrás este panel sin bajarla, hay que generar los dos de nuevo.</p>
     ${A.bajada.csr && A.bajada.clave ? `<p class="m0">Ahora, en ARCA: «Administración de Certificados Digitales» → «Agregar alias» → alias <b>${esc(A.alias)}</b> → elegí el archivo <b>${esc(A.alias)}.csr</b> → «Agregar alias».</p>` : ''}</div>` : '';
+  const P = A.prueba;
+  const conexion = `<div class="sec"><h4>Conexión</h4>
+    <p class="m0">Con el certificado cargado, cada consulta por CUIT trae también la constancia de inscripción de ARCA.</p>
+    <div class="actions"><button class="btn primary" data-a="arca-probar"${P?.probando ? ' disabled' : ''}>${P?.probando ? 'Probando…' : 'Probar la conexión con ARCA'}</button></div>
+    ${P?.ok ? `<div class="nota"><p><b>Conectado.</b> ARCA respondió con los datos de ${esc(P.ok.nombre || 'tu CUIT')} (CUIT ${esc(cuitTexto(P.ok.cuit))}).</p>
+      <p class="hint m0">Certificado ${esc(P.ok.alias)}, vence el ${esc(fmtLargo(String(P.ok.vence).slice(0, 10)))}.</p></div>` : ''}
+    ${P?.error ? `<p class="aviso-chico" role="alert">${esc(P.error)}</p>` : ''}</div>`;
   return `${cabPanel('Aprobación de créditos', 'Certificado de ARCA')}
-  <div class="sec"><p class="m0">Para consultar la constancia de inscripción de un CUIT, ARCA le pide a la app un certificado. Acá se arman los dos archivos para pedirlo. Hacelo en la computadora con la que entrás a ARCA.</p>
+  ${conexion}
+  <div class="sec"><h4>Pedir un certificado</h4><p class="m0">ARCA da los certificados por dos años. Para pedir uno (la primera vez, o para renovarlo), acá se arman los dos archivos. Hacelo en la computadora con la que entrás a ARCA.</p>
     <ul class="campos">
       <li><b>La solicitud (.csr)</b> se sube a ARCA. No es secreta.</li>
       <li><b>La clave (.key)</b> es secreta: guardala en la compu y no la mandes por chat ni por mail. Se pega una sola vez en Supabase.</li>
     </ul></div>
   ${datos}${archivos}`;
+}
+async function probarArcaPanel() {
+  const A = S.arca;
+  if (!A || A.prueba?.probando) return;
+  A.prueba = { probando: true }; renderPanel();
+  try {
+    const r = await probarArca();
+    if (S.arca === A) A.prueba = { ok: r };
+  } catch (e) {
+    if (S.arca === A) A.prueba = { error: e.sinSesion ? mensaje(e) : e.message || 'No se pudo probar la conexión con ARCA' };
+  }
+  if (S.arca === A && S.panel === 'arca') renderPanel();
 }
 function actualizarArca() {
   const a = avisoCuit(S.arca?.cuit), p = $('#arca_aviso');
@@ -1754,6 +1774,7 @@ document.addEventListener('click', async (e) => {
   }
   if (S.panel) {
     if (act === 'arca-csr' || act === 'arca-clave') { bajarArca(act); return; } // sin esperas: la descarga lo pide así
+    if (act === 'arca-probar') { await probarArcaPanel(); return; }
     if (act === 'nuevo-crear') { await unaVez(a, crearNuevo); return; }
     if (act === 'ajustes-guardar') { await unaVez(a, guardarAjustesPanel); return; }
     if (act === 'modelo-guardar' || act === 'modelo-borrar') { await unaVez(a, (b) => accionModelo(act, b)); return; }

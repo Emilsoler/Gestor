@@ -81,3 +81,37 @@ CASOS.cheques = {
     [`11/${CHEQUE.raro}`]: { cuerpo: { status: 200, results: { numeroCheque: +CHEQUE.raro } } }, // sin `denunciado`: no se puede leer
   },
 };
+
+// ───────────────────────── ARCA (constancia de inscripción) ─────────────────────────
+// Lo que responde el ARCA falso (dev/arca-falso.mjs) para cada CUIT. El certificado de prueba es del CUIT
+// "verde" (20111111112): «Probar la conexión» consulta ese.
+export const PERSONAS_ARCA = {
+  [CUIT.verde]: { // monotributista
+    datosGenerales: {
+      apellido: 'VERDE', nombre: 'PERSONA', tipoPersona: 'FISICA', tipoClave: 'CUIT', estadoClave: 'ACTIVO', idPersona: CUIT.verde,
+      domicilioFiscal: { direccion: 'BV COLON 100', localidad: 'BELL VILLE', codPostal: '2550', idProvincia: '3', descripcionProvincia: 'CORDOBA', tipoDomicilio: 'FISCAL' },
+    },
+    datosMonotributo: {
+      actividadMonotributista: { descripcionActividad: 'SERVICIOS JURIDICOS', idActividad: '691001', nomenclador: '883', orden: '1', periodo: '201911' },
+      categoriaMonotributo: { descripcionCategoria: 'D LOCACIONES DE SERVICIO', idCategoria: '25', idImpuesto: '20', periodo: '202602' },
+      impuesto: { descripcionImpuesto: 'MONOTRIBUTO', idImpuesto: '20', periodo: '201911' },
+    },
+  },
+  [CUIT.nada]: { // responsable inscripto, sin deudas en el BCRA: el nombre sale de ARCA
+    datosGenerales: {
+      apellido: 'SIN DEUDAS', nombre: 'PERSONA', tipoPersona: 'FISICA', tipoClave: 'CUIT', estadoClave: 'ACTIVO', idPersona: CUIT.nada,
+      domicilioFiscal: { direccion: 'SAN MARTIN 250', Localidad: 'VILLA MARIA', descripcionProvincia: 'CORDOBA' }, // "Localidad", como en el manual
+    },
+    datosRegimenGeneral: {
+      actividad: [{ descripcionActividad: 'CRIA DE GANADO BOVINO', orden: '2', periodo: '201501' }, { descripcionActividad: 'CULTIVO DE SOJA', orden: '1', periodo: '201501' }],
+      impuesto: [
+        { descripcionImpuesto: 'GANANCIAS PERSONAS HUMANAS', idImpuesto: '11', estadoImpuesto: 'AC', periodo: '201501' },
+        { descripcionImpuesto: 'IVA', idImpuesto: '30', estadoImpuesto: 'AC', periodo: '201501' },
+        { descripcionImpuesto: 'BIENES PERSONALES', idImpuesto: '180', estadoImpuesto: 'BD', periodo: '201501' },
+      ],
+    },
+  },
+  [CUIT.rojo]: { // CUIT inactiva: sin constancia
+    errorConstancia: { apellido: 'ROJA', nombre: 'PERSONA', idPersona: CUIT.rojo, error: ['La CUIT que ingresaste se encuentra inactiva, ingresá tu CUIT activa'] },
+  },
+};

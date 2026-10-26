@@ -5,11 +5,14 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { sql, crearCuenta, limpiar } from './helpers.mjs';
-import { CUIT, CASOS, CHEQUE } from './casos-bcra.mjs';
+import { readFileSync } from 'node:fs';
+import { CUIT, CASOS, CHEQUE, PERSONAS_ARCA } from './casos-bcra.mjs';
 
 const BASE = (process.env.BASE || 'http://127.0.0.1:8080/') + 'cobranzas/';
 const EMAIL = 'creditos-app@test.local', CLAVE = 'Clave-creditos-app-2026';
 const FALSO = 'http://127.0.0.1:54341';
+const ARCA = 'http://127.0.0.1:54343';
+const certPrueba = () => readFileSync(`${process.env.STACK || '/home/claude/.stack'}/arca-prueba.crt`, 'utf8');
 // Los importes llevan espacio duro ("$\u00a01.500") y las celdas saltos de rengl\u00f3n: para comparar, espacios comunes.
 const norm = (t) => String(t ?? '').replace(/\s+/g, ' ');
 const cuantas = () => +sql('select count(*) from public.consultas_bcra');
@@ -47,6 +50,8 @@ async function consultar(p, cuit) {
 before(async () => {
   limpiar();
   sql('delete from public.consultas_bcra; delete from public.consultas_cheques; delete from public.deudores;');
+  sql(`update gestor.arca set certificado = '', ticket = null`);
+  await fetch(`${ARCA}/__pedidos`, { method: 'DELETE' });
   await fetch(`${FALSO}/__pedidos`, { method: 'DELETE' });
   await fetch(`${FALSO}/__casos`, { method: 'POST', body: JSON.stringify(CASOS) });
   await crearCuenta(EMAIL, CLAVE, 'Emi');
@@ -398,6 +403,40 @@ test('celular: la pestaña de cheques entra a lo ancho y las denuncias se apilan
   assert.equal(medidas.cabecera, 'none');
   assert.ok(medidas.cuenta, 'la cuenta se ve sin correr la tabla');
   await c.close();
+});
+
+test('ARCA: la consulta por CUIT muestra la constancia y, si el BCRA no da el nombre, el de ARCA', async () => {
+  await fetch(`${ARCA}/__pedidos`, { method: 'DELETE' });
+  await fetch(`${ARCA}/__casos`, { method: 'POST', body: JSON.stringify({ personas: PERSONAS_ARCA }) });
+  sql(`select gestor.arca_certificado($c$${certPrueba()}$c$)`);
+  await page.click('[data-cr-modo="cuit"]');
+  await page.waitForSelector('#cr_cuit');
+  await consultar(page, CUIT.verde);
+  await page.waitForSelector('.cr-resultado .cr-arca');
+  const t = norm(await page.textContent('.cr-arca'));
+  assert.match(t, /ARCA · Constancia de inscripción\s*VERDE PERSONA/);
+  assert.match(t, /Situación\s*Monotributo, categoría D \(locaciones de servicio\)/);
+  assert.match(t, /Actividad\s*SERVICIOS JURIDICOS/);
+  assert.match(t, /CUIT\s*Activa/);
+  assert.match(t, /Domicilio fiscal\s*BV COLON 100, BELL VILLE, CORDOBA/);
+  await page.click('[data-a="cr-copiar"]');
+  await toast(page, 'Copiado');
+  assert.match(await page.evaluate(() => navigator.clipboard.readText()), /\nARCA: Monotributo, categoría D \(locaciones de servicio\) · SERVICIOS JURIDICOS\n/);
+  // Sin deudas, el nombre viene de ARCA y ya no hace falta el aviso de confirmar el CUIT.
+  await consultar(page, CUIT.nada);
+  await page.waitForSelector('.cr-resultado .cr-arca');
+  assert.match(await page.textContent('.cr-resultado h3'), /SIN DEUDAS PERSONA/);
+  assert.doesNotMatch(await page.textContent('.cr-resultado'), /confirmá que el CUIT/);
+  assert.match(norm(await page.textContent('.cr-arca')), /Régimen general: GANANCIAS PERSONAS HUMANAS, IVA/);
+  // Si ARCA no autoriza: el aviso en su lugar, y lo del BCRA igual.
+  sql('update gestor.arca set ticket = null');
+  await fetch(`${ARCA}/__pedidos`, { method: 'DELETE' });
+  await fetch(`${ARCA}/__casos`, { method: 'POST', body: JSON.stringify({ login: 'no_autorizado' }) });
+  await consultar(page, CUIT.verde);
+  await page.waitForSelector('.cr-arca .aviso-chico');
+  assert.match(await page.textContent('.cr-arca'), /«Nueva Relación»/);
+  assert.match(await page.textContent('.cr-luz'), /Verde/);
+  sql(`update gestor.arca set certificado = '', ticket = null`);
 });
 
 test('sin errores en la consola', () => {

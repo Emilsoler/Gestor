@@ -10,10 +10,13 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
-import { crearCuenta, limpiar } from './helpers.mjs';
+import { crearCuenta, limpiar, sql } from './helpers.mjs';
+import { PERSONAS_ARCA } from './casos-bcra.mjs';
 
 const BASE = (process.env.BASE || 'http://127.0.0.1:8080/') + 'cobranzas/';
 const EMAIL = 'arca-app@test.local', CLAVE = 'Clave-arca-app-2026';
+const ARCA = 'http://127.0.0.1:54343';
+const sinArca = () => sql(`update gestor.arca set certificado = '', ticket = null`);
 const ssl = (...args) => execFileSync('openssl', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 let browser, dir;
 const errores = [];
@@ -122,6 +125,26 @@ test('celular: el panel entra a lo ancho', async () => {
   await p.waitForSelector('[data-a="arca-csr"]');
   const m = await p.evaluate(() => ({ panel: document.querySelector('.panel').scrollWidth, ancho: document.querySelector('.panel').clientWidth }));
   assert.ok(m.panel <= m.ancho, `nada se sale de costado (${m.panel} > ${m.ancho})`);
+  await c.close();
+});
+
+test('probar la conexión con ARCA: sin certificado dice qué falta; con el certificado, «Conectado»', async () => {
+  sinArca();
+  await fetch(`${ARCA}/__pedidos`, { method: 'DELETE' });
+  await fetch(`${ARCA}/__casos`, { method: 'POST', body: JSON.stringify({ personas: PERSONAS_ARCA }) });
+  const { c, p } = await nuevaPagina();
+  await abrir(p);
+  await p.click('[data-a="arca-probar"]');
+  await p.waitForSelector('.panel .aviso-chico[role=alert]');
+  assert.match(await p.textContent('.panel .aviso-chico[role=alert]'), /certificado de ARCA/);
+  sql(`select gestor.arca_certificado($c$${readFileSync(`${process.env.STACK || '/home/claude/.stack'}/arca-prueba.crt`, 'utf8')}$c$)`);
+  await p.click('[data-a="arca-probar"]');
+  await p.waitForSelector('.panel .nota >> text=Conectado');
+  const t = (await p.textContent('.panel .nota')).replace(/\s+/g, ' ');
+  assert.match(t, /Conectado\. ARCA respondió con los datos de VERDE PERSONA \(CUIT 20-11111111-2\)\./);
+  assert.match(t, /Certificado CobranzasPrueba, vence el \d\d\/\d\d\/\d{4}\./);
+  assert.equal(await p.locator('.panel .aviso-chico[role=alert]').count(), 0);
+  sinArca();
   await c.close();
 });
 

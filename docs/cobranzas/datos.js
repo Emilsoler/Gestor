@@ -513,6 +513,9 @@ export async function entidadesCheques() {
 const bancosValidos = (x) => lista(x).filter((e) => Number.isInteger(e?.codigo) && typeof e?.nombre === 'string');
 export const borrarConsultaCheque = (id) => eliminar('consultas_cheques', id);
 
+/** «Probar la conexión con ARCA»: la constancia del CUIT del certificado. Devuelve {ok, cuit, alias, vence, nombre, estado}. */
+export async function probarArca() { return (await invocarBCRA({ accion: 'arca_probar' })).arca; }
+
 /** Lo que respondió el BCRA en una consulta (se lee una vez y queda en memoria). */
 export async function detalleConsulta(id) {
   if (DETALLES.has(id)) return DETALLES.get(id);
