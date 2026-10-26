@@ -75,7 +75,7 @@ textarea{resize:vertical}
 .app{max-width:1240px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr);gap:16px;
   padding:var(--arriba) var(--pad) calc(var(--abajo) + 40px)}
 .wrap,.lateral{display:contents}
-.marca{display:none}
+.marca,.otra-app{display:none}
 header{order:1} #franja{order:2} #avisos{order:3} #stats{order:4} #toolbar{order:5} #vistas{order:6} #chips{order:7} #main{order:8}
 #franja:empty,#avisos:empty{display:none}
 
@@ -330,8 +330,9 @@ label.f input[readonly],label.f textarea[readonly]{color:var(--soft)}
   background:var(--raised);border:1px solid var(--line);border-radius:var(--r);padding:6px;display:grid;gap:2px;box-shadow:0 18px 48px rgba(3,5,14,.55)}
 .menu-quien{padding:8px 10px 10px;border-bottom:1px solid var(--line-soft);margin-bottom:4px;overflow-wrap:anywhere}
 .menu-quien b{display:block}
-.menu button.op{border:0;background:none;text-align:left;padding:9px 10px;border-radius:var(--r-s);cursor:pointer;width:100%}
-.menu button.op:hover{background:rgba(255,255,255,.06)}
+.menu .op{border:0;background:none;text-align:left;padding:9px 10px;border-radius:var(--r-s);cursor:pointer;width:100%}
+.menu a.op{display:block;color:var(--fg);text-decoration:none}
+.menu .op:hover{background:rgba(255,255,255,.06)}
 .menu-pie{padding:8px 10px 6px;border-top:1px solid var(--line-soft);margin-top:4px}
 .scrim.claro{background:transparent;z-index:30}
 
@@ -425,6 +426,14 @@ body.con-chat .toast{bottom:calc(var(--abajo) + 84px)}  /* que el aviso no tape 
   .vista-txt{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
   .badge{position:absolute;top:9px;right:13px;width:9px;height:9px;box-shadow:0 0 0 2px var(--side)}
   .seg button[aria-pressed="true"] .badge:not(.urg):not(.pend){background:var(--accent)}
+
+  /* Al pie de la barra, el acceso a la app de cobranzas (la otra app, con su color). */
+  .otra-app{order:9;display:flex;align-items:center;justify-content:center;gap:10px;margin-top:auto;padding:8px;border-radius:12px;
+    color:var(--muted);text-decoration:none;font-weight:500}
+  .otra-app:hover{background:rgba(255,255,255,.04);color:var(--fg)}
+  .otra-c{display:grid;place-items:center;width:28px;height:28px;border-radius:9px;background:linear-gradient(120deg,#0b6e74,#10804a);
+    color:#fff;font-size:13px;font-weight:600}
+  .otra-txt{display:none}
 }
 @media (min-width:1140px){
   :root{--lat:236px;--pad:28px}
@@ -436,6 +445,8 @@ body.con-chat .toast{bottom:calc(var(--abajo) + 84px)}  /* que el aviso no tape 
   .seg button{justify-content:flex-start}
   .vista-txt{position:static;width:auto;height:auto;overflow:visible;clip:auto}
   .badge{position:static;margin-left:auto;min-width:22px;width:auto;height:20px;padding:0 6px;border-radius:6px;font-size:11px;color:var(--side);box-shadow:none}
+  .otra-app{justify-content:flex-start;padding:8px 12px}
+  .otra-txt{display:inline}
   header h1{font-size:14px;letter-spacing:.2em;color:var(--soft);font-weight:500}
   .h-marca{display:none}
   .h-vista{display:inline}
@@ -487,7 +498,7 @@ body.con-chat .toast{bottom:calc(var(--abajo) + 84px)}  /* que el aviso no tape 
   .fab{display:inline-flex;position:fixed;right:16px;bottom:calc(var(--abajo) + 18px);z-index:9;padding:13px 20px;font-size:15px;
     box-shadow:0 10px 26px rgba(66,78,232,.45)}
   .menu{top:auto;bottom:0;left:0;right:0;width:auto;border-radius:18px 18px 0 0;border-width:1px 0 0;padding:8px 8px calc(var(--abajo) + 10px)}
-  .menu button.op{padding:13px 12px;font-size:15px}
+  .menu .op{padding:13px 12px;font-size:15px}
   .scrim.claro{background:rgba(7,10,22,.62)}
   .caratula{padding:26px 22px 24px 28px}
   .portada{padding-top:calc(var(--arriba) + 8vh)}

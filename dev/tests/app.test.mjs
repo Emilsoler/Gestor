@@ -541,6 +541,34 @@ test('botón SAC: en el iPhone abre Chrome; en la PC y desde Chrome, otra pesta�
   assert.deepEqual(await enlace({ nombre: 'sac-pc' }), [SAC, '_blank']);
 });
 
+test('acceso a Cobranzas: al pie de la barra y en el menú de la cuenta; abre la app ya adentro', async () => {
+  const COB = new URL('cobranzas/', BASE).href;
+  const enlace = page.locator('.lateral .otra-app');
+  // Barra entera: la "C" con el nombre.
+  assert.deepEqual(await enlace.evaluate((a) => [a.href, a.target, a.getAttribute('aria-label')]), [COB, '_blank', 'Abrir la app de cobranzas']);
+  assert.equal(await page.isVisible('.otra-app .otra-txt'), true);
+  // Otra pestaña, con la misma sesión: no pide ingresar.
+  const [otra] = await Promise.all([page.context().waitForEvent('page'), enlace.click()]);
+  await otra.waitForSelector('#vApp:not([hidden])');
+  assert.equal(otra.url(), COB);
+  await otra.close();
+  // Columna de íconos: solo la "C", con el nombre al pasar el mouse.
+  await page.setViewportSize({ width: 900, height: 860 });
+  assert.equal(await enlace.isVisible(), true);
+  assert.equal(await page.isVisible('.otra-app .otra-txt'), false);
+  assert.equal(await enlace.getAttribute('title'), 'Abrir la app de cobranzas');
+  // Celular: sin barra lateral, queda en el menú; al seguirlo, el menú se cierra.
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await enlace.isVisible(), false);
+  await page.click('#btnCuenta'); await page.waitForSelector('.menu');
+  const op = page.locator('.menu a.op', { hasText: 'Abrir la app de cobranzas' });
+  assert.deepEqual(await op.evaluate((a) => [a.href, a.target]), [COB, '_blank']);
+  const [otra2] = await Promise.all([page.context().waitForEvent('page'), op.click()]);
+  await otra2.waitForURL(COB); await otra2.close();
+  await page.waitForSelector('#menu', { state: 'hidden' });
+  await page.setViewportSize({ width: 1280, height: 860 });
+});
+
 test('con tiempo real el cambio de Claude llega al instante; si se corta, sigue con el respaldo', async () => {
   await tiempoReal(true);
   const { c, p } = await nuevoContexto({ nombre: 'vivo' });

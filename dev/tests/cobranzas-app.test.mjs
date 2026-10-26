@@ -414,6 +414,21 @@ test('modelos de mensaje y ajustes', async () => {
   assert.equal(sql(`select contado_pct from public.ajustes_cobranzas`), '75.0000');
 });
 
+test('acceso al gestor de juicios: al pie de la barra y en el menú; abre el gestor ya adentro', async () => {
+  const GESTOR = new URL('../', BASE).href;
+  const enlace = page.locator('.lateral .otra-app');
+  assert.deepEqual(await enlace.evaluate((a) => [a.href, a.target, a.getAttribute('aria-label')]), [GESTOR, '_blank', 'Abrir el gestor de juicios']);
+  const [otra] = await Promise.all([page.context().waitForEvent('page'), enlace.click()]);
+  await otra.waitForSelector('#vApp:not([hidden])'); // la misma sesión: no pide ingresar
+  await otra.close();
+  // Desde el menú de la cuenta; al seguir el enlace, el menú se cierra.
+  await page.click('#btnCuenta'); await page.waitForSelector('.menu');
+  const op = page.locator('.menu a.op', { hasText: 'Abrir el gestor de juicios' });
+  const [otra2] = await Promise.all([page.context().waitForEvent('page'), op.click()]);
+  await otra2.waitForURL(GESTOR); await otra2.close();
+  await page.waitForSelector('#menu', { state: 'hidden' });
+});
+
 test('celular: tarjetas, ficha a pantalla completa y nada se sale de costado', async () => {
   const { c, p } = await nuevoContexto({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, nombre: 'celular' });
   await p.goto(BASE);

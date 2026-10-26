@@ -20,7 +20,7 @@ import { ALIAS_ARCA, armarSolicitud } from './certificado.js';
 import { importe, enCelda, idNuevo, r2 } from '../liquidacion.js';
 import { xlsx } from '../excel.js';
 
-const VERSION = '1.4.0';
+const VERSION = '1.4.1';
 const CLAVE_MIN = 10;
 const TIPOS_GESTION = ['Llamada', 'WhatsApp', 'Visita', 'Email', 'Carta documento', 'Promesa de pago', 'Nota'];
 const MEDIOS = ['Efectivo', 'Transferencia', 'Depósito', 'Cheque', 'Débito', 'Otro'];
@@ -1749,6 +1749,8 @@ document.addEventListener('click', async (e) => {
   const ing = t.closest('[data-ing]');
   if (ing) { if (ing.dataset.ing === 'salir') { await salir(); mostrar('ingreso'); } else await reintentar(ing); return; }
   if (t.closest('#btnReintentar')) { await reintentar(t.closest('#btnReintentar')); if (D.enLinea) toast('Conexión recuperada'); return; }
+  // Un enlace del menú abre la otra app en otra pestaña; el menú se cierra después de seguirlo.
+  if (t.closest('.menu a.op')) { setTimeout(() => { S.menu = false; renderMenu(); }); return; }
   const mn = t.closest('[data-m]'); if (mn) { if (mn.dataset.m === 'cerrar') { S.menu = false; renderMenu(); } else await menuAct(mn); return; }
   const ir = t.closest('[data-ir]'); if (ir) { const [v, chip] = ir.dataset.ir.split(':'); if (chip) { S.chip = chip; S.tramo = ''; } verVista(v); return; }
   const tr = t.closest('[data-tramo]'); if (tr) { S.chip = 'mora'; S.tramo = tr.dataset.tramo; S.orden = 'mora'; verVista('deudores'); return; }

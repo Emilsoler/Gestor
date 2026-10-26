@@ -9,7 +9,7 @@ import {
 import { idNuevo, nuevaLiquidacion, cobradoRubro, totalPago, liqNormal, liqCalc, importe, pesos, enCelda, planillaExcel } from './liquidacion.js';
 import { MODELOS, ACCIONES, CAMPOS_OFICIO, esModeloOficio, rellenar, htmlOficio, pdfOficio, enLetras, cifra, ordinal, datosDeCausa, partirDomicilio, dniOficio, nombreArchivo } from './oficio.js';
 
-const VERSION = '1.10.0';
+const VERSION = '1.11.0';
 
 // Cuatro datos de cada causa, con valores fijos: los mismos que acepta la base (supabase/migrations/0007).
 const UBICACIONES = ['Casillero', 'A despacho'];
@@ -24,6 +24,7 @@ const CLAVE_MIN = 10;
 // (no tienen activador por API), por eso «Ahora» la abre y el último toque es de la persona.
 // Requiere la compu del estudio: ahí está el Chrome con la sesión del SAC.
 const TAREA_SAC = 'https://claude.ai/scheduled-task/trig_01AFgigkwo8pfvJccpFYUx3n';
+const COBRANZAS = 'cobranzas/'; // la app de cobranzas, en la misma base y con la misma sesión
 
 const S = {
   pantalla: 'arranque',
@@ -1494,6 +1495,7 @@ function renderMenu() {
    <div class="menu-quien"><b>${esc(D.acceso?.nombre || 'Mi cuenta')}</b><span class="hint">${esc(D.usuario?.email || '')}</span></div>
    <button class="op solo-movil" role="menuitem" data-m="plantillas">Plantillas de escritos</button>
    <button class="op solo-movil" role="menuitem" data-m="exportar">Exportar a Excel (CSV)</button>
+   <a class="op" role="menuitem" href="${COBRANZAS}" target="_blank" rel="noopener">Abrir la app de cobranzas</a>
    ${S.instalar ? '<button class="op" role="menuitem" data-m="instalar">Instalar la app en este dispositivo</button>' : ''}
    ${ios ? '<div class="menu-pie hint">Para instalarla en el iPhone: abrila en Safari, tocá Compartir y después “Agregar a inicio”.</div>' : ''}
    <button class="op" role="menuitem" data-m="clave">Cambiar contraseña</button>
@@ -1553,6 +1555,8 @@ document.addEventListener('click', async (e) => {
   const ing = e.target.closest('[data-ing]');
   if (ing) { if (ing.dataset.ing === 'salir') { await salir(); mostrar('ingreso'); } else await reintentar(ing); return; }
   if (e.target.closest('#btnReintentar')) { await reintentar(e.target.closest('#btnReintentar')); if (D.enLinea) toast('Conexión recuperada'); return; }
+  // Un enlace del menú abre la otra app en otra pestaña; el menú se cierra después de seguirlo.
+  if (e.target.closest('.menu a.op')) { setTimeout(() => { S.menu = false; renderMenu(); }); return; }
   const mn = e.target.closest('[data-m]'); if (mn) { if (mn.dataset.m === 'cerrar') { S.menu = false; renderMenu(); } else await menuAct(mn); return; }
   const cb = e.target.closest('[data-chat]'); if (cb) { chatAct(cb); return; }
   const cu = e.target.closest('[data-cau]'); if (cu) { if (S.open && S.cau) await unaVez(cu, cauAct); return; }
