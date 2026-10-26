@@ -132,40 +132,6 @@ function historia(historicas, cuit) {
   </section>`;
 }
 
-/** "D LOCACIONES DE SERVICIO" → "Monotributo, categoría D (locaciones de servicio)". */
-function monotributo(desc) {
-  const m = /^([A-K])\b\s*(.*)$/i.exec(String(desc || '').trim());
-  return m ? `Monotributo, categoría ${m[1].toUpperCase()}${m[2] ? ` (${m[2].toLowerCase()})` : ''}` : desc ? `Monotributo: ${desc}` : '';
-}
-/** La situación ante ARCA en un renglón: monotributo, régimen general o lo que ARCA avisa. */
-function situacionArca(r) {
-  if (r.monotributo) return monotributo(r.monotributo);
-  if (r.impuestos?.length) return `Régimen general: ${r.impuestos.join(', ')}`;
-  return r.avisos?.[0] || 'Sin impuestos activos';
-}
-
-/**
- * La constancia de inscripción de ARCA, si la consulta la trae (la función `bcra` la suma cuando la app está
- * conectada con ARCA). Va con lo que ARCA dijo ese día: quién es, si la CUIT está activa, monotributo o
- * régimen general, actividad y domicilio fiscal. Los avisos de ARCA van entre comillas: están escritos para
- * quien consulta su propia CUIT («ingresá tu CUIT activa») y, sueltos, parecerían dirigidos a la persona.
- */
-function seccionArca(arca) {
-  if (!arca) return '';
-  const cab = (extra = '') => `<div class="sec-cab"><h4>ARCA · Constancia de inscripción</h4>${extra}</div>`;
-  if (arca.error) return `<section class="sec cr-arca">${cab()}<p class="aviso-chico">${esc(arca.error)}</p></section>`;
-  const r = arca.resumen || {};
-  const estado = r.estado === 'ACTIVO' ? 'Activa' : r.estado === 'INACTIVO' ? 'Inactiva' : r.estado || '';
-  const filas = [
-    ['Situación', r.monotributo || r.impuestos?.length || !r.avisos?.length ? situacionArca(r) : ''],
-    ['Actividad', r.actividad], ['CUIT', estado], ['Domicilio fiscal', r.domicilio],
-  ].filter(([, v]) => v);
-  return `<section class="sec cr-arca">${cab(r.nombre ? `<span class="hint">${esc(r.nombre)}</span>` : '')}
-    ${filas.length ? `<dl class="arca-datos">${filas.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>` : ''}
-    ${(r.avisos || []).map((a) => `<p class="aviso-chico">ARCA responde: «${esc(a)}»</p>`).join('')}
-    ${r.monotributo ? '<p class="hint m0">La categoría del monotributo da una idea del tope de ingresos anuales de la persona.</p>' : ''}</section>`;
-}
-
 /** Los deudores de Cobranzas que coinciden con el CUIT (o con el DNI que lleva adentro). */
 export function deudoresDelCuit(deudores, cuit) {
   if (!/^\d{11}$/.test(cuit || '')) return [];
@@ -218,12 +184,12 @@ export function fichaConsulta(c, detalle, { deudores = [], confirmar = false, er
       </tbody></table></div></section>` : '';
     const faltan = Object.keys(detalle.errores || {}).length
       ? `<p class="aviso-chico">No se pudieron traer ${detalle.errores.historicas ? 'los últimos 24 meses' : 'todos los datos'}: ${esc(Object.values(detalle.errores)[0])}</p>` : '';
-    cuerpo = `${seccionArca(detalle.arca)}${tabla}${historia(detalle.historicas, c.cuit)}${tablaCheques}${faltan}`;
+    cuerpo = `${tabla}${historia(detalle.historicas, c.cuit)}${tablaCheques}${faltan}`;
   }
 
   const acciones = confirmar
     ? `<div class="confirm"><span>¿Eliminar esta consulta? Se puede recuperar después desde el historial de cambios.</span><button class="btn small danger" data-a="cr-borrar" data-id="${esc(c.id)}">Sí, eliminar</button><button class="btn small" data-a="cr-no">Cancelar</button></div>`
-    : `<div class="actions"><button class="btn small primary" data-a="cr-repetir" data-cuit="${esc(c.cuit)}">Volver a consultar</button><button class="btn small" data-a="cr-copiar">Copiar resumen</button><span class="sep"></span><button class="btn small danger" data-a="cr-confirmar">Eliminar consulta</button></div>`;
+    : `<div class="actions"><button class="btn small primary" data-a="cr-repetir" data-cuit="${esc(c.cuit)}">Volver a consultar</button><button class="btn small" data-a="cr-copiar">Copiar resumen</button><button class="btn small" data-a="cr-arca" data-cuit="${esc(c.cuit)}">Constancia en ARCA</button><span class="sep"></span><button class="btn small danger" data-a="cr-confirmar">Eliminar consulta</button></div>`;
 
   return `${cab}${aviso}${motivos}${cifras}${enCobranzas}${cuerpo}
     <details class="sec ayuda"><summary>¿Qué significa cada situación?</summary>
@@ -239,14 +205,13 @@ export function fichaConsulta(c, detalle, { deudores = [], confirmar = false, er
 }
 
 /** El resumen para copiar y pegar (en un mail, en un WhatsApp al consejo, en un acta). */
-export function textoConsulta(c, detalle = null) {
-  const sem = semaforo(c.semaforo), arca = detalle?.arca?.resumen;
+export function textoConsulta(c) {
+  const sem = semaforo(c.semaforo);
   return [
     `Consulta BCRA — Central de Deudores`,
     `${c.denominacion || 'Sin nombre informado'} · CUIT/CUIL ${cuitTexto(c.cuit)}`,
     `Semáforo: ${sem.texto} (${sem.detalle.toLowerCase()})`,
     ...lista(c.motivos).map((m) => `• ${m}`),
-    ...(arca ? [`ARCA: ${situacionArca(arca)}${arca.actividad ? ` · ${arca.actividad}` : ''}`] : []),
     `Deuda informada: ${plata(+c.deuda_total || 0).replace('\u00a0', ' ')}${c.periodo ? ` (a ${periodoTexto(c.periodo)})` : ''}`,
     `Consultado el ${momentoTexto(c.momento)}${c.consultado_por ? ` por ${c.consultado_por}` : ''}`,
   ].join('\n');

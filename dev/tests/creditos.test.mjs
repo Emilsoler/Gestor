@@ -5,28 +5,15 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
 import { sql, sqlFalla, limpiar, crearCuenta, entrar, env, servicio } from './helpers.mjs';
-import { CUIT, CASOS, CHEQUE, PERSONAS_ARCA, meses } from './casos-bcra.mjs';
+import { CUIT, CASOS, CHEQUE, meses } from './casos-bcra.mjs';
 
 const FALSO = 'http://127.0.0.1:54341';
 const BCRA = `${env.SUPABASE_URL}/functions/v1/bcra`;
 const casos = (c) => fetch(`${FALSO}/__casos`, { method: 'POST', body: JSON.stringify(c) });
 const pedidos = async () => (await fetch(`${FALSO}/__pedidos`)).json();
 const olvidar = () => fetch(`${FALSO}/__pedidos`, { method: 'DELETE' });
-const STACK = process.env.STACK || '/home/claude/.stack';
-const registro = () => readFileSync(`${STACK}/logs/bcra.log`, 'utf8');
-// El ARCA falso (dev/arca-falso.mjs) y el certificado de prueba (lo arma stack.sh).
-const ARCA = 'http://127.0.0.1:54343';
-const arca = {
-  casos: (c) => fetch(`${ARCA}/__casos`, { method: 'POST', body: JSON.stringify(c) }),
-  pedidos: async () => (await fetch(`${ARCA}/__pedidos`)).json(),
-  olvidar: () => fetch(`${ARCA}/__pedidos`, { method: 'DELETE' }),
-  permiso: (vigente) => fetch(`${ARCA}/__permiso`, { method: 'POST', body: JSON.stringify({ vigente }) }),
-};
-const certPrueba = () => readFileSync(`${STACK}/arca-prueba.crt`, 'utf8');
-const cargarCert = (pem) => sql(`select gestor.arca_certificado($cert$${pem}$cert$)`);
-const sinArca = () => sql(`update gestor.arca set certificado = '', ticket = null`);
+const registro = () => readFileSync(`${process.env.STACK || '/home/claude/.stack'}/logs/bcra.log`, 'utf8');
 let token, cliente;
 
 /** Un pedido a la función, con la sesión de Emi (o la que se indique). */
@@ -45,8 +32,6 @@ const filasCheques = () => JSON.parse(sql(`select coalesce(json_agg(to_jsonb(c) 
 before(async () => {
   limpiar();
   sql('delete from public.consultas_bcra; delete from public.consultas_cheques;');
-  sinArca();
-  await arca.olvidar();
   await olvidar();
   await casos(CASOS);
   await crearCuenta('emi@test.local', 'Clave-de-prueba-2026', 'Emi');
@@ -386,126 +371,4 @@ test('permisos de la tabla de cheques: se lee, se agrega y se elimina; cambiar, 
   const intruso = await entrar('intruso@test.local', 'Intruso-123456');
   const visto = await intruso.from('consultas_cheques').select('id');
   assert.ok(visto.error || visto.data.length === 0, 'la cuenta sin autorizar no ve las consultas');
-});
-
-// ───────────────────────── ARCA (constancia de inscripción) ─────────────────────────
-
-test('ARCA: sin certificado en la base, la consulta por CUIT sale igual y sin constancia; probar dice qué falta', async () => {
-  sinArca(); await arca.olvidar(); await olvidar(); await casos(CASOS);
-  const r = await consultar(CUIT.verde);
-  assert.equal(r.status, 200);
-  assert.equal('arca' in r.datos.consulta.resultado, false);
-  const p = await pedirBCRA({ accion: 'arca_probar' });
-  assert.equal(p.status, 409);
-  assert.equal(p.datos.error, 'arca_config');
-  assert.match(p.datos.mensaje, /certificado de ARCA/);
-  assert.deepEqual(await arca.pedidos(), [], 'no se le preguntó nada a ARCA');
-});
-
-test('ARCA: con el certificado, la consulta trae la constancia; el pedido va firmado y el permiso se pide una vez', async () => {
-  sinArca(); await arca.olvidar(); await arca.casos({ personas: PERSONAS_ARCA });
-  assert.match(cargarCert(certPrueba()), /Certificado de ARCA guardado/);
-  let r = await consultar(CUIT.verde);
-  assert.equal(r.status, 200, JSON.stringify(r.datos));
-  assert.deepEqual(r.datos.consulta.resultado.arca.resumen, {
-    nombre: 'VERDE PERSONA', tipo: 'FISICA', estado: 'ACTIVO', domicilio: 'BV COLON 100, BELL VILLE, CORDOBA',
-    monotributo: 'D LOCACIONES DE SERVICIO', actividad: 'SERVICIOS JURIDICOS', impuestos: [], avisos: [],
-  });
-  assert.equal(r.datos.consulta.denominacion, 'PERSONA VERDE', 'el nombre del BCRA manda');
-  r = await consultar(CUIT.nada);
-  const a = r.datos.consulta.resultado.arca.resumen;
-  assert.equal(r.datos.consulta.denominacion, 'SIN DEUDAS PERSONA', 'sin deudas el BCRA no da el nombre: sale de ARCA');
-  assert.deepEqual(a.impuestos, ['GANANCIAS PERSONAS HUMANAS', 'IVA'], 'solo los activos');
-  assert.equal(a.actividad, 'CULTIVO DE SOJA', 'la principal');
-  assert.equal(a.domicilio, 'SAN MARTIN 250, VILLA MARIA, CORDOBA');
-  assert.equal(r.datos.consulta.semaforo, 'sin_datos', 'ARCA no cambia el semáforo');
-  r = await consultar(CUIT.rojo);
-  assert.deepEqual(r.datos.consulta.resultado.arca.resumen.avisos, ['La CUIT que ingresaste se encuentra inactiva, ingresá tu CUIT activa']);
-  r = await consultar(CUIT.amarillo);
-  assert.deepEqual(r.datos.consulta.resultado.arca.resumen.avisos, ['No existe persona con ese Id']);
-  const ps = await arca.pedidos();
-  assert.deepEqual(ps.filter((p) => p.ruta === 'LoginCms'), [{ ruta: 'LoginCms', firmaOk: true, servicio: 'ws_sr_constancia_inscripcion' }], 'un solo permiso, con la firma verificada');
-  assert.deepEqual(ps.filter((p) => p.ruta === 'getPersona_v2').map((p) => [p.cuit, p.representada]),
-    [CUIT.verde, CUIT.nada, CUIT.rojo, CUIT.amarillo].map((c) => [c, '20111111112']));
-  const t = JSON.parse(sql('select ticket from gestor.arca'));
-  assert.ok(t.token && t.sign, 'el permiso quedó guardado');
-  assert.ok(Math.abs(Date.parse(t.vence) - Date.now() - 12 * 3600_000) < 120_000, 'vale 12 horas');
-});
-
-test('ARCA: probar la conexión consulta el CUIT del certificado', async () => {
-  const p = await pedirBCRA({ accion: 'arca_probar' });
-  assert.equal(p.status, 200, JSON.stringify(p.datos));
-  assert.deepEqual({ ...p.datos.arca, vence: undefined }, { ok: true, cuit: '20111111112', alias: 'CobranzasPrueba', nombre: 'VERDE PERSONA', estado: 'ACTIVO', vence: undefined });
-  assert.ok(Date.parse(p.datos.arca.vence) > Date.now() + 300 * 24 * 3600_000);
-});
-
-test('ARCA: volver a cargar el certificado no deja a la app sin permiso', async () => {
-  const antes = JSON.parse(sql('select ticket from gestor.arca'));
-  const pedidos = (await arca.pedidos()).length;
-  cargarCert(certPrueba());
-  assert.deepEqual(JSON.parse(sql('select ticket from gestor.arca')), antes, 'el permiso sigue guardado');
-  const p = await pedirBCRA({ accion: 'arca_probar' });
-  assert.equal(p.status, 200, JSON.stringify(p.datos));
-  assert.deepEqual((await arca.pedidos()).slice(pedidos).map((x) => x.ruta), ['getPersona_v2'], 'sin pedir otro permiso, que ARCA no daría');
-});
-
-test('ARCA: si no autoriza o ya dio un permiso que se perdió, la consulta al BCRA sale igual, con el aviso', async () => {
-  sql('update gestor.arca set ticket = null'); await arca.olvidar(); await arca.casos({ login: 'no_autorizado', personas: PERSONAS_ARCA });
-  let r = await consultar(CUIT.verde);
-  assert.equal(r.status, 200);
-  assert.equal(r.datos.consulta.semaforo, 'verde');
-  assert.equal(r.datos.consulta.resultado.arca.tipo, 'no_autorizado');
-  assert.match(r.datos.consulta.resultado.arca.error, /«Nueva Relación»/);
-  await arca.olvidar(); await arca.casos({ personas: PERSONAS_ARCA }); await arca.permiso(true);
-  r = await consultar(CUIT.verde);
-  assert.equal(r.datos.consulta.resultado.arca.tipo, 'ya_autenticado');
-  const p = await pedirBCRA({ accion: 'arca_probar' });
-  assert.equal(p.status, 429);
-  assert.match(p.datos.mensaje, /12 horas/);
-});
-
-test('ARCA: si no acepta el permiso guardado, pide otro una vez', async () => {
-  await arca.olvidar(); await arca.casos({ personas: PERSONAS_ARCA });
-  sql(`update gestor.arca set ticket = jsonb_build_object('token', 'viejo', 'sign', 'viejo', 'vence', now() + interval '6 hours')`);
-  const r = await consultar(CUIT.verde);
-  assert.equal(r.datos.consulta.resultado.arca.resumen.monotributo, 'D LOCACIONES DE SERVICIO');
-  assert.deepEqual((await arca.pedidos()).map((p) => p.ruta), ['getPersona_v2', 'LoginCms', 'getPersona_v2']);
-  assert.notEqual(JSON.parse(sql('select ticket from gestor.arca')).token, 'viejo');
-});
-
-test('ARCA: una clave que no es la del certificado se avisa sin preguntarle a ARCA', async () => {
-  await arca.olvidar(); await arca.casos({ personas: PERSONAS_ARCA });
-  const otro = execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', '/dev/null', '-days', '2', '-subj', '/CN=Otro/serialNumber=CUIT 20111111112'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-  cargarCert(otro);
-  const p = await pedirBCRA({ accion: 'arca_probar' });
-  assert.equal(p.datos.error, 'arca_clave');
-  assert.match(p.datos.mensaje, /no es la del certificado/);
-  const r = await consultar(CUIT.verde);
-  assert.equal(r.status, 200);
-  assert.equal(r.datos.consulta.resultado.arca.tipo, 'clave');
-  assert.deepEqual(await arca.pedidos(), []);
-  cargarCert(certPrueba());
-});
-
-test('ARCA: en los registros no quedan CUIT ni permisos', async () => {
-  await arca.olvidar(); await arca.casos({ personas: PERSONAS_ARCA });
-  assert.equal((await pedirBCRA({ accion: 'arca_probar' })).status, 200);
-  const log = registro(), t = JSON.parse(sql('select ticket from gestor.arca'));
-  assert.ok(!log.includes(t.token) && !log.includes(t.sign), 'sin el permiso');
-  for (const c of [CUIT.verde, CUIT.nada, CUIT.rojo, '20111111112']) assert.ok(!log.includes(c), `sin el CUIT ${c}`);
-  assert.match(log, /"arca":"prueba ok"/);
-  assert.match(log, /"arca":"error","tipo":"no_autorizado"/);
-});
-
-test('ARCA: lo de la base es solo para miembros', async () => {
-  assert.ok(sqlFalla('set role anon; select public.arca_config();').includes('permission denied'));
-  const intruso = await entrar('intruso@test.local', 'Intruso-123456');
-  assert.ok((await intruso.rpc('arca_config')).error, 'una cuenta sin autorizar no lo lee');
-  const propio = await cliente.rpc('arca_config');
-  assert.ifError(propio.error);
-  assert.match(propio.data.certificado, /^-----BEGIN CERTIFICATE-----/);
-  assert.ok((await cliente.schema('gestor').from('arca').select('*')).error, 'la tabla no se ve por la API');
-  assert.equal((await cliente.rpc('arca_guardar_ticket', { p_ticket: { token: 'x' } })).error?.code, '22023');
-  assert.match(sqlFalla("select gestor.arca_certificado('hola')"), /no es un certificado/);
-  sinArca();
 });

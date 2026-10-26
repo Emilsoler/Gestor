@@ -7,28 +7,18 @@
 //   { accion: 'cheque', entidad, numero } Central de Cheques Denunciados: si ese cheque fue denunciado como
 //                                         extraviado, sustraído o adulterado; se guarda en public.consultas_cheques.
 //   { accion: 'entidades' }               la lista de bancos para elegir el del cheque (no se guarda nada).
-//   { accion: 'arca_probar' }             prueba la conexión con ARCA: consulta la constancia del CUIT del certificado.
-// La consulta por CUIT suma, si la app está conectada con ARCA, la constancia de inscripción (arca.ts): si
-// ARCA falla, la consulta al BCRA sale igual y lo anota.
 // Antes de cualquier cosa se verifica la sesión con la base (mismas barreras que la app). Lo que se guarda va
 // con la sesión de quien consulta, y se devuelve la fila guardada.
 //
-// La API del BCRA es pública y la base se usa con la sesión de la persona. El único secreto es la clave de
-// ARCA (ARCA_CLAVE), que firma el pedido de acceso a ARCA y no sale de acá.
-// En los registros no queda el CUIT, el número de cheque ni el permiso de ARCA.
+// No usa ninguna clave secreta: la API del BCRA es pública y la base se usa con la sesión de la persona.
+// En los registros no queda el CUIT ni el número de cheque.
 import {
   ErrorBCRA, codigoEntidad, consultar, consultarCheque, cuitValido, entidades, numeroCheque, resumir, sinCuit, soloDigitos,
 } from './bcra.ts';
-import { ErrorArca, constancia, iniciarSesion, leerCredencial, resumirPersona, sinDatos, type Permiso } from './arca.ts';
 
 const URL_BASE = Deno.env.get('SUPABASE_URL') || '';
 const URL_BCRA = Deno.env.get('BCRA_URL') || 'https://api.bcra.gob.ar'; // otra solo en las pruebas locales
 const ORIGENES = (Deno.env.get('GESTOR_ORIGENES') || 'https://emilsoler.github.io,http://127.0.0.1:8080').split(',').map((s) => s.trim());
-// ARCA: se prueban en orden si no hay conexión. El padrón está en arca.gob.ar (manual del servicio, v4.1) y
-// queda el dominio de AFIP de respaldo; WSAA sigue en el de AFIP.
-const ARCA_WSAA = (Deno.env.get('ARCA_WSAA_URL') || 'https://wsaa.afip.gov.ar/ws/services/LoginCms').split(',').map((s) => s.trim());
-const ARCA_PADRON = (Deno.env.get('ARCA_PADRON_URL')
-  || 'https://aws.arca.gob.ar/sr-padron/webservices/personaServiceA5,https://aws.afip.gov.ar/sr-padron/webservices/personaServiceA5').split(',').map((s) => s.trim());
 
 /** La clave pública del proyecto (la misma de config.js): con ella y la sesión se pide a la API. */
 function clavePublica() {
@@ -94,82 +84,6 @@ async function guardar(jwt: string, tabla: string, fila: unknown, cors: Cors): P
   }
 }
 
-// ───────────────────────── ARCA ─────────────────────────
-
-/** Prueba cada dirección mientras el problema sea que no hay conexión. */
-async function conRespaldo<T>(urls: string[], pedido: (url: string) => Promise<T>): Promise<T> {
-  let ultimo: unknown;
-  for (const url of urls) {
-    try { return await pedido(url); } catch (e) {
-      ultimo = e;
-      if (!(e instanceof ErrorArca && e.tipo === 'red')) throw e;
-    }
-  }
-  throw ultimo;
-}
-
-/**
- * La constancia de un CUIT (o, sin CUIT, la del propio certificado). Usa el permiso guardado si todavía vale;
- * si no, pide uno y lo guarda. Si ARCA no acepta el guardado, pide otro una vez. `config` es que la app
- * todavía no está conectada (falta la clave o el certificado).
- */
-async function consultarArca(jwt: string, cuit: string | null) {
-  const clavePem = Deno.env.get('ARCA_CLAVE') || '';
-  let config: any;
-  try {
-    config = await base(jwt, 'rpc/arca_config', {});
-  } catch (e) {
-    if (e instanceof ErrorBase && (e.codigo === 'PGRST202' || e.codigo === '42883')) throw new ErrorArca('config', 'La conexión con ARCA todavía no está activada en la base. Avisale a Claude.');
-    if (e instanceof ErrorBase && e.codigo === '42501') throw new ErrorArca('config', 'Esta cuenta no está autorizada para usar la app.');
-    throw new ErrorArca('arca', 'No se pudo leer la configuración de ARCA. Probá de nuevo en un momento.', sinDatos(e));
-  }
-  if (!clavePem) throw new ErrorArca('config', 'Falta cargar la clave de ARCA en Supabase (el secreto ARCA_CLAVE).');
-  if (!config?.certificado) throw new ErrorArca('config', 'Falta guardar en la base el certificado de ARCA. Avisale a Claude.');
-  const cred = leerCredencial(clavePem, config.certificado);
-  let permiso: Permiso | null = config.ticket?.token ? config.ticket : null;
-  const guardado = !!permiso;
-  for (let intento = 0; ; intento++) {
-    if (!permiso) {
-      try {
-        permiso = await conRespaldo(ARCA_WSAA, (url) => iniciarSesion(cred, url));
-      } catch (e) {
-        // Otra consulta pudo haberlo pedido y guardado recién.
-        if (e instanceof ErrorArca && e.tipo === 'ya_autenticado') {
-          const otra = await base(jwt, 'rpc/arca_config', {}).catch(() => null);
-          if (otra?.ticket?.token) { permiso = otra.ticket; } else throw e;
-        } else throw e;
-      }
-      try { await base(jwt, 'rpc/arca_guardar_ticket', { p_ticket: permiso }); } catch (e) {
-        console.error(JSON.stringify({ arca: 'no se guardó el permiso', detalle: sinDatos(e instanceof Error ? e.message : e) }));
-      }
-    }
-    try {
-      return { cred, persona: await conRespaldo(ARCA_PADRON, (url) => constancia(permiso!, cred.cuit, cuit ?? cred.cuit, url)) };
-    } catch (e) {
-      if (e instanceof ErrorArca && e.tipo === 'permiso' && guardado && intento === 0) { permiso = null; continue; }
-      throw e;
-    }
-  }
-}
-
-const errorDeArca = (e: unknown) => (e instanceof ErrorArca ? e : new ErrorArca('arca', 'No se pudo consultar a ARCA. Probá de nuevo en un rato.', sinDatos(e)));
-const STATUS_ARCA: Record<string, number> = { config: 409, clave: 409, certificado: 409, vencido: 409, no_autorizado: 409, ya_autenticado: 429, tiempo: 504 };
-
-/** El botón «Probar la conexión con ARCA»: la constancia del CUIT del certificado. */
-async function probarArca(jwt: string, cors: Cors): Promise<Response> {
-  const inicio = Date.now();
-  try {
-    const { cred, persona } = await consultarArca(jwt, null);
-    const r = resumirPersona(persona);
-    console.log(JSON.stringify({ arca: 'prueba ok', ms: Date.now() - inicio }));
-    return responder({ arca: { ok: true, cuit: cred.cuit, alias: cred.alias, vence: cred.vence.toISOString(), nombre: r.nombre, estado: r.estado } }, 200, cors);
-  } catch (e) {
-    const err = errorDeArca(e);
-    console.error(JSON.stringify({ arca: 'prueba error', tipo: err.tipo, ms: Date.now() - inicio, detalle: sinDatos(err.detalle) }));
-    return responder({ error: `arca_${err.tipo}`, mensaje: err.message }, STATUS_ARCA[err.tipo] || 502, cors);
-  }
-}
-
 /** Central de Deudores: el CUIT, el semáforo y la constancia. */
 async function deudas(jwt: string, pedido: any, cors: Cors): Promise<Response> {
   // Se rechaza un CUIT mal escrito antes de preguntar: para el BCRA un número que no existe "no figura",
@@ -179,17 +93,6 @@ async function deudas(jwt: string, pedido: any, cors: Cors): Promise<Response> {
   if (!cuitValido(cuit)) return responder({ error: 'cuit', mensaje: 'Ese CUIT o CUIL no existe: revisá los números (el último no coincide con los demás).' }, 400, cors);
 
   const inicio = Date.now();
-  // ARCA va a la par del BCRA. Si la app no está conectada con ARCA, la consulta sale sin la constancia; si
-  // ARCA falla, sale con el aviso.
-  const pedidoArca = consultarArca(jwt, cuit).then(
-    ({ persona }) => ({ resumen: resumirPersona(persona), persona }),
-    (e) => {
-      const err = errorDeArca(e);
-      if (err.tipo === 'config') return null;
-      console.error(JSON.stringify({ arca: 'error', tipo: err.tipo, detalle: sinDatos(err.detalle) }));
-      return { error: err.message, tipo: err.tipo };
-    },
-  );
   let r;
   try {
     r = await consultar(cuit, { url: URL_BCRA });
@@ -198,17 +101,14 @@ async function deudas(jwt: string, pedido: any, cors: Cors): Promise<Response> {
     console.error(JSON.stringify({ bcra: 'error', tipo: err.tipo, status: err.status, ms: Date.now() - inicio, detalle: err.detalle }));
     return responder({ error: `bcra_${err.tipo}`, mensaje: err.message }, STATUS[err.tipo] || 502, cors);
   }
-  const arca = await pedidoArca;
 
   const resumen = resumir(r.deudas, r.cheques, r.historicas);
-  // Sin deudas, el BCRA no dice el nombre: si ARCA lo sabe, va ese.
-  if (!resumen.denominacion && arca && 'resumen' in arca && arca.resumen.nombre) resumen.denominacion = arca.resumen.nombre.slice(0, 300);
   const g = await guardar(jwt, 'consultas_bcra', {
     cuit, ...resumen,
-    resultado: { deudas: r.deudas, historicas: r.historicas, cheques: r.cheques, errores: r.errores, ...(arca ? { arca } : {}) },
+    resultado: { deudas: r.deudas, historicas: r.historicas, cheques: r.cheques, errores: r.errores },
   }, cors);
   if (g.error) return g.error;
-  console.log(JSON.stringify({ bcra: 'ok', ms: Date.now() - inicio, ...r.estados, semaforo: resumen.semaforo, arca: !arca ? 'sin' : 'error' in arca ? `error:${arca.tipo}` : 'ok' }));
+  console.log(JSON.stringify({ bcra: 'ok', ms: Date.now() - inicio, ...r.estados, semaforo: resumen.semaforo }));
   return responder({ consulta: g.fila }, 200, cors);
 }
 
@@ -279,7 +179,6 @@ export async function manejar(req: Request): Promise<Response> {
   if (accion === 'deudas') return deudas(jwt, pedido, cors);
   if (accion === 'cheque') return cheque(jwt, pedido, cors);
   if (accion === 'entidades') return listaEntidades(cors);
-  if (accion === 'arca_probar') return probarArca(jwt, cors);
   return responder({ error: 'pedido', mensaje: 'Esa consulta no existe.' }, 400, cors);
 }
 

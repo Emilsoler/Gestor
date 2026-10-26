@@ -401,9 +401,9 @@ la consulta en `public.consultas_bcra` (migración 0010) con la sesión de la pe
 - **Desde SQL no se puede consultar al BCRA** (la base no sale a internet): lo hace el botón. Para leer
   las consultas guardadas:
   `select cuit, denominacion, semaforo, motivos, deuda_total, momento from public.consultas_bcra order by momento desc;`
-- **Publicar la función**: `deploy_edge_function` con nombre `bcra`, `verify_jwt: true` y los tres archivos
-  de `supabase/functions/bcra/` (`index.ts`, la entrada; `bcra.ts`; `arca.ts`). Si la tabla todavía no está
-  en la base, la app sigue andando y la vista avisa que falta activarla.
+- **Publicar la función**: `deploy_edge_function` con nombre `bcra`, `verify_jwt: true` y los dos archivos
+  de `supabase/functions/bcra/` (entrada `index.ts`). Si la tabla todavía no está en la base, la app sigue
+  andando y la vista avisa que falta activarla.
 - Son datos personales: se consultan para evaluar un crédito y no salen de la app. En los registros de la
   función no queda el CUIT.
 
@@ -426,49 +426,20 @@ de cada denuncia ("Denunciado por titular" o "por tercero").
   `select entidad, entidad_nombre, numero, denunciado, fecha_bcra, momento from public.consultas_cheques order by momento desc;`
   En los registros de la función no queda el número del cheque ni el de la cuenta.
 
-**Constancia de inscripción de ARCA** (migración 0014): con la app conectada a ARCA, cada consulta por CUIT
-trae también lo que ARCA dice de la persona: nombre, si la CUIT está activa, monotributo (con su categoría) o
-régimen general (los impuestos activos), actividad principal y domicilio fiscal. Va en `resultado.arca` de la
-misma fila de `consultas_bcra` (`{resumen, persona}`, o `{error, tipo}` si ARCA falló: lo del BCRA se guarda
-igual). Si el BCRA no da el nombre (sin deudas), se toma el de ARCA. No cambia el semáforo.
-
-- **Cómo pregunta** (`supabase/functions/bcra/arca.ts`): web service `ws_sr_constancia_inscripcion` (padrón
-  A5, `getPersona_v2`). Antes pide permiso a WSAA (`LoginCms`) con un pedido de acceso firmado (CMS, SHA-256,
-  `node-forge`) con la clave de la app y el certificado de ARCA. El permiso (token y sign) vale 12 horas y,
-  mientras vale, **ARCA no da otro** (`coe.alreadyAuthenticated`): por eso se guarda en `gestor.arca` y se
-  reusa; si ARCA lo rechaza, se pide otro una vez.
-- **Dónde está cada cosa**: la clave privada es el secreto `ARCA_CLAVE` de la función (la pegó la persona en
-  el panel de Supabase; nunca pasa por el chat, la base ni el repositorio). El certificado (no es secreto) y
-  el permiso están en `gestor.arca` (esquema privado, una sola fila); la función los lee y escribe con la
-  sesión de la persona, por `public.arca_config()` y `public.arca_guardar_ticket()`, que exigen ser miembro.
-- **Cargar o renovar el certificado** (ARCA los da por dos años; el panel de abajo arma la solicitud): con el
-  contenido del .crt que adjunte la persona,
-  `select gestor.arca_certificado($c$-----BEGIN CERTIFICATE-----…-----END CERTIFICATE-----$c$);`.
-  Conserva el permiso guardado (descartarlo dejaría a la app sin ARCA hasta 12 horas). Si con el certificado
-  nuevo cambió la clave, la persona reemplaza `ARCA_CLAVE` en el panel de Supabase.
-- **Probar**: menú de la cuenta → «Certificado de ARCA» → «Probar la conexión con ARCA» (pedido
-  `{accion: 'arca_probar'}`): consulta el CUIT del certificado y dice a nombre de quién está y cuándo vence.
-  Los errores se dicen en palabras: falta el certificado o la clave, la clave no es la del certificado,
-  certificado vencido, falta autorizar el servicio en ARCA («Administrador de Relaciones de Clave Fiscal» →
-  «Nueva Relación»), o hay un permiso que se perdió (esperar a que venza, como mucho 12 horas).
-- **Direcciones**: las de producción por omisión (WSAA en `wsaa.afip.gov.ar`; el padrón en `aws.arca.gob.ar`,
-  como dice el manual del servicio, con `aws.afip.gov.ar` de respaldo). Si una no atiende (sin conexión o una
-  página de error que no es SOAP), se prueba la siguiente. `ARCA_WSAA_URL` y `ARCA_PADRON_URL` (listas
-  separadas por coma) las cambian, como en las pruebas locales.
-- Sin certificado o sin `ARCA_CLAVE`, la consulta por CUIT anda igual, sin la sección de ARCA. En los
-  registros de la función no quedan el CUIT ni el permiso.
-
-**Certificado de ARCA** (menú de la cuenta → «Certificado de ARCA», `certificado.js`): además de probar la
-conexión, el panel arma en el navegador, con WebCrypto, una clave RSA de 2048 y la solicitud PKCS#10 (sujeto
-`C=AR, O=<nombre>, CN=<alias>, serialNumber=CUIT <cuit>`, alias por omisión `CobranzasSoler`; sale igual byte
-a byte a la de `openssl req`). Se bajan los dos archivos: la solicitud (.csr) se sube a ARCA; la clave (.key)
-es secreta y se carga una sola vez como secreto `ARCA_CLAVE` de la función (`create_edge_function_secret`: la
-pega la persona en el panel de Supabase). La clave nunca va al chat, al repositorio ni al almacenamiento del
-navegador, y se olvida al cerrar el panel.
+**Constancia de ARCA** (botón «Constancia en ARCA», al lado de «Consultar BCRA» y en la ficha de cada
+consulta): copia el CUIT (solo los números) y abre en otra pestaña la consulta pública de ARCA
+(`https://seti.afip.gob.ar/padron-puc-constancia-internet/ConsultaConstanciaAction.do`), que sirve igual
+para monotributistas y responsables inscriptos; ahí la persona pega el CUIT y completa el código de
+seguridad. La app no le pregunta nada a ARCA ni guarda lo que responde. Hubo una conexión por web service,
+con certificado digital (migración 0014); la persona pidió quitarla. 0015 borró el certificado y el permiso
+guardados y le cerró a la API las funciones `public.arca_config` y `public.arca_guardar_ticket`; la tabla
+`gestor.arca` y esas funciones (y `gestor.arca_certificado`) quedan vacías y sin uso, porque borrarlas
+(`drop`) pide una confirmación de la persona. Lo que ARCA había respondido se sacó de las consultas
+guardadas y del historial de cambios. No volver a armarla sin que la persona la pida.
 
 **Cambiar la app**: `docs/cobranzas/` (`app.js` interfaz, `datos.js` la base, `calculo.js` cuentas,
-`textos.js` fechas, importes y mensajes, `creditos.js` lo que se muestra de una consulta al BCRA (por CUIT y por cheque)
-y de la constancia de ARCA, `certificado.js` la solicitud del certificado de ARCA, `styles.css`). Si se toca una cuenta, también
+`textos.js` fechas, importes y mensajes, `creditos.js` lo que se muestra de una consulta al BCRA (por CUIT y por cheque),
+`styles.css`). Si se toca una cuenta, también
 `gestor.liquidacion_deudor` (migración nueva). Probar con `npm run test:cobranzas` (y las del gestor);
 capturas en ancho de PC y de celular. Su service worker es `docs/cobranzas/sw.js` (`VERSION`
 propia); el del gestor no atiende nada de `cobranzas/`. Estilo: el del gestor, con verde petróleo y
