@@ -239,7 +239,6 @@ label.f input[readonly],label.f textarea[readonly]{color:var(--soft)}
 .x:hover{color:var(--bad)}
 .addrow{display:grid;grid-template-columns:140px 1fr auto;gap:8px}
 .addrow input{padding:8px 10px;border:1px solid var(--line-soft);border-radius:var(--r-s);background:var(--sunken);color:var(--fg);min-width:0}
-.cuo .num{text-align:right}
 .tarjeta{border:1px solid var(--line-soft);border-radius:var(--r-s);padding:12px;display:grid;grid-template-columns:minmax(0,1fr);gap:10px;background:rgba(10,13,26,.22)}
 .resumen{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-size:12.5px;color:var(--muted)}
 .resumen b{font:500 13px var(--f-mono);color:var(--fg);font-variant-numeric:tabular-nums}
@@ -305,16 +304,46 @@ label.f input[readonly],label.f textarea[readonly]{color:var(--soft)}
 .nota.choque{border-color:rgba(246,189,96,.4);box-shadow:inset 3px 0 0 var(--warn)}
 .nota p{margin:0}
 
-/* ───────── Acuerdos ───────── */
+/* ───────── Acuerdos ─────────
+   En la vista, cada acuerdo es una fila con el nombre de la causa que se despliega al tocarla. El
+   desarrollo (también en la ficha): los tres rubros, cada uno con sus cuotas, y los totales. */
 #avisos{display:grid;gap:8px}
 .aviso{background:var(--surface);border:1px solid rgba(246,189,96,.38);box-shadow:inset 3px 0 0 var(--warn),var(--sombra);border-radius:var(--r);padding:12px 16px 12px 18px;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between}
 .aviso small{display:block;color:var(--muted)}
-.acgrid{display:grid;gap:14px}
-.achead{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:baseline}
-.achead b{font-size:15px}
-.cuo{width:100%;border-collapse:collapse;min-width:520px}
-.cuo td,.cuo th{padding:6px 4px;border-bottom:1px solid var(--line-soft);position:static;background:none;cursor:default;text-transform:none;letter-spacing:0;font-size:12.5px;vertical-align:middle}
-.cuo input{padding:6px 8px;border:1px solid var(--line-soft);border-radius:8px;background:var(--sunken);color:var(--fg);font-family:var(--f-mono);font-size:12.5px;max-width:140px}
+.acgrid{display:grid;gap:10px;max-width:920px}
+.acitem{padding:0;gap:0}
+.acfila{display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;border:0;border-radius:var(--r);background:none;color:inherit;text-align:left;cursor:pointer}
+.acfila:hover{background:var(--hover)}
+.acitem.abierto .acfila{border-radius:var(--r) var(--r) 0 0}
+.acnom{flex:1;min-width:0;display:grid;gap:3px}
+.acnom b{font-size:15px;font-weight:600;line-height:1.25;overflow-wrap:anywhere}
+.acfila .pill{flex:none}
+.chev{flex:none;width:18px;height:18px;background:var(--i-flecha) center/16px 16px no-repeat;transition:transform .15s}
+.acfila[aria-expanded="true"] .chev{transform:rotate(180deg)}
+.acitem .acdet{padding:14px 16px 16px;border-top:1px solid var(--line-soft)}
+.acdet,.acform{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+.acrub{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+.acrub+.acrub{padding-top:14px;border-top:1px dashed var(--line)}
+.acrubcab{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:2px 12px}
+.acrubcab b,.acrubtit{font-weight:600}
+.acform .tarjeta{gap:8px}
+.acsep{border:0;border-top:1px solid var(--line);margin:2px 0;width:100%}
+/* El plan de cuotas de un rubro: dos por renglón; cuatro en la vista ancha y en la ficha maximizada. */
+.acplan{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 12px}
+@media (min-width:900px){#main .acplan,.panel.max .acplan{grid-template-columns:repeat(4,minmax(0,1fr))}}
+/* Cuotas: un renglón cada una. Lo que no entra a lo ancho (estado y botones) baja, alineado a la derecha. */
+.cuotas{display:grid}
+.cuota{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:7px 0;border-top:1px solid var(--line-soft)}
+.cuota.cab{border-top:0;padding:0 0 5px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:500}
+.cuota .nro{flex:none;width:24px;font:12px var(--f-mono);color:var(--muted)}
+.cuota.cab .nro{font:inherit}
+.cuota .cvence,.cuota input[type=date]{flex:none;width:142px}
+.cuota .cmonto,.cuota input[data-importe]{flex:none;width:116px}
+.cuota.cab .cmonto{text-align:right;padding-right:9px}
+.cuota input{padding:6px 8px;border:1px solid var(--line-soft);border-radius:8px;background:var(--sunken);color:var(--fg);font-family:var(--f-mono);font-size:12.5px;min-width:0}
+.cuota input[data-importe]{text-align:right}
+.cuota input:focus{border-color:var(--accent)}
+.cuoest{flex:1 0 auto;display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:flex-end}
 
 /* ───────── Avisos del sistema ───────── */
 .franja{background:var(--surface);border:1px solid rgba(246,189,96,.38);box-shadow:inset 3px 0 0 var(--warn);border-radius:var(--r);padding:10px 14px 10px 16px;display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;justify-content:space-between}

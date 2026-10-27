@@ -9,13 +9,19 @@ import {
 import { idNuevo, nuevaLiquidacion, cobradoRubro, totalPago, liqNormal, liqCalc, importe, pesos, enCelda, planillaExcel } from './liquidacion.js';
 import { MODELOS, ACCIONES, CAMPOS_OFICIO, esModeloOficio, rellenar, htmlOficio, pdfOficio, enLetras, cifra, ordinal, datosDeCausa, partirDomicilio, dniOficio, nombreArchivo } from './oficio.js';
 
-const VERSION = '1.11.0';
+const VERSION = '1.12.0';
 
 // Cuatro datos de cada causa, con valores fijos: los mismos que acepta la base (supabase/migrations/0007).
 const UBICACIONES = ['Casillero', 'A despacho'];
 const ESTADOS = ['0. Iniciamos', '1.1 Demanda', '1.2 Contestación', '2. No oposición de excepciones', '3. Sentencia', '4. Ejecución de Sentencia', '5. Martillero Designado'];
 const CAUTELARES = ['Sin Cautelar', 'Embargo de sueldo', 'Vehículo secuestrado'];
 const SITUACIONES = ['En trámite', 'Acuerdo', 'Archivada'];
+// Los tres rubros de un acuerdo de pago; cada uno lleva sus propias cuotas (ver "Acuerdos").
+const RUBROS_ACU = [['capital', 'Capital, intereses y gastos'], ['martillero', 'Honorarios martillero'], ['abogado', 'Honorarios abogado']];
+const FRECUENCIAS = [['mes', 'Mensual'], ['quincena', 'Cada 15 días'], ['semana', 'Semanal']];
+const PLAN_VACIO = () => ({ n: '', monto: '', fecha: '', cada: 'mes' });
+/** Un acuerdo nuevo, como se escribe en el formulario: deudor, causa, notas y el plan de cuotas de cada rubro. */
+const NA_VACIO = (deudor = '') => ({ deudor, expte: '', notas: '', planes: Object.fromEntries(RUBROS_ACU.map(([r]) => [r, PLAN_VACIO()])) });
 const STALE = 30; // días sin movimiento para marcar una causa
 const GRACIA = 5; // días después del vencimiento de una cuota antes de preguntar si se pagó
 const CLAVE_MIN = 10;
@@ -33,7 +39,10 @@ const S = {
   planilla: false, liqSucia: false, // la planilla de liquidación está a la vista / tiene cambios sin guardar
   cau: null, // la acción cautelar que se está armando desde la ficha (ver "Acción cautelar")
   tpl: false, tpSel: '', tplDel: '', clave: false, // otros paneles
-  na: { deudor: '', expte: '', n: '', monto: '', fecha: '', cada: 'mes', notas: '' }, acDel: '',
+  // Acuerdos: el formulario de uno nuevo en la vista (na) y en la ficha (naf, null si está cerrado),
+  // el acuerdo desplegado en la vista, los formularios abiertos de "cargar cuotas" de un rubro y el
+  // acuerdo que se está por eliminar.
+  na: NA_VACIO(), naAbierto: false, naf: null, acVer: '', pq: {}, acDel: '',
   menu: false, instalar: null, ocupado: false,
   chat: null, // la conversación con Claude (ver "Chat con Claude")
 };
@@ -73,6 +82,16 @@ function toast(msg) {
   t.textContent = msg; t.hidden = false;
   // los avisos largos (por ejemplo, por qué no se pudo presentar ahora) quedan más tiempo a la vista
   clearTimeout(toast.h); toast.h = setTimeout(() => { t.hidden = true; }, Math.min(12000, Math.max(3200, msg.length * 55)));
+}
+
+/** Redibuja una parte de la pantalla sin sacar el foco ni el cursor del campo en que se estaba escribiendo. */
+function conFoco(raiz, redibujar) {
+  const activo = document.activeElement, id = activo && raiz && raiz.contains(activo) ? activo.id : '';
+  let cursor = null; try { if (id && activo.selectionStart != null) cursor = [activo.selectionStart, activo.selectionEnd]; } catch { /* tipos sin selección */ }
+  redibujar();
+  if (!id) return;
+  const el = document.getElementById(id);
+  if (el && el !== document.activeElement) { el.focus(); if (cursor) try { el.setSelectionRange(cursor[0], cursor[1]); } catch { /* tipos sin selección */ } }
 }
 
 function dueState(c) { const d = parse(c.vence); if (!d || !(c.proxima || '').trim()) return ''; const n = Math.round((d - today()) / 864e5); return n < 0 ? 'late' : n <= 7 ? 'soon' : ''; }
@@ -354,9 +373,11 @@ function subtitulo(texto) {
 
 function render() {
   if (S.pantalla !== 'listo') return;
-  // Si se redibuja mientras se escribe en el listado (formulario de acuerdos), el foco y el cursor vuelven a su lugar.
-  const activo = document.activeElement, idActivo = activo && $('#main').contains(activo) ? activo.id : '';
-  let cursor = null; try { if (idActivo && activo.selectionStart != null) cursor = [activo.selectionStart, activo.selectionEnd]; } catch { /* tipos sin selección */ }
+  guardarFormsAcu(); // lo que se esté escribiendo en un formulario de acuerdos vuelve igual después de redibujar
+  // Si se redibuja mientras se escribe en el listado (formularios de acuerdos), el foco y el cursor vuelven a su lugar.
+  conFoco($('#main'), dibujar);
+}
+function dibujar() {
   renderStats(); renderFilters(); renderAvisos(); renderFranja();
   const inicial = (D.acceso?.nombre || D.usuario?.email || '?').trim().charAt(0).toUpperCase();
   $('#btnCuenta').textContent = inicial;
@@ -368,7 +389,7 @@ function render() {
     main.innerHTML = `<div class="empty"><b>Cargando tus causas…</b>Acá vas a ver el listado de juicios con su estado, última acción y próxima acción.</div>`;
     subtitulo('Cargando causas…');
   } else if (isAc) {
-    keepNa(); main.innerHTML = renderAcuerdos(); subtitulo(`${D.acuerdos.length} acuerdos con plan de cuotas`);
+    main.innerHTML = renderAcuerdos(); subtitulo(`${D.acuerdos.length} ${D.acuerdos.length === 1 ? 'acuerdo' : 'acuerdos'} de pago`);
   } else if (isAg) {
     const items = itemsAgenda();
     subtitulo(`${items.length} ${items.length === 1 ? 'acción pendiente' : 'acciones pendientes'}`);
@@ -381,10 +402,6 @@ function render() {
     const rows = filtered();
     subtitulo(`${rows.length} de ${D.causas.length} causas`);
     main.innerHTML = rows.length ? (S.view === 'tablero' ? renderBoard(rows) : renderList(rows)) : `<div class="empty"><b>Ninguna causa coincide con los filtros</b>Probá con otra búsqueda o quitá algún filtro.</div>`;
-  }
-  if (idActivo) {
-    const el = document.getElementById(idActivo);
-    if (el && el !== document.activeElement) { el.focus(); if (cursor) try { el.setSelectionRange(cursor[0], cursor[1]); } catch { /* tipos sin selección */ } }
   }
 }
 
@@ -415,11 +432,13 @@ function openCausa(id, pre = null, pase = null) {
   S.base = copia(S.open); // la causa como se abrió: para saber qué se cambió en la ficha
   S.isNew = !id; S.confirmDel = false; S.choque = null; S.tpl = false; S.clave = false; S.tpSel = '';
   S.planilla = false; S.liqSucia = false; S.cau = null; S.pase = !id && pase ? pase : null;
+  cerrarFormsFicha();
   renderDrawer(true);
 }
 function closeDrawer() {
   S.open = null; S.tpl = false; S.clave = false; S.tpSel = ''; S.tplDel = ''; S.choque = null; S.confirmDel = false;
   S.planilla = false; S.liqSucia = false; S.cau = null; S.pase = null;
+  cerrarFormsFicha();
   $('#drawer').hidden = true; $('#drawer').innerHTML = ''; document.body.style.overflow = '';
 }
 
@@ -1031,6 +1050,8 @@ function renderDrawer(entra = false) {
 
   ${S.isNew ? '' : `<div class="sec" id="secCautelar"><h4>Acción cautelar</h4><div class="liqpie"><span class="hint">Embargo de haberes o secuestro del vehículo: la app arma el oficio y el escrito con los datos de la causa, para presentarlos en el SAC.</span><button class="btn small primary" data-act="cautelar">Acción cautelar</button></div></div>`}
 
+  <div id="acuerdoFicha">${acuerdoFichaHtml(c)}</div>
+
   <div class="sec"><h4>Movimientos</h4>
    <div class="addrow"><input type="date" id="h_fecha" value="${iso(today())}" aria-label="Fecha"><input id="h_texto" placeholder="Ej.: Dimos cédula a Franco" aria-label="Acción realizada"><button class="btn small primary" data-act="histadd">Registrar</button></div>
    <p class="hint m0">La acción más reciente pasa a ser la “última acción” de la causa.</p>
@@ -1047,7 +1068,7 @@ function renderDrawer(entra = false) {
 
   <div id="agendaFicha">${agendaFichaHtml(c)}</div>
 
-  <div class="sec"><h4>Notas</h4><label class="f"><textarea id="c_notas" rows="3" placeholder="Datos del martillero, montos del acuerdo, teléfonos…" aria-label="Notas">${esc(c.notas)}</textarea></label></div>
+  <div class="sec"><h4>Notas</h4><label class="f"><textarea id="c_notas" rows="3" placeholder="Datos del martillero, teléfonos…" aria-label="Notas">${esc(c.notas)}</textarea></label></div>
 
   ${S.isNew ? '' : `<div class="actions"><button class="btn danger" data-act="del">Eliminar causa</button></div>`}
   ${S.confirmDel ? `<div class="confirm"><span>¿Eliminar definitivamente ${esc(titulo(c))}? Si terminó, mejor marcala como “Archivada” en Situación.</span><button class="btn small danger" data-act="delyes">Sí, eliminar</button><button class="btn small" data-act="delno">Cancelar</button></div>` : ''}
@@ -1069,6 +1090,7 @@ function rerenderDrawer() {
 }
 
 function readForm() {
+  guardarFormsAcu(); // el acuerdo que se esté cargando en la ficha
   const c = S.open;
   ['actor', 'demandado', 'tipo', 'expte', 'nom', 'oficina', 'ubicacion', 'estado', 'cautelar', 'situacion', 'proxima', 'vence', 'notas'].forEach((k) => { const el = $('#c_' + k); if (el) c[k] = el.value.trim(); });
   (c.demandados || []).forEach((d, i) => ['nombre', 'dni', 'telefono', 'domicilio', 'notas'].forEach((k) => { const el = $('#d_' + k + i); if (el) d[k] = el.value.trim(); }));
@@ -1103,68 +1125,283 @@ async function save({ forzar = false, recrear = false } = {}) {
 }
 
 // ───────────────────────── Acuerdos ─────────────────────────
+// Un acuerdo de pago tiene tres rubros (RUBROS_ACU) y cada rubro sus propias cuotas. En la base las
+// cuotas son una sola lista (acuerdos.cuotas) y cada una dice su `rubro`; las cargadas antes de que
+// hubiera rubros no lo dicen y son de capital. El acuerdo se ve en la ficha de su causa y en la
+// vista Acuerdos, donde cada uno es una fila con el nombre de la causa que se despliega al tocarla.
+// Crear, marcar, corregir o agregar cuotas se guarda en el momento, sin "Guardar cambios".
 
-function keepNa() { Object.keys(S.na).forEach((k) => { const el = document.getElementById('na_' + k); if (el) S.na[k] = el.value; }); }
+const rubroDe = (q) => (RUBROS_ACU.some(([k]) => k === q?.rubro) ? q.rubro : 'capital');
+const nombreRubro = (r) => (RUBROS_ACU.find(([k]) => k === r) || RUBROS_ACU[0])[1];
+const ordenRubro = (r) => RUBROS_ACU.findIndex(([k]) => k === r);
+const acuerdosDe = (expte) => (expte ? D.acuerdos.filter((a) => a.expte === expte) : []);
+const causaDe = (a) => (a.expte ? D.causas.find((c) => c.expte === a.expte) || null : null);
+/** Un acuerdo se nombra por su causa, como en el listado; sin causa, por el deudor. */
+const tituloAcuerdo = (a) => { const c = causaDe(a); return c ? titulo(c) : a.deudor || '(sin deudor)'; };
+const sumaMontos = (qs) => qs.reduce((x, q) => x + (+q.monto || 0), 0);
+function cuentaCuotas(qs) {
+  const pagadas = qs.filter((q) => q.estado === 'pagada');
+  return { n: qs.length, pagadas: pagadas.length, impagas: qs.filter((q) => q.estado === 'impaga').length, total: sumaMontos(qs), cobrado: sumaMontos(pagadas) };
+}
+/** Las cuotas de un rubro, cada una con su lugar en la lista completa (`i`): es el que usan los botones. */
+const cuotasDeRubro = (a, r) => (a.cuotas || []).map((q, i) => ({ q, i })).filter((x) => rubroDe(x.q) === r);
+/** "Cuota 2 de 12" se cuenta dentro de su rubro. */
+function nroCuota(a, i) { const xs = cuotasDeRubro(a, rubroDe(a.cuotas[i])); return { n: xs.findIndex((x) => x.i === i) + 1, de: xs.length }; }
+
 function addPeriodo(d0, i, cada) { const d = new Date(d0); if (cada === 'mes') { const day = d.getDate(); d.setDate(1); d.setMonth(d.getMonth() + i); const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate(); d.setDate(Math.min(day, last)); } else d.setDate(d.getDate() + i * (cada === 'quincena' ? 15 : 7)); return iso(d); }
+/** La frecuencia de las dos últimas cuotas de un rubro, para que las que se agreguen sigan igual. */
+function frecuenciaDe(xs) {
+  const a = parse(xs[xs.length - 2]?.q.vence), b = parse(xs[xs.length - 1]?.q.vence);
+  const d = a && b ? Math.round((b - a) / 864e5) : 0;
+  return d >= 5 && d <= 9 ? 'semana' : d >= 12 && d <= 17 ? 'quincena' : 'mes';
+}
+/** Las cuotas de un plan (cantidad, monto de cada una, 1er vencimiento y frecuencia), o el error para mostrar. */
+function cuotasDePlan(r, pl) {
+  const cant = Number(String(pl.n ?? '').trim()), monto = importe(pl.monto), nombre = nombreRubro(r);
+  if (!Number.isInteger(cant) || cant < 1 || cant > 120) return { error: `Indicá la cantidad de cuotas de ${nombre} (de 1 a 120)` };
+  if (!(monto > 0)) return { error: `Indicá el monto de cada cuota de ${nombre}` };
+  if (!parse(pl.fecha)) return { error: `Indicá cuándo vence la 1ª cuota de ${nombre}` };
+  const d0 = parse(pl.fecha);
+  return { cuotas: Array.from({ length: cant }, (_, j) => ({ rubro: r, vence: addPeriodo(d0, j, pl.cada), monto, estado: 'pendiente', pago: '' })) };
+}
+const planVacio = (pl) => !String(pl.n ?? '').trim() && !String(pl.monto ?? '').trim() && !pl.fecha;
+/** Las cuotas de todos los rubros de un acuerdo nuevo. El rubro que quedó vacío no suma ninguna. */
+function cuotasDePlanes(planes) {
+  const cuotas = [];
+  for (const [r] of RUBROS_ACU) {
+    const pl = planes[r] || PLAN_VACIO();
+    if (planVacio(pl)) continue;
+    const x = cuotasDePlan(r, pl);
+    if (x.error) return x;
+    cuotas.push(...x.cuotas);
+  }
+  return cuotas.length ? { cuotas } : { error: 'Cargá las cuotas de al menos un rubro' };
+}
+/** Para "+ Varias cuotas": siguen a la última del rubro, con su monto y su frecuencia. */
+function planSiguiente(a, r) {
+  const xs = cuotasDeRubro(a, r), ult = xs[xs.length - 1]?.q;
+  if (!ult || !parse(ult.vence)) return PLAN_VACIO();
+  const cada = frecuenciaDe(xs);
+  return { n: '', monto: enCelda(+ult.monto || 0), fecha: addPeriodo(parse(ult.vence), 1, cada), cada };
+}
+/** Agrega cuotas a un rubro, después de las que ya tiene: la lista queda ordenada por rubro. */
+function insertarEnRubro(cuotas, r, nuevas) {
+  let pos = 0;
+  cuotas.forEach((q, j) => { if (ordenRubro(rubroDe(q)) <= ordenRubro(r)) pos = j + 1; });
+  cuotas.splice(pos, 0, ...nuevas);
+  return cuotas;
+}
+
 function cuotasPorPreguntar() { const r = []; D.acuerdos.forEach((a) => (a.cuotas || []).forEach((q, i) => { const n = days(q.vence); if ((q.estado || 'pendiente') === 'pendiente' && n !== null && n >= GRACIA) r.push({ a, q, i }); })); return r.sort((x, y) => x.q.vence.localeCompare(y.q.vence)); }
 function renderAvisos() {
-  $('#avisos').innerHTML = cuotasPorPreguntar().map(({ a, q, i }) => `<div class="aviso"><div><b>¿Pagó ${esc(a.deudor)} su cuota del acuerdo?</b><small>Cuota ${i + 1} de ${a.cuotas.length} · vencía el ${fmt(q.vence)} · ${money(q.monto)}</small></div>
-   <div class="actions"><button class="btn small primary" data-ac="pay" data-id="${esc(a.id)}" data-i="${i}" data-v="pagada">Sí, pagó</button><button class="btn small danger" data-ac="pay" data-id="${esc(a.id)}" data-i="${i}" data-v="impaga">No pagó</button></div></div>`).join('');
-}
-function renderAcuerdos() {
-  const n = S.na, cs = D.causas.filter((c) => !isArch(c)).sort((a, b) => titulo(a).localeCompare(titulo(b)));
-  const form = `<div class="sec"><h4>Nuevo acuerdo</h4><div class="grid2">
-    <label class="f">Deudor<input id="na_deudor" value="${esc(n.deudor)}" placeholder="Apellido y nombre"></label>
-    <label class="f">Causa (opcional)<select id="na_expte"><option value="">Sin vincular a una causa</option>${cs.map((c) => `<option value="${esc(c.expte)}" ${n.expte === c.expte ? 'selected' : ''}>${esc(titulo(c))} · ${esc(c.expte)}</option>`).join('')}</select></label>
-    <label class="f">Cantidad de cuotas<input id="na_n" type="number" min="1" max="120" value="${esc(n.n)}"></label>
-    <label class="f">Monto de cada cuota ($)<input id="na_monto" type="number" min="0" value="${esc(n.monto)}"></label>
-    <label class="f">Vence la 1ª cuota<input id="na_fecha" type="date" value="${esc(n.fecha)}"></label>
-    <label class="f">Frecuencia<select id="na_cada">${[['mes', 'Mensual'], ['quincena', 'Cada 15 días'], ['semana', 'Semanal']].map(([v, l]) => `<option value="${v}" ${n.cada === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-    <label class="f ancho">Notas<input id="na_notas" value="${esc(n.notas)}" placeholder="Ej.: paga por transferencia, incluye honorarios…"></label></div>
-    <div><button class="btn primary" data-ac="create">Crear plan de cuotas</button> <span class="hint">Después podés corregir la fecha y el monto de cada cuota.</span></div></div>`;
-  const pill = (q) => { const e = q.estado || 'pendiente'; return e === 'pagada' ? `<span class="pill s-sentencia">Pagada${q.pago ? ' ' + fmt(q.pago) : ''}</span>` : e === 'impaga' ? '<span class="pill s-subasta">No pagó</span>' : (days(q.vence) > 0 ? '<span class="pill s-notificando">Vencida sin confirmar</span>' : '<span class="pill">Pendiente</span>'); };
-  const list = D.acuerdos.map((a) => {
-    const qs = a.cuotas || [], pag = qs.filter((q) => q.estado === 'pagada'), tot = qs.reduce((x, q) => x + (+q.monto || 0), 0), cob = pag.reduce((x, q) => x + (+q.monto || 0), 0), imp = qs.filter((q) => q.estado === 'impaga').length;
-    return `<div class="sec"><div class="achead"><div><b>${esc(a.deudor)}</b>${a.expte ? ` <span class="mono hint">· expte. ${esc(a.expte)}</span>` : ''}${a.notas ? `<div class="hint">${esc(a.notas)}</div>` : ''}</div>
-     <div class="hint">${pag.length} de ${qs.length} pagadas${imp ? ` · <span class="malo">${imp} impaga${imp > 1 ? 's' : ''}</span>` : ''} · cobrado ${money(cob)} de ${money(tot)}</div></div>
-     <div class="scrollx"><table class="cuo"><thead><tr><th>N°</th><th>Vence</th><th>Monto ($)</th><th>Estado</th><th></th></tr></thead><tbody>
-     ${qs.map((q, i) => `<tr><td class="mono">${i + 1}</td><td><input type="date" id="cq_f_${esc(a.id)}_${i}" data-acf="vence" data-id="${esc(a.id)}" data-i="${i}" value="${esc(q.vence)}" aria-label="Vencimiento de la cuota ${i + 1}"></td><td><input type="number" id="cq_m_${esc(a.id)}_${i}" data-acf="monto" data-id="${esc(a.id)}" data-i="${i}" value="${+q.monto || 0}" aria-label="Monto de la cuota ${i + 1}"></td><td>${pill(q)}</td>
-      <td class="num">${(q.estado || 'pendiente') === 'pagada' ? `<button class="btn small" data-ac="pay" data-id="${esc(a.id)}" data-i="${i}" data-v="pendiente">Deshacer</button>` : `<button class="btn small donebtn m0" data-ac="pay" data-id="${esc(a.id)}" data-i="${i}" data-v="pagada">Pagó</button>${q.estado === 'impaga' ? '' : ` <button class="btn small danger" data-ac="pay" data-id="${esc(a.id)}" data-i="${i}" data-v="impaga">No pagó</button>`}`} <button class="x" data-ac="delq" data-id="${esc(a.id)}" data-i="${i}" aria-label="Quitar cuota">×</button></td></tr>`).join('')}
-     </tbody></table></div>
-     <div class="actions"><button class="btn small" data-ac="addq" data-id="${esc(a.id)}">+ Cuota</button>${S.acDel === a.id ? `<button class="btn small danger" data-ac="delyes" data-id="${esc(a.id)}">Sí, eliminar el acuerdo</button><button class="btn small" data-ac="delno">Cancelar</button>` : `<button class="btn small danger" data-ac="del" data-id="${esc(a.id)}">Eliminar acuerdo</button>`}</div></div>`;
+  $('#avisos').innerHTML = cuotasPorPreguntar().map(({ a, q, i }) => {
+    const k = nroCuota(a, i);
+    return `<div class="aviso"><div><b>¿Pagó ${esc(a.deudor)} su cuota del acuerdo?</b><small>${esc(nombreRubro(rubroDe(q)))} · cuota ${k.n} de ${k.de} · vencía el ${fmt(q.vence)} · ${pesos(q.monto)}</small></div>
+   <div class="actions"><button class="btn small primary" data-ac="pay" data-id="${esc(a.id)}" data-i="${i}" data-v="pagada">Sí, pagó</button><button class="btn small danger" data-ac="pay" data-id="${esc(a.id)}" data-i="${i}" data-v="impaga">No pagó</button></div></div>`;
   }).join('');
-  return `<div class="acgrid">${form}${list || '<div class="empty"><b>Todavía no cargaste ningún acuerdo</b>Completá el formulario de arriba para crear el primer plan de cuotas. A los ' + GRACIA + ' días de vencida cada cuota, el gestor te va a preguntar si el deudor pagó.</div>'}</div>`;
 }
 
+// Los formularios (un acuerdo nuevo, "cargar cuotas" de un rubro) guardan lo escrito en S: cada campo
+// dice dónde en `data-guarda`. Así un redibujo —un cambio que llega de la base, otro botón— no lo borra.
+function guardarFormsAcu() {
+  document.querySelectorAll('[data-guarda]').forEach((el) => {
+    const ruta = el.dataset.guarda.split('.'), campo = ruta.pop();
+    let o = S;
+    for (const p of ruta) o = o?.[p];
+    if (o && typeof o === 'object') o[campo] = el.value;
+  });
+}
+/** Un formulario que ya se usó o se cerró: lo que quedó escrito en la pantalla no vuelve a S. */
+function soltar(prefijo) { document.querySelectorAll('[data-guarda]').forEach((el) => { if (el.dataset.guarda.startsWith(prefijo)) el.removeAttribute('data-guarda'); }); }
+function cerrarFormsFicha() {
+  soltar('naf.'); S.naf = null; S.acDel = '';
+  for (const k of Object.keys(S.pq)) if (k.startsWith('f_')) { soltar(`pq.${k}.`); delete S.pq[k]; }
+}
+
+/** Los cuatro datos de un plan de cuotas. `idp`: comienzo de los id; `ruta`: dónde se guarda lo escrito. */
+function camposPlan(idp, ruta, pl, nombre) {
+  return `<div class="acplan">
+    <label class="f">Cantidad de cuotas<input id="${idp}_n" data-guarda="${ruta}.n" type="number" min="1" max="120" inputmode="numeric" value="${esc(pl.n)}" aria-label="Cantidad de cuotas de ${esc(nombre)}"></label>
+    <label class="f">Monto de cada cuota ($)<input id="${idp}_monto" data-guarda="${ruta}.monto" inputmode="decimal" autocomplete="off" data-importe placeholder="0" value="${esc(pl.monto)}" aria-label="Monto de cada cuota de ${esc(nombre)}"></label>
+    <label class="f">Vence la 1ª cuota<input id="${idp}_fecha" data-guarda="${ruta}.fecha" type="date" value="${esc(pl.fecha)}" aria-label="Vencimiento de la 1ª cuota de ${esc(nombre)}"></label>
+    <label class="f">Frecuencia<select id="${idp}_cada" data-guarda="${ruta}.cada" aria-label="Frecuencia de las cuotas de ${esc(nombre)}">${FRECUENCIAS.map(([v, l]) => `<option value="${v}" ${pl.cada === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+  </div>`;
+}
+
+/** Un acuerdo nuevo: en la vista ('v') se elige la causa; en la ficha ('f') es la causa abierta. */
+function formAcuerdoHtml(donde) {
+  const enVista = donde === 'v', p = enVista ? 'na' : 'naf', f = enVista ? S.na : S.naf;
+  if (!f) return '';
+  const causas = D.causas.filter((c) => !isArch(c)).sort((a, b) => titulo(a).localeCompare(titulo(b)));
+  return `<div class="acform">${enVista ? '<h4>Nuevo acuerdo</h4>' : ''}
+   <div class="grid2">
+    <label class="f${enVista ? '' : ' ancho'}">Deudor<input id="${p}_deudor" data-guarda="${p}.deudor" value="${esc(f.deudor)}" placeholder="Apellido y nombre"></label>
+    ${enVista ? `<label class="f">Causa (opcional)<select id="na_expte" data-guarda="na.expte"><option value="">Sin vincular a una causa</option>${causas.map((c) => `<option value="${esc(c.expte)}" ${f.expte === c.expte ? 'selected' : ''}>${esc(titulo(c))} · ${esc(c.expte)}</option>`).join('')}</select></label>` : ''}
+    <label class="f ancho">Notas<input id="${p}_notas" data-guarda="${p}.notas" value="${esc(f.notas)}" placeholder="Ej.: paga por transferencia"></label>
+   </div>
+   ${RUBROS_ACU.map(([r, nombre]) => `<div class="tarjeta"><b class="acrubtit">${esc(nombre)}</b>${camposPlan(`${p}_${r}`, `${p}.planes.${r}`, f.planes[r], nombre)}</div>`).join('')}
+   <p class="hint m0">Cada rubro lleva sus cuotas. El que no entre en el acuerdo dejalo vacío: se puede cargar después. A los ${GRACIA} días de vencida cada cuota, el gestor pregunta si se pagó.</p>
+   <div class="actions"><button class="btn primary" data-ac="${enVista ? 'create' : 'createf'}">Crear acuerdo</button><button class="btn" data-ac="${enVista ? 'nuevo' : 'cancelarf'}">Cancelar</button></div>
+  </div>`;
+}
+
+function pillCuota(q) {
+  const e = q.estado || 'pendiente';
+  if (e === 'pagada') return `<span class="pill s-sentencia">Pagada${q.pago ? ' ' + fmt(q.pago) : ''}</span>`;
+  if (e === 'impaga') return '<span class="pill s-subasta">No pagó</span>';
+  return days(q.vence) > 0 ? '<span class="pill s-notificando">Vencida sin confirmar</span>' : '<span class="pill">Pendiente</span>';
+}
+/**
+ * Una cuota, en un renglón: vencimiento y monto se corrigen ahí mismo y los botones la marcan o la
+ * quitan. Si no entra a lo ancho (la ficha, el celular), el estado y los botones bajan al renglón de abajo.
+ */
+function filaCuota(a, { q, i }, j, donde) {
+  const k = esc(a.id), nombre = esc(nombreRubro(rubroDe(q))), e = q.estado || 'pendiente', id = (c) => `cq_${donde}_${c}_${k}_${i}`;
+  const marcar = (v, texto, clase = '') => `<button class="btn small ${clase}" data-ac="pay" data-id="${k}" data-i="${i}" data-v="${v}">${texto}</button>`;
+  const vencio = (days(q.vence) ?? -1) >= 0; // "No pagó" recién desde el día del vencimiento
+  const botones = e === 'pagada' ? marcar('pendiente', 'Deshacer')
+    : marcar('pagada', 'Pagó', 'donebtn m0') + (e === 'impaga' || !vencio ? '' : marcar('impaga', 'No pagó', 'danger'));
+  return `<div class="cuota"><span class="nro">${j + 1}</span>
+   <input type="date" id="${id('f')}" data-acf="vence" data-id="${k}" data-i="${i}" value="${esc(q.vence)}" aria-label="Vencimiento de la cuota ${j + 1} de ${nombre}">
+   <input id="${id('m')}" data-acf="monto" data-id="${k}" data-i="${i}" value="${esc(enCelda(q.monto))}" inputmode="decimal" autocomplete="off" data-importe placeholder="0" aria-label="Monto de la cuota ${j + 1} de ${nombre}">
+   <span class="cuoest">${pillCuota(q)}${botones}<button class="x" data-ac="delq" data-id="${k}" data-i="${i}" aria-label="Quitar la cuota ${j + 1} de ${nombre}">×</button></span></div>`;
+}
+function rubroHtml(a, r, nombre, donde) {
+  const xs = cuotasDeRubro(a, r), t = cuentaCuotas(xs.map((x) => x.q)), k = esc(a.id), clave = `${donde}_${a.id}_${r}`, kc = esc(clave), plan = S.pq[clave];
+  const res = xs.length
+    ? `${t.pagadas} de ${t.n} pagadas${t.impagas ? ` · <span class="malo">${t.impagas} ${t.impagas === 1 ? 'impaga' : 'impagas'}</span>` : ''} · cobrado ${pesos(t.cobrado)} de ${pesos(t.total)}`
+    : 'Sin cuotas cargadas';
+  const tabla = xs.length ? `<div class="cuotas"><div class="cuota cab" aria-hidden="true"><span class="nro">N°</span><span class="cvence">Vence</span><span class="cmonto">Monto ($)</span></div>
+    ${xs.map((x, j) => filaCuota(a, x, j, donde)).join('')}</div>` : '';
+  const pie = plan
+    ? `<div class="tarjeta">${camposPlan(`pq_${clave}`, `pq.${clave}`, plan, nombre)}<div class="actions"><button class="btn small primary" data-ac="planok" data-clave="${kc}">Cargar cuotas</button><button class="btn small" data-ac="plan" data-clave="${kc}">Cancelar</button></div></div>`
+    : `<div class="actions">${xs.length ? `<button class="btn small" data-ac="addq" data-id="${k}" data-rubro="${r}">+ Cuota</button><button class="btn small" data-ac="plan" data-clave="${kc}">+ Varias cuotas</button>` : `<button class="btn small" data-ac="plan" data-clave="${kc}">Cargar cuotas</button>`}</div>`;
+  return `<div class="acrub" data-rubro="${r}"><div class="acrubcab"><b>${esc(nombre)}</b><span class="hint">${res}</span></div>${tabla}${pie}</div>`;
+}
+/** El desarrollo de un acuerdo: sus rubros con sus cuotas y los totales. `donde`: 'v' (vista Acuerdos) o 'f' (ficha). */
+function acuerdoHtml(a, donde) {
+  const k = esc(a.id), t = cuentaCuotas(a.cuotas || []), c = causaDe(a);
+  const datos = [a.deudor && (!c || a.deudor !== titulo(c)) ? `Deudor: ${esc(a.deudor)}` : '', a.creado ? `Cargado el ${fmt(a.creado)}` : '', esc(a.notas)].filter(Boolean);
+  const borrar = S.acDel === a.id
+    ? `<button class="btn small danger" data-ac="delyes" data-id="${k}">Sí, eliminar el acuerdo</button><button class="btn small" data-ac="delno">Cancelar</button>`
+    : `<button class="btn small danger" data-ac="del" data-id="${k}">Eliminar acuerdo</button>`;
+  return `<div class="acdet">${datos.length ? `<p class="hint m0">${datos.join(' · ')}</p>` : ''}
+   ${RUBROS_ACU.map(([r, nombre]) => rubroHtml(a, r, nombre, donde)).join('')}
+   <dl class="cifras"><div><dt>Total del acuerdo</dt><dd>${pesos(t.total)}</dd></div><div><dt>Cobrado</dt><dd>${pesos(t.cobrado)}</dd></div><div><dt>Saldo</dt><dd>${pesos(t.total - t.cobrado)}</dd></div></dl>
+   <div class="actions">${donde === 'v' && c ? `<button class="btn small" data-ac="abrir" data-id="${k}">Abrir la causa</button>` : ''}${borrar}</div>
+  </div>`;
+}
+
+// Vista Acuerdos: una fila por acuerdo, con el nombre de la causa; al tocarla se despliega.
+function renderAcuerdos() {
+  const lista = [...D.acuerdos].sort((x, y) => tituloAcuerdo(x).localeCompare(tituloAcuerdo(y)) || x.id.localeCompare(y.id));
+  const porConfirmar = cuotasPorPreguntar();
+  const nuevo = S.naAbierto ? `<div class="sec">${formAcuerdoHtml('v')}</div>` : '<div><button class="btn primary" data-ac="nuevo">+ Nuevo acuerdo</button></div>';
+  const vacio = '<div class="empty"><b>Todavía no cargaste ningún acuerdo</b>Se carga desde la ficha de la causa, en “Acuerdo de pago”, o acá con “+ Nuevo acuerdo”.</div>';
+  return `<div class="acgrid">${nuevo}${lista.map((a) => filaAcuerdo(a, porConfirmar.filter((x) => x.a.id === a.id).length)).join('') || (S.naAbierto ? '' : vacio)}</div>`;
+}
+function filaAcuerdo(a, porConfirmar) {
+  const abierto = S.acVer === a.id, k = esc(a.id), t = cuentaCuotas(a.cuotas || []);
+  const sub = `${a.expte ? 'Expte. ' + esc(a.expte) : 'Sin causa vinculada'} · ${t.pagadas} de ${t.n} cuotas pagadas`;
+  const alerta = porConfirmar ? `<span class="pill s-notificando">${porConfirmar} por confirmar</span>`
+    : t.impagas ? `<span class="pill s-subasta">${t.impagas} ${t.impagas === 1 ? 'impaga' : 'impagas'}</span>` : '';
+  return `<div class="sec acitem${abierto ? ' abierto' : ''}" data-acuerdo="${k}">
+   <button class="acfila" data-ac="ver" data-id="${k}" aria-expanded="${abierto}"><span class="acnom"><b>${esc(tituloAcuerdo(a))}</b><span class="hint">${sub}</span></span>${alerta}<span class="chev" aria-hidden="true"></span></button>
+   ${abierto ? acuerdoHtml(a, 'v') : ''}
+  </div>`;
+}
+
+// En la ficha: el acuerdo de la causa, o el botón para cargarlo.
+function acuerdoFichaHtml(c) {
+  if (S.isNew) return '';
+  const xs = acuerdosDe(c.expte), cab = '<h4>Acuerdo de pago</h4>';
+  if (xs.length) return `<div class="sec" id="secAcuerdo">${cab}${xs.map((a) => (xs.length > 1 ? `<b class="acrubtit">Acuerdo del ${fmt(a.creado)}</b>` : '') + acuerdoHtml(a, 'f')).join('<hr class="acsep">')}
+    <p class="hint m0">Lo que cambies en el acuerdo se guarda en el momento, sin “Guardar cambios”.</p></div>`;
+  if (S.naf) return `<div class="sec" id="secAcuerdo">${cab}${formAcuerdoHtml('f')}</div>`;
+  return `<div class="sec" id="secAcuerdo">${cab}<div class="liqpie"><span class="hint">Sin acuerdo cargado.</span><button class="btn small primary" data-ac="cargarf">Cargar acuerdo</button></div></div>`;
+}
+/** Redibuja solo el acuerdo de la ficha: lo demás que se esté editando en la ficha no se toca. */
+function refrescarAcuerdoFicha() {
+  const caja = $('#acuerdoFicha'); if (!caja || !S.open) return;
+  guardarFormsAcu();
+  conFoco(caja, () => { caja.innerHTML = acuerdoFichaHtml(S.open); });
+}
+/** Los acuerdos pueden estar a la vista en dos lugares a la vez: la vista Acuerdos y la ficha abierta. */
+function redibujarAcuerdos() { render(); refrescarAcuerdoFicha(); }
+
 const CAMBIO_ACUERDO = 'El acuerdo cambió recién. Revisalo y probá de nuevo';
+/** Guarda las cuotas; cada una queda con su rubro escrito (las de antes de los rubros, "capital"). */
 async function cambiarCuotas(a, cuotas, ok) {
-  const r = await actualizarAcuerdo(a.id, a.rev, { cuotas });
+  const r = await actualizarAcuerdo(a.id, a.rev, { cuotas: cuotas.map((q) => ({ ...q, rubro: rubroDe(q) })) });
   toast(r.conflicto ? CAMBIO_ACUERDO : ok);
+  return !r.conflicto;
 }
 async function acAct(b) {
-  const k = b.dataset.ac, id = b.dataset.id || '', i = +b.dataset.i;
-  if (k === 'del') { S.acDel = id; render(); return; }
-  if (k === 'delno') { S.acDel = ''; render(); return; }
+  const k = b.dataset.ac, id = b.dataset.id || '', i = +b.dataset.i, clave = b.dataset.clave || '';
+  guardarFormsAcu();
+  // Lo que solo cambia lo que se ve
+  if (k === 'nuevo') { soltar('na.'); S.naAbierto = !S.naAbierto; if (!S.naAbierto) S.na = NA_VACIO(); redibujarAcuerdos(); if (S.naAbierto) $('#na_deudor')?.focus(); return; }
+  if (k === 'ver') { S.acVer = S.acVer === id ? '' : id; redibujarAcuerdos(); return; }
+  if (k === 'abrir') { const a = D.acuerdos.find((x) => x.id === id); if (a && causaDe(a)) openCausa(a.expte); return; }
+  if (k === 'cargarf') { if (!S.open) return; S.naf = NA_VACIO(S.open.demandado || S.open.actor || ''); refrescarAcuerdoFicha(); $('#naf_deudor')?.focus(); return; }
+  if (k === 'cancelarf') { soltar('naf.'); S.naf = null; refrescarAcuerdoFicha(); return; }
+  if (k === 'plan') {
+    soltar(`pq.${clave}.`);
+    if (S.pq[clave]) delete S.pq[clave];
+    else { const [, aid, r] = clave.split('_'), a = D.acuerdos.find((x) => x.id === aid); S.pq[clave] = a ? planSiguiente(a, r) : PLAN_VACIO(); }
+    redibujarAcuerdos();
+    if (S.pq[clave]) document.getElementById(`pq_${clave}_n`)?.focus();
+    return;
+  }
+  if (k === 'del') { S.acDel = id; redibujarAcuerdos(); return; }
+  if (k === 'delno') { S.acDel = ''; redibujarAcuerdos(); return; }
   try {
-    if (k === 'create') {
-      keepNa(); const n = S.na, cant = parseInt(n.n, 10), monto = +n.monto || 0;
-      if (!n.deudor.trim()) { toast('Falta el deudor'); return; } if (!(cant >= 1 && cant <= 120)) { toast('Indicá la cantidad de cuotas'); return; } if (!n.fecha) { toast('Indicá el vencimiento de la 1ª cuota'); return; }
-      const d0 = parse(n.fecha), cuotas = Array.from({ length: cant }, (_, j) => ({ vence: addPeriodo(d0, j, n.cada), monto, estado: 'pendiente', pago: '' }));
-      S.na = { deudor: '', expte: '', n: '', monto: '', fecha: '', cada: 'mes', notas: '' };
-      const pedido = { deudor: n.deudor.trim(), expte: n.expte, notas: n.notas.trim(), cuotas, creado: iso(today()) };
-      try { await crearAcuerdo(pedido); } catch (e) { S.na = n; render(); throw e; } // si falla, el formulario no se pierde
-      toast('Plan de cuotas creado'); return;
+    if (k === 'create' || k === 'createf') {
+      const enVista = k === 'create', f = enVista ? S.na : S.naf;
+      if (!f) return;
+      const expte = enVista ? f.expte : S.open?.expte || '';
+      if (!f.deudor.trim()) { toast('Falta el deudor'); return; }
+      const x = cuotasDePlanes(f.planes); if (x.error) { toast(x.error); return; }
+      await conBoton(b, 'Creando…', async () => {
+        const fila = await crearAcuerdo({ deudor: f.deudor.trim(), expte, notas: f.notas.trim(), cuotas: x.cuotas, creado: iso(today()) });
+        // Recién guardado se cierra el formulario: si algo falla, queda con lo escrito.
+        if (enVista) { soltar('na.'); S.na = NA_VACIO(); S.naAbierto = false; S.acVer = fila?.id || ''; } // queda desplegado, para ver cómo quedó
+        else if (S.naf === f) { soltar('naf.'); S.naf = null; }
+        redibujarAcuerdos();
+        toast('Acuerdo creado');
+      });
+      return;
     }
-    if (k === 'delyes') { await borrarAcuerdo(id); S.acDel = ''; toast('Acuerdo eliminado'); return; }
+    if (k === 'delyes') { await borrarAcuerdo(id); S.acDel = ''; if (S.acVer === id) S.acVer = ''; toast('Acuerdo eliminado'); return; }
+    if (k === 'planok') {
+      const [, aid, r] = clave.split('_'), a = D.acuerdos.find((x) => x.id === aid), pl = S.pq[clave];
+      if (!a || !pl) return;
+      const x = cuotasDePlan(r, pl); if (x.error) { toast(x.error); return; }
+      const ok = x.cuotas.length === 1 ? `Cuota cargada en ${nombreRubro(r)}` : `${x.cuotas.length} cuotas cargadas en ${nombreRubro(r)}`;
+      await conBoton(b, 'Guardando…', async () => {
+        if (!await cambiarCuotas(a, insertarEnRubro(copia(a.cuotas || []), r, x.cuotas), ok)) return; // cambió desde otro lado: el formulario queda
+        soltar(`pq.${clave}.`); delete S.pq[clave]; redibujarAcuerdos();
+      });
+      return;
+    }
     const a = D.acuerdos.find((x) => x.id === id); if (!a) return; const cuotas = copia(a.cuotas || []);
-    if (k === 'pay') { const v = b.dataset.v; cuotas[i].estado = v; cuotas[i].pago = v === 'pagada' ? iso(today()) : ''; await cambiarCuotas(a, cuotas, v === 'pagada' ? 'Cuota marcada como pagada' : v === 'impaga' ? 'Cuota marcada como no pagada' : 'Cuota vuelta a pendiente'); return; }
-    if (k === 'addq') { const last = cuotas[cuotas.length - 1]; cuotas.push({ vence: last ? addPeriodo(parse(last.vence), 1, 'mes') : iso(today()), monto: last ? last.monto : 0, estado: 'pendiente', pago: '' }); await cambiarCuotas(a, cuotas, 'Cuota agregada'); return; }
-    if (k === 'delq') { cuotas.splice(i, 1); await cambiarCuotas(a, cuotas, 'Cuota quitada'); }
+    if (k === 'pay') {
+      if (!cuotas[i]) return;
+      const v = b.dataset.v; cuotas[i].estado = v; cuotas[i].pago = v === 'pagada' ? iso(today()) : '';
+      await cambiarCuotas(a, cuotas, v === 'pagada' ? 'Cuota marcada como pagada' : v === 'impaga' ? 'Cuota marcada como no pagada' : 'Cuota vuelta a pendiente'); return;
+    }
+    if (k === 'addq') {
+      const r = RUBROS_ACU.some(([x]) => x === b.dataset.rubro) ? b.dataset.rubro : 'capital', xs = cuotasDeRubro(a, r), ult = xs[xs.length - 1]?.q;
+      const vence = ult && parse(ult.vence) ? addPeriodo(parse(ult.vence), 1, frecuenciaDe(xs)) : iso(today());
+      await cambiarCuotas(a, insertarEnRubro(cuotas, r, [{ rubro: r, vence, monto: ult ? +ult.monto || 0 : 0, estado: 'pendiente', pago: '' }]), 'Cuota agregada'); return;
+    }
+    if (k === 'delq') { if (!cuotas[i]) return; cuotas.splice(i, 1); await cambiarCuotas(a, cuotas, 'Cuota quitada'); }
   } catch (e) { toast(mensaje(e)); }
 }
 document.addEventListener('change', async (e) => {
   const t = e.target; if (!t.dataset || !t.dataset.acf) return; const a = D.acuerdos.find((x) => x.id === t.dataset.id); if (!a) return;
-  const cuotas = copia(a.cuotas || []); cuotas[+t.dataset.i][t.dataset.acf] = t.dataset.acf === 'monto' ? (+t.value || 0) : t.value;
+  const cuotas = copia(a.cuotas || []), q = cuotas[+t.dataset.i]; if (!q) return;
+  q[t.dataset.acf] = t.dataset.acf === 'monto' ? Math.max(0, importe(t.value)) : t.value;
   try { await cambiarCuotas(a, cuotas, 'Cuota actualizada'); } catch (err) { toast(mensaje(err)); }
 });
 
@@ -1802,7 +2039,7 @@ alCambiar((que, detalle) => {
   render();
   seguirEnlace(); // un enlace que llegó antes de que estuvieran los datos
   if (S.tpl) refrescarTpl();
-  if (S.open && !S.isNew) { const n = $('#nota'); if (n) n.innerHTML = notaHtml(); refrescarAgendaFicha(); } // sin tocar lo que se está escribiendo
+  if (S.open && !S.isNew) { const n = $('#nota'); if (n) n.innerHTML = notaHtml(); refrescarAgendaFicha(); refrescarAcuerdoFicha(); } // sin tocar lo que se está escribiendo
   if (S.chat?.abierto) refrescarCharla();
 });
 

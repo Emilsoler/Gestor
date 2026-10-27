@@ -98,6 +98,18 @@ Después de escribir, leer la fila y contar qué quedó. La app abierta lo muest
   sucesiones…) van con `demandado = ''` y el interesado en `actor`; la app los nombra por el
   actor. No inventar un demandado para completar el campo.
 - **Liquidación**: `liquidacion` es `{fecha, embargo, rubros:[{id, rubro, monto, pagado}], pagos:[{id, fecha, op, imp:{<id del rubro>: monto}}]}`. Cada pago es una orden de pago (`op` es su N°) que reparte su monto entre rubros en `imp`. `pagado` de cada rubro es la suma de lo imputado: si se editan los pagos con SQL directo, recalcular `pagado` también. En la app, la ficha muestra solo total, cobrado y saldo, y el botón "Abrir planilla": una hoja con los rubros en filas y cada orden de pago en una columna, que se guarda en este mismo campo (lo que cargue Claude por SQL aparece ahí). "Descargar en Excel" arma un .xlsx con fórmulas en el navegador; es una copia: lo que se cambie en el archivo no vuelve al gestor.
+- **Acuerdos de pago** (`public.acuerdos`, migración 0017): una fila por acuerdo, con `deudor`, `expte` (la
+  causa; vacío si no se vinculó), `notas`, `creado` y `cuotas`, una lista jsonb de
+  `{rubro, vence, monto, estado, pago}`. Los rubros son tres y cada uno lleva sus propias cuotas:
+  `capital` (capital, intereses y gastos), `martillero` (honorarios del martillero) y `abogado`
+  (honorarios del abogado). `estado`: `pendiente`, `pagada` (con `pago` = fecha) o `impaga`. Una cuota sin
+  `rubro` (cargada antes de que existieran) es de capital. La app las muestra rubro por rubro, en el orden
+  de la lista, que queda agrupada por rubro (capital, martillero, abogado): las cuotas que se agregan a un
+  rubro van después de las que ese rubro ya tiene. El acuerdo se ve en la
+  ficha de su causa ("Acuerdo de pago") y en la vista Acuerdos, donde cada uno es una fila con el nombre
+  de la causa que se despliega al tocarla. A los 5 días de vencida una cuota pendiente, la app pregunta si
+  se pagó. Para cargar o cambiar uno por SQL, `insert`/`update` directo con `set_config('gestor.autor',
+  'Claude', true)`, cuidando esa forma; la `situacion` de la causa (`Acuerdo`) se cambia aparte.
 - **Última acción**: es el movimiento de fecha más reciente (a igual fecha, el anotado después).
   Las funciones ya lo calculan; con SQL directo sobre `historial` hay que actualizar también
   `ultima` y `fecha` (`gestor.ultima_de(historial)`).

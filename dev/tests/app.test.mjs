@@ -174,7 +174,10 @@ test('causa sin demandado: se guarda, se nombra por el actor y se puede editar',
   await page.click('#vTablero');
   assert.equal(await page.locator('#main .card[data-id="3001"] b').first().textContent(), 'PEREZ PABLO');
   await page.click('#vAcuerdos');
+  await page.click('[data-ac=nuevo]'); // el formulario de un acuerdo nuevo
   assert.equal(await page.locator('#na_expte option[value="3001"]').textContent(), 'PEREZ PABLO · 3001');
+  await page.click('[data-ac=nuevo]'); // Cancelar
+  assert.equal(await page.locator('#na_expte').count(), 0);
   await page.click('#vLista');
   // en el celular, la tarjeta también
   await page.setViewportSize({ width: 390, height: 844 });
@@ -364,26 +367,173 @@ test('plantillas: se completan con los datos de la causa; alta, edición y baja'
   await page.keyboard.press('Escape'); await cerrado(page);
 });
 
-test('acuerdos: plan de cuotas, pago, y aviso de cuota vencida sin confirmar', async () => {
+// ───────── Acuerdos: tres rubros, cada uno con sus cuotas ─────────
+/** Como la app: el mismo día n meses después; si ese mes no lo tiene, su último día. */
+const masMeses = (f, n) => {
+  const [y, m, d] = f.split('-').map(Number), ult = new Date(y, m - 1 + n + 1, 0).getDate(), x = new Date(y, m - 1 + n, Math.min(d, ult));
+  return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0');
+};
+const rubrosDe = (id) => sql(`select string_agg(c ->> 'rubro', ',' order by n) from public.acuerdos, jsonb_array_elements(cuotas) with ordinality e(c, n) where id='${id}'`);
+
+test('acuerdos: tres rubros con sus cuotas; en la vista, solo el nombre de la causa hasta que se lo toca', async () => {
   await page.click('#vAcuerdos');
+  assert.equal(await page.locator('#na_deudor').count(), 0, 'el formulario de un acuerdo nuevo empieza cerrado');
+  await page.click('[data-ac=nuevo]');
   await page.fill('#na_deudor', 'ZETA ZOE'); await page.selectOption('#na_expte', '1002');
-  await page.fill('#na_n', '3'); await page.fill('#na_monto', '50000'); await page.fill('#na_fecha', dia(-6));
-  await page.click('[data-ac=create]'); await toast(page, 'Plan de cuotas creado');
+  // capital: 3 cuotas mensuales desde hace 6 días; abogado: 2 cada 15 días, con el importe escrito a la argentina
+  await page.fill('#na_capital_n', '3'); await page.fill('#na_capital_monto', '50000'); await page.fill('#na_capital_fecha', dia(-6));
+  await page.fill('#na_abogado_n', '2'); await page.fill('#na_abogado_monto', '30.000'); await page.fill('#na_abogado_fecha', dia(20));
+  await page.selectOption('#na_abogado_cada', 'quincena');
+  // un rubro a medio llenar no se guarda: dice qué falta, y lo escrito no se pierde
+  await page.fill('#na_martillero_n', '1');
+  await page.click('[data-ac=create]'); await toast(page, 'Indicá el monto de cada cuota de Honorarios martillero');
+  assert.equal(sql(`select count(*) from public.acuerdos`), '0');
+  assert.equal(await page.inputValue('#na_abogado_monto'), '30.000');
+  await page.fill('#na_martillero_n', ''); // el rubro que no entra queda vacío
+  await page.click('[data-ac=create]'); await toast(page, 'Acuerdo creado');
   const id = sql(`select id from public.acuerdos where deudor='ZETA ZOE'`);
-  assert.equal(sql(`select jsonb_array_length(cuotas) || '|' || (cuotas -> 0 ->> 'vence') || '|' || (cuotas -> 0 ->> 'monto') || '|' || expte from public.acuerdos where id='${id}'`), `3|${dia(-6)}|50000|1002`);
-  // la primera cuota venció hace 6 días: el gestor pregunta
+  assert.equal(sql(`select expte || '|' || jsonb_array_length(cuotas) from public.acuerdos where id='${id}'`), '1002|5');
+  assert.equal(rubrosDe(id), 'capital,capital,capital,abogado,abogado');
+  assert.equal(sql(`select string_agg((c ->> 'monto') || ' ' || (c ->> 'vence'), ',' order by n) from public.acuerdos, jsonb_array_elements(cuotas) with ordinality e(c, n) where id='${id}'`),
+    [`50000 ${dia(-6)}`, `50000 ${masMeses(dia(-6), 1)}`, `50000 ${masMeses(dia(-6), 2)}`, `30000 ${dia(20)}`, `30000 ${dia(35)}`].join(','));
+  assert.equal(await page.locator('#na_deudor').count(), 0, 'creado, el formulario se cierra');
+
+  // En la vista: una fila con el nombre de la causa. Recién creado queda desplegado; tocándolo se pliega.
+  const fila = page.locator(`.acitem[data-acuerdo="${id}"]`);
+  assert.equal(await fila.locator('.acnom b').textContent(), 'BETA BRUNO', 'se nombra por la causa, como en el listado');
+  assert.equal(await fila.locator('.acfila').getAttribute('aria-expanded'), 'true');
+  await fila.locator('.acfila').click();
+  assert.equal(await fila.locator('.acdet').count(), 0, 'plegado, el desarrollo no se ve');
+  assert.match(await fila.locator('.acnom .hint').textContent(), /Expte\. 1002 · 0 de 5 cuotas pagadas/);
+  assert.match(await fila.locator('.acfila').textContent(), /1 por confirmar/);
+
+  // La primera cuota de capital venció hace 6 días: el gestor pregunta, y dice de qué rubro es
   await page.waitForSelector('#avisos .aviso');
   assert.match(await page.textContent('#avisos'), /¿Pagó ZETA ZOE su cuota del acuerdo\?/);
+  assert.match(await page.textContent('#avisos'), /Capital, intereses y gastos · cuota 1 de 3/);
   assert.equal(await page.textContent('#nAcuerdos'), '1 cuota por confirmar', 'la insignia de Acuerdos cuenta las cuotas por confirmar');
   await page.click('#avisos [data-v=pagada]'); await toast(page, 'Cuota marcada como pagada');
   await page.waitForFunction(() => !document.querySelector('#avisos .aviso'));
   assert.equal(await page.isHidden('#nAcuerdos'), true);
-  assert.equal(sql(`select cuotas -> 0 ->> 'estado' from public.acuerdos where id='${id}'`), 'pagada');
-  // corregir el monto de la segunda cuota
-  await page.fill(`#cq_m_${id}_1`, '45000'); await page.locator(`#cq_m_${id}_1`).blur(); await toast(page, 'Cuota actualizada');
+  assert.equal(sql(`select (cuotas -> 0 ->> 'estado') || '|' || (cuotas -> 0 ->> 'rubro') from public.acuerdos where id='${id}'`), 'pagada|capital');
+
+  // Desplegado: cada rubro con sus cuotas y sus cuentas
+  await fila.locator('.acfila').click();
+  assert.deepEqual(await fila.locator('.acrubcab b').allTextContents(), ['Capital, intereses y gastos', 'Honorarios martillero', 'Honorarios abogado']);
+  assert.equal(await fila.locator('.acrub[data-rubro=capital] .cuota:not(.cab)').count(), 3);
+  assert.match(await fila.locator('.acrub[data-rubro=capital] .acrubcab').textContent(), /1 de 3 pagadas · cobrado \$ 50\.000 de \$ 150\.000/);
+  assert.match(await fila.locator('.acrub[data-rubro=martillero]').textContent(), /Sin cuotas cargadas/);
+  assert.match(await fila.locator('.cifras').textContent(), /Total del acuerdo\$ 210\.000Cobrado\$ 50\.000Saldo\$ 160\.000/);
+  assert.equal(await fila.locator('.acrub[data-rubro=abogado] [data-v=impaga]').count(), 0, '"No pagó" aparece recién cuando la cuota vence');
+
+  // Corregir un monto, escrito como en el expediente
+  await page.fill(`#cq_v_m_${id}_1`, '45.000'); await page.locator(`#cq_v_m_${id}_1`).blur(); await toast(page, 'Cuota actualizada');
   assert.equal(sql(`select cuotas -> 1 ->> 'monto' from public.acuerdos where id='${id}'`), '45000');
-  await page.click(`[data-ac=del][data-id="${id}"]`); await page.click(`[data-ac=delyes][data-id="${id}"]`); await toast(page, 'Acuerdo eliminado');
+
+  // Cargar las cuotas del martillero después: quedan entre las de capital y las del abogado
+  await fila.locator('.acrub[data-rubro=martillero] [data-ac=plan]').click();
+  await page.fill(`#pq_v_${id}_martillero_n`, '2'); await page.fill(`#pq_v_${id}_martillero_monto`, '12.500'); await page.fill(`#pq_v_${id}_martillero_fecha`, dia(10));
+  await fila.locator('[data-ac=planok]').click(); await toast(page, '2 cuotas cargadas en Honorarios martillero');
+  assert.equal(rubrosDe(id), 'capital,capital,capital,martillero,martillero,abogado,abogado');
+  assert.equal(sql(`select (cuotas -> 3 ->> 'monto') || '|' || (cuotas -> 4 ->> 'vence') from public.acuerdos where id='${id}'`), `12500|${masMeses(dia(10), 1)}`);
+  assert.equal(await fila.locator(`#pq_v_${id}_martillero_n`).count(), 0, 'cargadas, el formulario se cierra');
+
+  // "+ Cuota" sigue la frecuencia del rubro: el abogado paga cada 15 días
+  await fila.locator('.acrub[data-rubro=abogado] [data-ac=addq]').click(); await toast(page, 'Cuota agregada');
+  assert.equal(sql(`select (cuotas -> 7 ->> 'rubro') || '|' || (cuotas -> 7 ->> 'vence') || '|' || (cuotas -> 7 ->> 'monto') from public.acuerdos where id='${id}'`), `abogado|${dia(50)}|30000`);
+  // y se quita con la cruz
+  await fila.locator(`[data-ac=delq][data-i="7"]`).click(); await toast(page, 'Cuota quitada');
+  assert.equal(sql(`select jsonb_array_length(cuotas) from public.acuerdos where id='${id}'`), '7');
   await page.click('#vLista');
+});
+
+test('acuerdos en la ficha: el de la causa se ve y se marca ahí; sin acuerdo, se carga sin perder lo que se estaba editando', async () => {
+  const id = sql(`select id from public.acuerdos where deudor='ZETA ZOE'`);
+  await abrir(page, '1002');
+  const sec = page.locator('#secAcuerdo');
+  assert.deepEqual(await sec.locator('.acrubcab b').allTextContents(), ['Capital, intereses y gastos', 'Honorarios martillero', 'Honorarios abogado']);
+  assert.equal(await sec.locator('[data-ac=abrir]').count(), 0, 'en la ficha no hace falta "Abrir la causa"');
+  await sec.locator('.acrub[data-rubro=capital] .cuota:not(.cab) >> nth=1').locator('[data-v=pagada]').click(); await toast(page, 'Cuota marcada como pagada');
+  assert.equal(sql(`select cuotas -> 1 ->> 'estado' from public.acuerdos where id='${id}'`), 'pagada');
+  await page.waitForFunction(() => /2 de 3 pagadas/.test(document.querySelector('#secAcuerdo .acrub[data-rubro=capital]')?.textContent || ''));
+  await page.keyboard.press('Escape'); await cerrado(page);
+
+  // 1001 no tiene acuerdo: se carga desde la ficha, con el demandado como deudor
+  const notasAntes = sql(`select notas from public.causas where expte='1001'`);
+  await abrir(page, '1001');
+  await page.fill('#c_notas', 'Nota todavía sin guardar');
+  assert.match(await page.textContent('#secAcuerdo'), /Sin acuerdo cargado/);
+  await page.click('#secAcuerdo [data-ac=cargarf]');
+  assert.equal(await page.inputValue('#naf_deudor'), 'ALFA ANA');
+  await page.fill('#naf_capital_n', '2'); await page.fill('#naf_capital_monto', '100000'); await page.fill('#naf_capital_fecha', dia(30));
+  // si mientras tanto llega un cambio de la base (redibuja), lo escrito queda
+  sql(`select gestor.movimiento('1004', 'Otro movimiento mientras tanto')`);
+  await page.waitForFunction(() => /Otro movimiento mientras tanto/.test(document.querySelector('#main tr[data-id="1004"]')?.textContent || ''), null, { timeout: 10000 });
+  // y también si se redibuja la ficha entera
+  await page.click('.panel [data-act=maxi]'); await page.click('.panel [data-act=maxi]');
+  assert.equal(await page.inputValue('#naf_capital_n'), '2');
+  assert.equal(await page.inputValue('#naf_capital_monto'), '100.000');
+  assert.equal(await page.inputValue('#naf_capital_fecha'), dia(30));
+  await page.fill('#naf_martillero_n', '1'); await page.fill('#naf_martillero_monto', '80.000'); await page.fill('#naf_martillero_fecha', dia(30));
+  await page.click('[data-ac=createf]'); await toast(page, 'Acuerdo creado');
+  assert.equal(sql(`select deudor || '|' || expte || '|' || jsonb_array_length(cuotas) from public.acuerdos where expte='1001'`), 'ALFA ANA|1001|3');
+  await page.waitForSelector('#secAcuerdo .acrub[data-rubro=martillero] .cuota:not(.cab)');
+  assert.equal(await page.inputValue('#c_notas'), 'Nota todavía sin guardar', 'cargar el acuerdo no borra lo que se estaba escribiendo en la ficha');
+  assert.match(await page.textContent('#secAcuerdo'), /se guarda en el momento/);
+  await page.keyboard.press('Escape'); await cerrado(page);
+  assert.equal(sql(`select notas from public.causas where expte='1001'`), notasAntes, 'la ficha no se guardó: eso sigue siendo con "Guardar cambios"');
+  assert.equal(sql(`select (cuotas -> 2 ->> 'rubro') || '|' || (cuotas -> 2 ->> 'monto') from public.acuerdos where expte='1001'`), 'martillero|80000');
+
+  // En la vista, los dos acuerdos con el nombre de su causa
+  await page.click('#vAcuerdos');
+  assert.deepEqual(await page.locator('.acitem .acnom b').allTextContents(), ['ALFA ANA', 'BETA BRUNO']);
+  // "Abrir la causa" lleva a la ficha, con el acuerdo
+  const otro = sql(`select id from public.acuerdos where expte='1001'`);
+  await page.locator(`.acitem[data-acuerdo="${otro}"] .acfila`).click();
+  await page.locator(`.acitem[data-acuerdo="${otro}"] [data-ac=abrir]`).click();
+  await page.waitForSelector('#secAcuerdo .acrub');
+  assert.match(await page.textContent('.panel h2'), /ALFA ANA/);
+  await page.keyboard.press('Escape'); await cerrado(page);
+  await page.click('#vLista');
+});
+
+test('acuerdos cargados antes de los rubros: sus cuotas son de capital y, al tocarlas, quedan con el rubro escrito', async () => {
+  const cuotas = [dia(-30), dia(1)].map((vence) => ({ vence, monto: 628710, estado: 'pendiente', pago: '' }));
+  const id = sql(`insert into public.acuerdos (deudor, cuotas) values ('ETA EVA', '${JSON.stringify(cuotas)}') returning id`);
+  await page.click('#vAcuerdos');
+  const fila = page.locator(`.acitem[data-acuerdo="${id}"]`);
+  await fila.waitFor();
+  assert.match(await fila.locator('.acnom').textContent(), /ETA EVA.*Sin causa vinculada · 0 de 2 cuotas pagadas/);
+  await fila.locator('.acfila').click();
+  assert.equal(await fila.locator('.acrub[data-rubro=capital] .cuota:not(.cab)').count(), 2);
+  assert.equal(await fila.locator(`#cq_v_m_${id}_0`).inputValue(), '628.710');
+  assert.match(await fila.locator('.acrub[data-rubro=martillero]').textContent(), /Sin cuotas cargadas/);
+  assert.match(await page.textContent('#avisos'), /ETA EVA.*Capital, intereses y gastos · cuota 1 de 2/s);
+  await fila.locator(`[data-ac=pay][data-i="0"][data-v=impaga]`).click(); await toast(page, 'Cuota marcada como no pagada');
+  assert.equal(rubrosDe(id), 'capital,capital');
+  assert.match(await fila.locator('.acfila').textContent(), /1 impaga/);
+  // eliminar pide confirmación
+  await fila.locator(`[data-ac=del][data-id="${id}"]`).click();
+  await fila.locator(`[data-ac=delyes][data-id="${id}"]`).click(); await toast(page, 'Acuerdo eliminado');
+  assert.equal(sql(`select count(*) from public.acuerdos where id='${id}'`), '0');
+  await page.click('#vLista');
+});
+
+test('acuerdos en el celular: la lista plegada y el desarrollo entran en la pantalla, sin deslizar de costado', async () => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.click('#vAcuerdos');
+  const id = sql(`select id from public.acuerdos where deudor='ZETA ZOE'`);
+  const fila = page.locator(`.acitem[data-acuerdo="${id}"]`);
+  if (await fila.locator('.acfila').getAttribute('aria-expanded') !== 'true') await fila.locator('.acfila').click();
+  await fila.locator('.acdet').waitFor();
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'la página no se desliza de costado');
+  const cortados = await page.evaluate(() => [...document.querySelectorAll('.acdet .cuota input, .acdet .cuota .btn')].filter((el) => el.getBoundingClientRect().right > window.innerWidth).length);
+  assert.equal(cortados, 0, 'los campos y botones de cada cuota se ven enteros');
+  await page.setViewportSize({ width: 1280, height: 860 });
+  await page.click('#vLista');
+  await page.waitForSelector('#main .tablebox');
+  // los acuerdos de prueba no siguen a las demás pruebas
+  sql(`delete from public.acuerdos`);
 });
 
 test('exportar: descarga un CSV con lo que se ve', async () => {
