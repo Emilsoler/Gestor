@@ -429,6 +429,41 @@ test('acceso al gestor de juicios: al pie de la barra y en el menú; abre el ges
   await page.waitForSelector('#menu', { state: 'hidden' });
 });
 
+test('pase a juicio: el botón arma la causa en el gestor y, al crearla, la ficha queda En juicio con el enlace a la causa', async () => {
+  const fila = { nombre: 'PRUEBA JUICIO COB', socio: '104', tasa: 5, hon_pct: 0, telefonos: [], operaciones: [{ id: 'opj', tipo: 'Ayuda económica con prenda', numero: '900999' }],
+    cuotas: [{ id: 'j1', op: 'opj', n: 1, de: 2, vto: dia(-40), importe: 150000 }, { id: 'j2', op: 'opj', n: 2, de: 2, vto: dia(-10), importe: 150000 }] };
+  sql(`insert into public.deudores (nombre, socio, tasa, hon_pct, telefonos, operaciones, cuotas)
+    select x.nombre, x.socio, x.tasa, x.hon_pct, x.telefonos, x.operaciones, x.cuotas
+      from jsonb_to_record(${json(fila)}::jsonb) x(nombre text, socio text, tasa numeric, hon_pct numeric, telefonos jsonb, operaciones jsonb, cuotas jsonb)`);
+  const id = deudorDe('PRUEBA JUICIO COB').id;
+  await page.reload(); await page.waitForSelector('#vApp:not([hidden])');
+  await abrir(page, 'PRUEBA JUICIO COB');
+  const boton = page.locator('.acciones a', { hasText: 'Pasar a juicio' });
+  assert.deepEqual(await boton.evaluate((a) => [a.href, a.target]), [new URL('../#desde-deudor=' + id, BASE).href, '_blank']);
+  // Abre el gestor (la misma sesión) con la causa nueva armada; falta solo el expediente.
+  const [g] = await Promise.all([page.context().waitForEvent('page'), boton.click()]);
+  vigilar(g, 'gestor');
+  await g.waitForSelector('#nota .nota');
+  assert.match(await g.textContent('#nota'), /Viene de Cobranzas: PRUEBA JUICIO COB\./);
+  assert.equal(+(await g.inputValue('#t_monto0')), 300000);
+  await g.fill('#c_expte', '7101');
+  await g.click('.ppie [data-act=save]');
+  await toast(g, 'Causa creada: el deudor quedó en juicio en Cobranzas');
+  await g.close();
+  // La ficha abierta se pone al día sola: En juicio, sin el botón, con la etiqueta que lleva a la causa.
+  await page.waitForSelector('.panel.ficha .tag.t-juicio', { timeout: 15000 });
+  assert.equal(await page.getAttribute('.panel.ficha .tag.t-juicio', 'href'), '../#causa=7101');
+  assert.equal(await boton.count(), 0);
+  assert.equal(deudorDe('PRUEBA JUICIO COB').estado, 'En juicio');
+  await cerrar(page);
+  // "Ver en Cobranzas" del gestor: #deudor=<id> abre la ficha de ese deudor.
+  await page.goto(BASE + '#deudor=' + id);
+  await page.waitForSelector('.panel.ficha');
+  assert.match(await page.textContent('.panel.ficha h2'), /PRUEBA JUICIO COB/i);
+  await cerrar(page);
+  sql(`delete from public.causas where expte = '7101'; delete from public.deudores where id = '${id}'`);
+});
+
 test('celular: tarjetas, ficha a pantalla completa y nada se sale de costado', async () => {
   const { c, p } = await nuevoContexto({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, nombre: 'celular' });
   await p.goto(BASE);

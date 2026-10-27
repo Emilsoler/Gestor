@@ -108,14 +108,14 @@ function ponerEnLinea(v) {
 // La base guarda fechas vacías como null; la interfaz las maneja como ''.
 
 const DE = {
-  causas: (f) => ({ ...f, vence: f.vence || '', fecha: f.fecha || '', historial: f.historial || [], demandados: f.demandados || [], titulos: f.titulos || [] }),
+  causas: (f) => ({ ...f, vence: f.vence || '', fecha: f.fecha || '', historial: f.historial || [], demandados: f.demandados || [], titulos: f.titulos || [], deudor: f.deudor || null }),
   acuerdos: (f) => ({ ...f, cuotas: f.cuotas || [] }),
   plantillas: (f) => ({ ...f }),
   agenda: (f) => ({ ...f, realizar: f.realizar || '', resultado: f.resultado || '', adjuntos: f.adjuntos || [] }),
 };
 
 export const TIPOS_TITULO = ['pagare', 'cheque', 'prenda'];
-const CAMPOS_CAUSA = ['expte', 'actor', 'demandado', 'tipo', 'nom', 'oficina', 'ubicacion', 'estado', 'cautelar', 'situacion', 'proxima', 'vence', 'ultima', 'fecha', 'notas', 'historial', 'liquidacion', 'demandados', 'titulos'];
+const CAMPOS_CAUSA = ['expte', 'actor', 'demandado', 'tipo', 'nom', 'oficina', 'ubicacion', 'estado', 'cautelar', 'situacion', 'proxima', 'vence', 'ultima', 'fecha', 'notas', 'historial', 'liquidacion', 'demandados', 'titulos', 'deudor'];
 const movLimpio = (h) => (h.hecha ? { fecha: h.fecha || '', texto: h.texto || '', hecha: true } : { fecha: h.fecha || '', texto: h.texto || '' });
 
 function causaAFila(c) {
@@ -125,7 +125,8 @@ function causaAFila(c) {
   f.fecha = c.fecha || null;
   f.historial = (c.historial || []).map(movLimpio);
   f.liquidacion = c.liquidacion || null;
-  f.demandados = (c.demandados || []).map((d) => ({ nombre: d.nombre || '', dni: d.dni || '', telefono: d.telefono || '', domicilio: d.domicilio || '', notas: d.notas || '' }));
+  f.deudor = c.deudor || null; // el deudor de Cobranzas del que salió (al guardarla, la base lo pasa a juicio)
+  f.demandados =(c.demandados || []).map((d) => ({ nombre: d.nombre || '', dni: d.dni || '', telefono: d.telefono || '', domicilio: d.domicilio || '', notas: d.notas || '' }));
   f.titulos = (c.titulos || []).map((t) => ({ tipo: TIPOS_TITULO.includes(t.tipo) ? t.tipo : 'pagare', monto: +t.monto || 0, vence: t.vence || '', descripcion: t.descripcion || '', vehiculo: t.tipo === 'prenda' ? (t.vehiculo || '') : '' }));
   return f;
 }
@@ -434,6 +435,12 @@ export function actualizarCausa(expte, rev, campos) {
   return modificar('causas', expte, rev, f);
 }
 export const borrarCausa = (expte) => eliminar('causas', expte);
+
+/** Un deudor de Cobranzas (misma base), para armar la causa cuando pasa a juicio. null si no existe. */
+export async function leerDeudor(id) {
+  if (!sb) return null;
+  return pedir(sb.from('deudores').select('*').eq('id', id).maybeSingle());
+}
 
 export const crearAcuerdo = (a) => agregar('acuerdos', a);
 export const actualizarAcuerdo = (id, rev, campos) => modificar('acuerdos', id, rev, campos);

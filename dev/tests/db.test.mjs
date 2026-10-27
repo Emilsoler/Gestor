@@ -643,3 +643,46 @@ test('las funciones del esquema no escriben en las tablas de login', () => {
   const fuentes = sql(`select string_agg(p.prosrc, ' ') from pg_proc p where p.pronamespace = 'gestor'::regnamespace`).toLowerCase();
   assert.doesNotMatch(fuentes, /(insert\s+into|update|delete\s+from)\s+auth\./);
 });
+
+test('pase a juicio: la causa que sale de un deudor lo deja En juicio, en la misma transacción', async () => {
+  await crearCuenta('pase@test.local', 'Clave-de-prueba-pase-1', 'Pase');
+  const yo = await entrar('pase@test.local', 'Clave-de-prueba-pase-1');
+  const d1 = sql(`insert into public.deudores (nombre) values ('PRUEBA PASE UNO') returning id`).split('\n')[0];
+  const d2 = sql(`insert into public.deudores (nombre) values ('PRUEBA PASE DOS') returning id`).split('\n')[0];
+  const deudor = (id) => JSON.parse(sql(`select json_build_object('estado', estado, 'expte', expte, 'por', actualizado_por, 'notas', (select json_agg(g->>'texto') from jsonb_array_elements(gestiones) g)) from public.deudores where id = '${id}'`));
+
+  // Una causa nueva con deudor: el deudor pasa a juicio, firmado por quien creó la causa.
+  const r = await yo.from('causas').insert({ expte: '99000001', actor: 'AMB', demandado: 'PRUEBA PASE UNO', deudor: d1 }).select().single();
+  assert.ifError(r.error);
+  assert.equal(r.data.deudor, d1);
+  assert.deepEqual(deudor(d1), { estado: 'En juicio', expte: '99000001', por: 'Pase', notas: ['Pasó a juicio: expte. N° 99000001'] });
+  assert.equal(sql(`select autor from gestor.cambios where tabla = 'deudores' and clave = '${d1}' order by id desc limit 1`), 'Pase');
+
+  // Guardar la causa otra vez (la app manda todos los campos, deudor incluido) no anota nada de nuevo.
+  assert.ifError((await yo.from('causas').update({ notas: 'otra cosa', deudor: d1 }).eq('expte', '99000001')).error);
+  assert.equal(deudor(d1).notas.length, 1);
+
+  // El mismo deudor no puede quedar en dos causas: la segunda no se guarda.
+  const r2 = await yo.from('causas').insert({ expte: '99000002', actor: 'AMB', deudor: d1 });
+  assert.match(r2.error?.message || '', /ya está vinculado al expediente 99000001/);
+  assert.equal(sql(`select count(*) from public.causas where expte = '99000002'`), '0');
+
+  // Una causa que ya existía se vincula poniéndole el deudor; el resto de la causa no cambia.
+  assert.ifError((await yo.from('causas').insert({ expte: '99000003', actor: 'AMB', demandado: 'PRUEBA PASE DOS', tipo: 'PRENDARIO' })).error);
+  assert.equal(deudor(d2).estado, 'En gestión');
+  assert.ifError((await yo.from('causas').update({ deudor: d2 }).eq('expte', '99000003')).error);
+  assert.deepEqual(deudor(d2), { estado: 'En juicio', expte: '99000003', por: 'Pase', notas: ['Pasó a juicio: expte. N° 99000003'] });
+  assert.equal(sql(`select tipo from public.causas where expte = '99000003'`), 'PRENDARIO');
+
+  // Un deudor que no existe: no se guarda la causa.
+  const r3 = await yo.from('causas').insert({ expte: '99000004', actor: 'AMB', deudor: '00000000-0000-4000-8000-000000000000' });
+  assert.match(r3.error?.message || '', /No existe el deudor/);
+
+  // Por SQL (Claude) funciona igual, y firma como quien lo pide.
+  const d3 = sql(`insert into public.deudores (nombre) values ('PRUEBA PASE TRES') returning id`).split('\n')[0];
+  sql(`begin; select set_config('gestor.autor', 'Claude', true); insert into public.causas (expte, actor, deudor) values ('99000005', 'AMB', '${d3}'); commit;`);
+  assert.equal(deudor(d3).por, 'Claude');
+  assert.equal(deudor(d3).expte, '99000005');
+
+  sql(`delete from public.causas where expte like '9900000%'; delete from public.deudores where nombre like 'PRUEBA PASE %'`);
+});

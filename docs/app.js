@@ -4,7 +4,7 @@ import {
   crearCausa, guardarCausa, actualizarCausa, borrarCausa,
   crearAcuerdo, actualizarAcuerdo, borrarAcuerdo,
   crearPlantilla, guardarPlantilla, borrarPlantilla,
-  crearEscrito, actualizarAgenda, preguntarAClaude, leerChat, guardarChat,
+  crearEscrito, actualizarAgenda, preguntarAClaude, leerChat, guardarChat, leerDeudor,
 } from './datos.js';
 import { idNuevo, nuevaLiquidacion, cobradoRubro, totalPago, liqNormal, liqCalc, importe, pesos, enCelda, planillaExcel } from './liquidacion.js';
 import { MODELOS, ACCIONES, CAMPOS_OFICIO, esModeloOficio, rellenar, htmlOficio, pdfOficio, enLetras, cifra, ordinal, datosDeCausa, partirDomicilio, dniOficio, nombreArchivo } from './oficio.js';
@@ -88,7 +88,7 @@ function mostrar(pantalla) {
   $('#vArranque').hidden = true;
   $('#vApp').hidden = !enApp;
   $('#vIngreso').hidden = enApp;
-  if (enApp) { $('#ingresoCuerpo').innerHTML = ''; render(); return; } // no dejar el formulario (ni la clave) en la página
+  if (enApp) { $('#ingresoCuerpo').innerHTML = ''; render(); seguirEnlace(); return; } // no dejar el formulario (ni la clave) en la página
   closeDrawer(); cerrarChat(); S.chat = null; S.menu = false; renderMenu();
   for (const k of ['#main', '#stats', '#chips', '#avisos', '#franja', '#fEstado', '#fNom', '#nAgenda', '#nAcuerdos']) $(k).innerHTML = ''; // ni los datos, al salir
   $('#sub').textContent = ''; $('#q').value = ''; S.q = '';
@@ -409,18 +409,111 @@ async function quickDone(id) {
 // ───────────────────────── Ficha ─────────────────────────
 
 function blank() { return { expte: '', actor: 'AMB', demandado: '', tipo: 'EJECUTIVO', nom: '', oficina: 'OEP', ubicacion: 'Casillero', estado: '0. Iniciamos', cautelar: 'Sin Cautelar', situacion: 'En trámite', proxima: '', vence: '', ultima: '', fecha: '', notas: '', historial: [], demandados: [], titulos: [] }; }
-function openCausa(id) {
-  S.open = id ? copia(D.causas.find((c) => c.expte === id) || blank()) : blank();
+/** Abre una causa, o una nueva (en blanco, o `pre`: ya armada, por ejemplo desde un deudor de Cobranzas). */
+function openCausa(id, pre = null, pase = null) {
+  S.open = id ? copia(D.causas.find((c) => c.expte === id) || blank()) : (pre || blank());
   S.base = copia(S.open); // la causa como se abrió: para saber qué se cambió en la ficha
   S.isNew = !id; S.confirmDel = false; S.choque = null; S.tpl = false; S.clave = false; S.tpSel = '';
-  S.planilla = false; S.liqSucia = false; S.cau = null;
+  S.planilla = false; S.liqSucia = false; S.cau = null; S.pase = !id && pase ? pase : null;
   renderDrawer(true);
 }
 function closeDrawer() {
   S.open = null; S.tpl = false; S.clave = false; S.tpSel = ''; S.tplDel = ''; S.choque = null; S.confirmDel = false;
-  S.planilla = false; S.liqSucia = false; S.cau = null;
+  S.planilla = false; S.liqSucia = false; S.cau = null; S.pase = null;
   $('#drawer').hidden = true; $('#drawer').innerHTML = ''; document.body.style.overflow = '';
 }
+
+// ───────────────────────── Pase a juicio desde Cobranzas ─────────────────────────
+// El botón "Pasar a juicio" de Cobranzas abre el gestor con #desde-deudor=<id>: la ficha de una causa
+// nueva, ya completa con los datos del deudor. Falta solo el N° de expediente del SAC. Al crearla, la
+// base deja al deudor "En juicio" con ese expediente (disparador pase_a_juicio, migración 0016).
+// Las cuentas son las de Cobranzas (sus módulos se cargan recién acá: el gestor abre sin ellos).
+
+/** Un título por operación, con el saldo de sus cuotas vencidas, como los que se cargan a mano. */
+function tituloDeOperacion(op, cs, fecha, calc, txt) {
+  const tipo = !op ? 'pagare' : /prenda/i.test(op.tipo || '') ? 'prenda' : /cheque/i.test(op.tipo || '') ? 'cheque' : 'pagare';
+  const monto = Math.round(cs.reduce((a, c) => a + c.saldo, 0) * 100) / 100;
+  const p = cs[0], cuando = p.vto ? txt.fmtLargo(p.vto) : ''; // vienen en orden de vencimiento
+  const desde = p.n == null ? (cuando ? `el ${cuando}` : '') : `${p.de == null ? 'el saldo de la cuota' : 'la cuota'} ${p.n}${cuando ? ` (${cuando})` : ''}`;
+  const partes = [];
+  if (op) {
+    const nombreOp = tipo === 'prenda' ? 'Contrato de prenda' : (op.tipo || 'Operación');
+    partes.push(`${nombreOp}${op.numero ? ' N° ' + op.numero : ''}${op.fecha ? ' del ' + txt.fmtLargo(op.fecha) : ''}.`);
+    if (+op.cuotas) partes.push(`${op.cuotas} cuotas${+op.importe ? ' de ' + pesos(+op.importe) : ''}.`);
+  }
+  partes.push(`${desde ? 'Mora desde ' + desde + ': se' : 'Se'} reclaman ${calc.detalleCuotas({ fecha, cuotas: cs })}.`);
+  return { tipo, monto, vence: p.vto || '', descripcion: partes.join(' '), vehiculo: tipo === 'prenda' ? txt.vehiculoTexto(op.vehiculo) : '' };
+}
+
+/** La causa nueva armada con los datos del deudor: demandado, títulos y un primer movimiento. */
+function causaDesdeDeudor(d, calc, txt) {
+  const hoy = iso(today()), liq = calc.liquidar(d, hoy);
+  const opDe = new Map((d.cuotas || []).map((q) => [String(q.id ?? ''), String(q.op ?? '')]));
+  const grupos = new Map(); // operación → sus cuotas vencidas con saldo
+  for (const c of liq.cuotas.filter((x) => x.saldo > 0 && (!x.vto || x.vto <= hoy))) {
+    const op = opDe.get(c.id) || '';
+    if (!grupos.has(op)) grupos.set(op, []);
+    grupos.get(op).push(c);
+  }
+  const ops = d.operaciones || [];
+  const titulos = [...grupos].map(([id, cs]) => tituloDeOperacion(ops.find((o) => String(o.id) === id) || null, cs, hoy, calc, txt));
+  const prendario = ops.some((o) => /prenda/i.test(o.tipo || '') || o.vehiculo);
+  const c = {
+    ...blank(),
+    actor: /mutual\s+bell/i.test(d.acreedor || '') ? 'AMB' : (d.acreedor || blank().actor),
+    demandado: d.nombre || '',
+    tipo: prendario ? 'PRENDARIO' : 'EJECUTIVO',
+    historial: [{ fecha: hoy, texto: 'Inicio del juicio: pasó desde Cobranzas' }],
+    demandados: [{
+      nombre: d.nombre || '', dni: d.dni || '', domicilio: d.domicilio || '', notas: d.socio ? `Socio N° ${d.socio}` : '',
+      telefono: (d.telefonos || []).map((t) => t.numero).filter(Boolean).join(' / '),
+    }],
+    titulos,
+    deudor: d.id,
+  };
+  Object.assign(c, ultimaDe(c.historial));
+  return { causa: c, aVencer: liq.capital_a_vencer > 0 };
+}
+
+async function abrirDesdeDeudor(id) {
+  let d;
+  try { d = await leerDeudor(id); } catch (e) { toast(mensaje(e, 'no se pudo leer el deudor')); return; }
+  if (!d) { toast('No encontré ese deudor en Cobranzas'); return; }
+  if (d.expte) {
+    if (D.causas.some((c) => c.expte === d.expte)) { openCausa(d.expte); toast('Ese deudor ya está en juicio: esta es su causa'); } else toast(`Ese deudor ya figura en juicio, con el expte. ${d.expte}`);
+    return;
+  }
+  let calc, txt;
+  try { [calc, txt] = await Promise.all([import('./cobranzas/calculo.js'), import('./cobranzas/textos.js')]); } catch { toast('Sin conexión: no se pudo armar la causa'); return; }
+  const { causa, aVencer } = causaDesdeDeudor(d, calc, txt);
+  openCausa(null, causa, { nombre: d.nombre, titulos: causa.titulos.length, aVencer, existe: '' });
+  if (matchMedia('(pointer: fine)').matches) $('#c_expte')?.focus(); // en la PC, listo para escribir el número (en el celular no abre el teclado solo)
+}
+
+/** El aviso de arriba de una causa nueva que viene de Cobranzas (o el de un expediente que ya existe). */
+function paseHtml() {
+  const p = S.pase, c = S.open;
+  if (p.existe) {
+    const x = D.causas.find((k) => k.expte === p.existe);
+    if (x?.deudor && x.deudor !== c.deudor) return `<div class="nota choque" role="alert"><p><b>El expediente ${esc(p.existe)} ya es una causa del gestor</b>, unida a otro deudor de Cobranzas: ${esc(caratula(x))}.</p><div class="actions"><button class="btn small" data-act="pase-revisar">Corregir el número</button></div></div>`;
+    return `<div class="nota choque" role="alert"><p><b>El expediente ${esc(p.existe)} ya es una causa del gestor</b>${x ? ': ' + esc(caratula(x)) : ''}.</p>
+      <p>Si es el juicio de ${esc(p.nombre)}, vinculala: la causa queda como está y el deudor pasa a “En juicio” en Cobranzas.</p>
+      <div class="actions"><button class="btn small primary" data-act="pase-vincular">Vincular con esa causa</button><button class="btn small" data-act="pase-revisar">Corregir el número</button></div></div>`;
+  }
+  const tits = p.titulos === 1 ? 'Se cargó un título' : `Se cargaron ${p.titulos} títulos`;
+  return `<div class="nota" role="status"><p><b>Viene de Cobranzas: ${esc(p.nombre)}.</b> Escribí el N° de expediente del SAC y revisá los datos antes de crearla.</p>
+    <p class="hint">${p.titulos ? `${tits} con las cuotas vencidas e impagas.` : 'No tiene cuotas vencidas para cargar como título.'}${p.aVencer ? ' Las cuotas a vencer no están incluidas: si reclamás el total, ajustá el monto.' : ''} Al crear la causa, el deudor queda “En juicio” en Cobranzas.</p></div>`;
+}
+
+/** Enlaces desde las otras apps: #causa=<expte> abre esa causa; #desde-deudor=<id>, una nueva armada con ese deudor. */
+function seguirEnlace() {
+  const m = /^#(?:causa=(\d+)|desde-deudor=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}))$/i.exec(location.hash || '');
+  if (!m || S.pantalla !== 'listo' || !D.cargado) return;
+  history.replaceState(null, '', location.pathname + location.search); // que no se repita al volver a cargar
+  if (m[2]) { abrirDesdeDeudor(m[2].toLowerCase()); return; }
+  if (D.causas.some((c) => c.expte === m[1])) openCausa(m[1]); else toast(`No encontré la causa ${m[1]}`);
+}
+window.addEventListener('hashchange', seguirEnlace);
 
 // ───────────────────────── Liquidación ─────────────────────────
 // En la ficha queda un resumen y el botón "Abrir planilla". La planilla ocupa toda la pantalla
@@ -607,7 +700,7 @@ function titulosHtml(c) {
       <label class="f">Tipo<select id="t_tipo${i}" data-i="${i}"><option value="pagare" ${t.tipo === 'pagare' ? 'selected' : ''}>Pagaré</option><option value="cheque" ${t.tipo === 'cheque' ? 'selected' : ''}>Cheque</option><option value="prenda" ${t.tipo === 'prenda' ? 'selected' : ''}>Prenda</option></select></label>
       <label class="f">Monto ($)<input type="number" min="0" id="t_monto${i}" value="${+t.monto || 0}"></label>
       <label class="f">Vencimiento<input type="date" id="t_vence${i}" value="${esc(t.vence)}"></label>
-      <label class="f">Detalle<input id="t_descripcion${i}" value="${esc(t.descripcion)}" placeholder="${t.tipo === 'prenda' ? 'Ej.: Prenda N° …' : t.tipo === 'cheque' ? 'Ej.: Cheque N° …, Banco …' : 'Ej.: Pagaré N° 1'}"></label>
+      <label class="f ancho">Detalle<input id="t_descripcion${i}" value="${esc(t.descripcion)}" placeholder="${t.tipo === 'prenda' ? 'Ej.: Prenda N° …' : t.tipo === 'cheque' ? 'Ej.: Cheque N° …, Banco …' : 'Ej.: Pagaré N° 1'}"></label>
       ${t.tipo === 'prenda' ? `<label class="f ancho">Vehículo<input id="t_vehiculo${i}" value="${esc(t.vehiculo)}" placeholder="Marca, modelo, dominio"></label>` : ''}
      </div>
      <div class="resumen"><span>${f.dias ? f.dias + ' días de mora' : t.vence ? 'No vencido' : 'Sin vencimiento'}</span><span>Interés <b>${money(f.interes)}</b></span><span>Con interés <b>${money(f.total)}</b></span>
@@ -887,6 +980,7 @@ async function cauAct(b) {
 // Aviso dentro de la ficha cuando la causa cambió desde otro lado (Claude, otro dispositivo).
 function notaHtml() {
   const c = S.open;
+  if (c && S.isNew && S.pase) return paseHtml();
   if (!c || S.isNew) return '';
   if (S.choque) {
     if (!S.choque.actual) return `<div class="nota choque" role="alert"><p><b>Esta causa fue eliminada desde otro lugar</b> mientras la tenías abierta.</p>
@@ -912,7 +1006,7 @@ function renderDrawer(entra = false) {
   const hist =(c.historial || []).map((h, i) => ({ ...h, i })).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '') || b.i - a.i);
   const meta = !S.isNew && c.actualizado ? ` · último cambio ${cuando(new Date(c.actualizado))}${c.actualizado_por ? ' (' + esc(c.actualizado_por) + ')' : ''}` : '';
   d.innerHTML = `<div class="scrim" data-act="close"></div><aside class="panel${entra ? ' entra' : ''}${S.maxi ? ' max' : ''}" role="dialog" aria-modal="true" aria-label="Ficha de la causa">
-  <div class="phead"><div><div class="hint">${S.isNew ? 'Nueva causa' : 'Expte. ' + esc(c.expte) + meta}</div><h2>${esc(S.isNew && !c.demandado ? 'Nueva causa' : caratula(c))}</h2></div><div class="btns"><button class="btn small" data-act="maxi" aria-pressed="${!!S.maxi}">${S.maxi ? 'Restaurar' : 'Maximizar'}</button><button class="btn small" data-act="close">Cerrar</button></div></div>
+  <div class="phead"><div><div class="hint">${S.isNew ? 'Nueva causa' : 'Expte. ' + esc(c.expte) + meta}${!S.isNew && c.deudor ? ` · <a href="cobranzas/#deudor=${esc(c.deudor)}" target="_blank" rel="noopener">Ver en Cobranzas</a>` : ''}</div><h2>${esc(S.isNew && !c.demandado ? 'Nueva causa' : caratula(c))}</h2></div><div class="btns"><button class="btn small" data-act="maxi" aria-pressed="${!!S.maxi}">${S.maxi ? 'Restaurar' : 'Maximizar'}</button><button class="btn small" data-act="close">Cerrar</button></div></div>
   <div id="nota">${notaHtml()}</div>
 
   <div class="sec"><h4>Datos de la causa</h4><div class="grid2">
@@ -994,10 +1088,13 @@ async function save({ forzar = false, recrear = false } = {}) {
   const c = readForm();
   if (!c.demandado && !c.actor) { toast('Falta el actor o el demandado'); return; } // sin demandado se nombra por el actor
   if (!/^\d+$/.test(c.expte)) { toast('El N° de expediente debe ser numérico'); return; }
-  if (S.isNew && D.causas.some((x) => x.expte === c.expte)) { toast('Ya existe una causa con ese expediente'); return; }
+  if (S.isNew && D.causas.some((x) => x.expte === c.expte)) {
+    if (S.pase) { S.pase.existe = c.expte; rerenderDrawer(); $('.panel').scrollTop = 0; return; } // viene de Cobranzas: ofrecer vincularla
+    toast('Ya existe una causa con ese expediente'); return;
+  }
   await conBoton($('.ppie [data-act=save]'), 'Guardando…', async () => {
     try {
-      if (S.isNew || recrear) { await crearCausa(c); toast('Causa creada'); closeDrawer(); return; }
+      if (S.isNew || recrear) { await crearCausa(c); toast(S.isNew && c.deudor ? 'Causa creada: el deudor quedó en juicio en Cobranzas' : 'Causa creada'); closeDrawer(); return; }
       const r = await guardarCausa(c, { forzar });
       if (r.conflicto) { S.choque = { actual: r.actual }; rerenderDrawer(); $('.panel').scrollTop = 0; return; }
       toast('Cambios guardados'); closeDrawer();
@@ -1583,6 +1680,19 @@ document.addEventListener('click', async (e) => {
   if (act === 'plsave') { await guardarPlanilla(a); return; }
   if (act === 'choque-pisar') { S.choque = null; await save({ forzar: true }); return; }
   if (act === 'choque-crear') { S.choque = null; await save({ recrear: true }); return; }
+  if (act === 'pase-revisar' && S.pase) { S.pase.existe = ''; rerenderDrawer(); $('#c_expte')?.focus(); return; }
+  if (act === 'pase-vincular' && S.pase) {
+    // La causa queda como está: solo se le anota el deudor, y la base lo pasa a juicio.
+    const x = D.causas.find((k) => k.expte === S.pase.existe); if (!x) { toast('No encontré esa causa'); return; }
+    await conBoton(a, 'Vinculando…', async () => {
+      try {
+        const r = await actualizarCausa(x.expte, x.rev, { deudor: c.deudor });
+        if (r.conflicto) { toast('La causa cambió recién: probá de nuevo'); return; }
+        toast('Causa vinculada: el deudor quedó en juicio en Cobranzas'); openCausa(x.expte);
+      } catch (err) { toast(mensaje(err)); }
+    });
+    return;
+  }
   if (act === 'histadd') {
     const f = $('#h_fecha').value, t = $('#h_texto').value.trim(); if (!t) { toast('Escribí la acción realizada'); return; }
     c.historial = [...(c.historial || []), { fecha: f, texto: t }]; Object.assign(c, ultimaDe(c.historial));
@@ -1690,6 +1800,7 @@ alCambiar((que, detalle) => {
   if (S.pantalla !== 'listo') return;
   if (que === 'estado') { renderFranja(); if (D.cargado && S.view !== 'acuerdos' && S.view !== 'agenda') subtitulo(`${filtered().length} de ${D.causas.length} causas`); if (S.menu) renderMenu(); return; }
   render();
+  seguirEnlace(); // un enlace que llegó antes de que estuvieran los datos
   if (S.tpl) refrescarTpl();
   if (S.open && !S.isNew) { const n = $('#nota'); if (n) n.innerHTML = notaHtml(); refrescarAgendaFicha(); } // sin tocar lo que se está escribiendo
   if (S.chat?.abierto) refrescarCharla();

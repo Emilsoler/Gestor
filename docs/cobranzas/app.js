@@ -150,7 +150,7 @@ function mostrar(pantalla) {
   $('#vArranque').hidden = true;
   $('#vApp').hidden = !enApp;
   $('#vIngreso').hidden = enApp;
-  if (enApp) { $('#ingresoCuerpo').innerHTML = ''; render(); return; }
+  if (enApp) { $('#ingresoCuerpo').innerHTML = ''; render(); seguirEnlace(); return; }
   cerrarFicha(); S.menu = false; renderMenu();
   for (const k of ['#main', '#chips', '#franja', '#nPlanes', '#nDeudores']) $(k).innerHTML = '';
   $('#sub').textContent = ''; $('#q').value = ''; S.q = '';
@@ -692,7 +692,7 @@ function renderFicha(entra = false, arriba = false) {
   const meta = d.actualizado ? `Último cambio ${cuando(new Date(d.actualizado))}${d.actualizado_por ? ' (' + d.actualizado_por + ')' : ''}` : '';
   box.innerHTML = `<div class="scrim" data-a="cerrar"></div><aside class="panel ficha${entra ? ' entra' : ''}${S.maxi ? ' max' : ''}" role="dialog" aria-modal="true" aria-label="Ficha de ${esc(nombre(d))}">
     <div class="phead"><div><div class="hint">${esc(sub)}</div><h2>${esc(nombre(d))}</h2>
-      <div class="tags">${pill(r.texto, CLASE[r.clave] || '')}${d.expte ? `<a class="tag t-juicio" href="${JUICIOS}" target="_blank" rel="noopener">Juicio · expte. ${esc(d.expte)}</a>` : ''}</div></div>
+      <div class="tags">${pill(r.texto, CLASE[r.clave] || '')}${d.expte ? `<a class="tag t-juicio" href="${JUICIOS}#causa=${encodeURIComponent(d.expte)}" target="_blank" rel="noopener">Juicio · expte. ${esc(d.expte)}</a>` : ''}</div></div>
       <div class="btns"><button class="btn small" data-a="maxi" aria-pressed="${S.maxi}">${S.maxi ? 'Restaurar' : 'Maximizar'}</button><button class="btn small" data-a="cerrar">Cerrar</button></div></div>
     <nav class="tabs" role="tablist" aria-label="Secciones de la ficha">${TABS.map(([k, l]) => `<button role="tab" data-tab-ir="${k}" aria-selected="${S.tab === k}">${esc(l)}${k === 'plan' && r.plan ? ' <span class="punto"></span>' : ''}</button>`).join('')}</nav>
     <div class="tabcuerpo" role="tabpanel">${{ resumen: tabResumen, liquidacion: tabLiquidacion, pagos: tabPagos, plan: tabPlan, gestiones: tabGestiones, mensaje: tabMensaje, datos: tabDatos }[S.tab](d, r)}</div>
@@ -729,6 +729,7 @@ function tabResumen(d, r) {
       <button class="btn" data-a="ir-mensaje">Mandar WhatsApp</button>
       <button class="btn" data-tab-ir="plan">${r.plan ? 'Ver el plan' : 'Armar un plan'}</button>
       <button class="btn" data-tab-ir="gestiones">Anotar gestión</button>
+      ${!d.expte && d.estado !== 'Cancelado' ? `<a class="btn" href="${JUICIOS}#desde-deudor=${esc(d.id)}" target="_blank" rel="noopener" title="Abre en el gestor una causa nueva con los datos de este deudor">Pasar a juicio</a>` : ''}
     </div>
   </div>
   ${r.plan ? planResumenHtml(d, r) : ''}
@@ -1761,7 +1762,18 @@ alCambiar((que, detalle) => {
   render();
   if (S.abierto) { if (deudor(S.abierto)) renderFicha(); else { cerrarFicha(); toast('Ese deudor fue eliminado desde otro lugar'); } }
   else if (S.panel === 'mensajes') renderPanel();
+  seguirEnlace(); // un enlace que llegó antes de que estuvieran los datos
 });
+
+/** Enlace desde el gestor ("Ver en Cobranzas" de una causa): #deudor=<id> abre la ficha de ese deudor. */
+function seguirEnlace() {
+  const m = /^#deudor=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(location.hash || '');
+  if (!m || S.pantalla !== 'listo' || !D.cargado) return;
+  history.replaceState(null, '', location.pathname + location.search); // que no se repita al volver a cargar
+  const id = m[1].toLowerCase();
+  if (deudor(id)) abrirDeudor(id); else toast('No encontré ese deudor en Cobranzas');
+}
+window.addEventListener('hashchange', seguirEnlace);
 
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); S.instalar = e; if (S.menu) renderMenu(); });
 window.addEventListener('appinstalled', () => { S.instalar = null; toast('App instalada'); });

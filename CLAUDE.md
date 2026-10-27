@@ -376,6 +376,37 @@ esperable).
 El listado y los datos no se guardan en el repositorio. Con el "N de M" de cada operación también
 se cargan las cuotas que faltan vencer, mes a mes.
 
+### Pase a juicio (botón "Pasar a juicio" del Resumen del deudor)
+
+Abre el gestor en otra pestaña con `#desde-deudor=<id>`: la ficha de una causa nueva ya armada con el
+deudor (`causaDesdeDeudor` en `docs/app.js`, con las cuentas de `cobranzas/calculo.js`, que el gestor
+carga recién ahí): actor AMB, demandado con DNI, teléfonos, domicilio y N° de socio, tipo PRENDARIO si hay
+prenda, un título por operación con el saldo de sus cuotas vencidas (vence = la primera impaga; la
+descripción como las que carga la persona: "Contrato de prenda N° … del …. 24 cuotas de $ …. Mora desde la
+cuota 22 (…): se reclaman las cuotas 22 a 24 de 24.") y el movimiento "Inicio del juicio: pasó desde
+Cobranzas". Las cuotas a vencer no entran: si se reclama el total, la persona ajusta el monto. Falta solo
+el N° de expediente del SAC.
+
+- **La base** (migración 0016): `causas.deudor` es el id del deudor del que salió la causa (null: cargada a
+  mano; sin clave foránea, como `deudores.expte`). Al crear una causa con deudor, o al ponérselo a una que
+  ya existía, el disparador `pase_a_juicio` deja al deudor "En juicio", con el expediente y la gestión
+  "Pasó a juicio: expte. N° …", en la misma transacción y firmado por quien guardó la causa. Si el deudor
+  ya tiene otro expediente, la causa no se guarda (el error lo dice).
+- **Si el número ya es una causa**, la ficha ofrece "Vincular con esa causa": solo le pone el deudor; el
+  resto de la causa no cambia.
+- **Enlaces entre las apps**: `#causa=<expte>` abre esa causa en el gestor (la etiqueta "Juicio · expte."
+  de Cobranzas) y `cobranzas/#deudor=<id>` abre la ficha del deudor ("Ver en Cobranzas", arriba en la
+  causa). Se borran de la dirección al usarse.
+
+Para Claude, por el conector: la misma regla vale por SQL.
+
+```sql
+begin; select set_config('gestor.autor', 'Claude', true);
+insert into public.causas (expte, actor, demandado, tipo, deudor) values ('14000001', 'AMB', 'APELLIDO NOMBRE', 'PRENDARIO', '<id del deudor>');
+commit;
+-- o, para una causa que ya existe: update public.causas set deudor = '<id del deudor>' where expte = '14000001';
+```
+
 ### Aprobación de créditos (vista "Créditos")
 
 Dos pestañas: "Deudas por CUIT" (Central de Deudores) y "Cheques denunciados" (más abajo). La app

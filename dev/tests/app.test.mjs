@@ -1056,6 +1056,61 @@ test('ubicación, estado, etiqueta cautelar y situación: se ven, se filtran, se
   await page.waitForFunction(() => !!document.querySelector('#main tr[data-id="1001"]'), null, { timeout: 8000 });
 });
 
+test('pase a juicio: la causa nueva llega armada desde Cobranzas y, al crearla, el deudor queda En juicio', async () => {
+  const id = sql(`begin; select set_config('gestor.autor', 'Semilla', true);
+    insert into public.causas (expte, actor, demandado, tipo) values ('7002', 'AMB', 'OTRO DEMANDADO', 'EJECUTIVO');
+    insert into public.deudores (nombre, dni, domicilio, socio, telefonos, operaciones, cuotas) values ('PRUEBA JUICIO PEREZ', '20123456', 'Bv. Colón 100', '777',
+      '[{"numero":"3534111222","nota":""}]',
+      '[{"id":"op1","tipo":"Ayuda económica con prenda","numero":"900123","fecha":"2024-03-15","cuotas":24,"importe":100000,"vehiculo":{"marca":"Fiat","modelo":"Cronos","anio":"2021","dominio":"AB123CD"}}]',
+      '[{"id":"q22","op":"op1","n":22,"de":24,"vto":"${dia(-90)}","importe":100000},{"id":"q23","op":"op1","n":23,"de":24,"vto":"${dia(-60)}","importe":100000},{"id":"q24","op":"op1","n":24,"de":24,"vto":"${dia(-30)}","importe":100000}]')
+    returning id; commit;`).split('\n').find((l) => /^[0-9a-f-]{36}$/.test(l));
+  const dma = (iso) => iso.split('-').reverse().join('/');
+  // El botón "Pasar a juicio" de Cobranzas abre el gestor con #desde-deudor=<id>.
+  await page.goto('about:blank');
+  await page.goto(BASE + '#desde-deudor=' + id);
+  await page.waitForSelector('.panel #nota .nota');
+  assert.match(await page.textContent('#nota'), /Viene de Cobranzas: PRUEBA JUICIO PEREZ\./);
+  assert.match(await page.textContent('#nota'), /Se cargó un título con las cuotas vencidas e impagas\./);
+  assert.equal(new URL(page.url()).hash, '', 'el enlace no queda en la dirección');
+  assert.deepEqual(await Promise.all(['#c_actor', '#c_demandado', '#c_tipo', '#c_expte', '#c_estado'].map((s) => page.inputValue(s))), ['AMB', 'PRUEBA JUICIO PEREZ', 'PRENDARIO', '', '0. Iniciamos']);
+  assert.deepEqual(await Promise.all(['#d_nombre0', '#d_dni0', '#d_telefono0', '#d_domicilio0', '#d_notas0'].map((s) => page.inputValue(s))), ['PRUEBA JUICIO PEREZ', '20123456', '3534111222', 'Bv. Colón 100', 'Socio N° 777']);
+  assert.equal(await page.inputValue('#t_tipo0'), 'prenda');
+  assert.equal(+(await page.inputValue('#t_monto0')), 300000);
+  assert.equal(await page.inputValue('#t_vence0'), dia(-90));
+  assert.equal(await page.inputValue('#t_descripcion0'), `Contrato de prenda N° 900123 del 15/03/2024. 24 cuotas de $ 100.000. Mora desde la cuota 22 (${dma(dia(-90))}): se reclaman las cuotas 22 a 24 de 24.`);
+  assert.equal(await page.inputValue('#t_vehiculo0'), 'Fiat Cronos 2021, dominio AB123CD');
+  assert.match(await page.textContent('.panel .hist'), /Inicio del juicio: pasó desde Cobranzas/);
+  // Un expediente que ya es otra causa: ofrece vincularla en vez de crear otra.
+  await page.fill('#c_expte', '7002');
+  await page.click('.ppie [data-act=save]');
+  await page.waitForSelector('#nota .nota.choque');
+  assert.match(await page.textContent('#nota'), /El expediente 7002 ya es una causa del gestor: AMB c\/ OTRO DEMANDADO/);
+  assert.equal(await page.isVisible('[data-act=pase-vincular]'), true);
+  await page.click('[data-act=pase-revisar]');
+  await page.waitForSelector('#nota .nota:not(.choque)');
+  assert.equal(await enfocado(page), 'c_expte');
+  // Con su número se crea, y el deudor pasa a juicio en la misma operación.
+  await page.fill('#c_expte', '7001');
+  await page.click('.ppie [data-act=save]');
+  await toast(page, 'Causa creada: el deudor quedó en juicio en Cobranzas');
+  await cerrado(page);
+  assert.equal(sql(`select deudor || '|' || tipo || '|' || jsonb_array_length(titulos) || '|' || jsonb_array_length(demandados) from public.causas where expte = '7001'`), `${id}|PRENDARIO|1|1`);
+  assert.equal(sql(`select estado || '|' || expte || '|' || actualizado_por from public.deudores where id = '${id}'`), 'En juicio|7001|Emi');
+  // #causa=<expte> (la etiqueta "Juicio" de Cobranzas) abre la causa, que lleva de vuelta al deudor.
+  await page.goto(BASE + '#causa=7001');
+  await page.waitForSelector('.panel');
+  assert.match(await page.textContent('.phead h2'), /PRUEBA JUICIO PEREZ/);
+  assert.equal(await page.getAttribute('.phead a[href*="#deudor="]', 'href'), `cobranzas/#deudor=${id}`);
+  await page.click('.ppie [data-act=close]'); await cerrado(page);
+  // Si el deudor ya está en juicio, el enlace muestra su causa en vez de armar otra.
+  await page.goto(BASE + '#desde-deudor=' + id);
+  await page.waitForSelector('.panel');
+  await toast(page, 'Ese deudor ya está en juicio: esta es su causa');
+  assert.equal(await page.inputValue('#c_expte'), '7001');
+  await page.click('.ppie [data-act=close]'); await cerrado(page);
+  sql(`delete from public.causas where expte in ('7001', '7002'); delete from public.deudores where id = '${id}'`);
+});
+
 test('dentro de un marco de otra página la app no arranca', async () => {
   const { c, p } = await nuevoContexto({ nombre: 'marco' });
   // Una página de otro origen (otro puerto) que intenta montar el gestor adentro.
