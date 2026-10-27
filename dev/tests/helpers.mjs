@@ -4,6 +4,10 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { createClient } from '@supabase/supabase-js';
 
+// Las pruebas calculan "hoy" con el reloj de Node; el navegador y la base usan el de Córdoba. En una
+// máquina en UTC, de 21 a 24 h de Córdoba serían días distintos y fallarían en cadena.
+process.env.TZ = 'America/Argentina/Cordoba';
+
 const STACK = process.env.STACK || '/home/claude/.stack';
 export const env = Object.fromEntries(
   readFileSync(`${STACK}/keys.env`, 'utf8').trim().split('\n').map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]),
