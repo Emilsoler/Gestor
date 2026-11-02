@@ -457,18 +457,19 @@ export const guardarAjustes = (rev, campos) => modificar('ajustes_cobranzas', 1,
 // muestra lo que devuelve.
 
 /** Un pedido a la función `bcra`. Los errores salen con el mensaje en palabras que manda la función. */
-async function invocarBCRA(cuerpo) {
+async function invocarBCRA(cuerpo, fn = 'bcra') {
+  const quien = fn === 'bcra' ? 'al BCRA' : 'a InfoAuto';
   if (!sb) throw Object.assign(new Error('La app no está conectada a su base de datos'), { codigo: 'sin_configurar' });
   let r;
-  try { r = await sb.functions.invoke('bcra', { body: cuerpo }); } catch (e) { throw marcar(e); }
+  try { r = await sb.functions.invoke(fn, { body: cuerpo }); } catch (e) { throw marcar(e); }
   if (r.error) {
     let detalle = null;
     try { detalle = await r.error.context?.json(); } catch { /* sin cuerpo */ }
     const status = r.error.context?.status;
     const sinRed = r.error.name === 'FunctionsFetchError';
     const e = new Error(detalle?.mensaje || (sinRed ? 'Sin conexión: no se pudo consultar'
-      : status === 404 ? 'La consulta al BCRA todavía no está activada en la base. Avisale a Claude.'
-      : 'No se pudo consultar al BCRA. Probá de nuevo en un momento.'));
+      : status === 404 ? `La consulta ${quien} todavía no está activada en la base. Avisale a Claude.`
+      : `No se pudo consultar ${quien}. Probá de nuevo en un momento.`));
     e.codigo = detalle?.error || (sinRed ? 'red' : 'bcra');
     e.status = status;
     e.sinRed = sinRed;
@@ -478,6 +479,15 @@ async function invocarBCRA(cuerpo) {
   }
   ponerEnLinea(true);
   return r.data;
+}
+
+/**
+ * Una consulta a InfoAuto (cotización de vehículos) por la función `infoauto`: la función guarda el
+ * usuario y el token, acá solo se dice qué ruta pedir (/search/, /brands/, /models/{codia}/prices/…).
+ * Devuelve lo que respondió InfoAuto. No se guarda nada en la base.
+ */
+export async function consultarInfoAuto(ruta, params = {}) {
+  return (await invocarBCRA({ ruta, params }, 'infoauto')).resultado;
 }
 
 /** Consulta un CUIT en la Central de Deudores. Devuelve la consulta guardada, con su detalle. */
