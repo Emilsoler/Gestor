@@ -237,7 +237,14 @@ aplicarla con `apply_migration` y pasar `get_advisors` (seguridad).
   El gasto se controla con el tope mensual de la Consola de Claude. Modelo: `claude-sonnet-5-5`
   (`GESTOR_MODELO` para cambiarlo sin tocar el código).
 - **Publicar la función**: `deploy_edge_function` con nombre `chat`, `verify_jwt: true` y los
-  seis archivos de `supabase/functions/chat/` (entrada `index.ts`).
+  ocho archivos de `supabase/functions/chat/` (entrada `index.ts`).
+- **Chat en Cobranzas** (botón "Claude" del encabezado de `docs/cobranzas/`, `chat.js`): la misma función `chat`, con
+  `app: 'cobranzas'` en el pedido; con eso usa `herramientas_cobranzas.ts` e `instrucciones_cobranzas.ts` en vez de las de causas.
+  Herramientas: `buscar_deudores`, `ver_deudor` (liquidación a hoy), `listar_pendientes_cobranza`, `anotar_gestion`,
+  `fijar_proxima_accion` y `registrar_pago` (solo con la imputación que la persona dicta). Las cuentas las hace la base: la API no
+  expone el esquema `gestor`, así que la migración 0019 agrega los puentes `public.chat_*` (miembros, firman "Claude"). No elimina nada
+  ni manda WhatsApp. La conversación se guarda en el dispositivo como `cb.chat`. Para publicar: migración 0019 y
+  `deploy_edge_function` de `chat` con los ocho archivos de `supabase/functions/chat/`, y después subir la app.
 - **Agenda** (`public.agenda`, migraciones 0005 y 0006): borrador (lo arma el chat) → pendiente
   (la persona tocó "Agendar" o «Ahora» en la tarjeta: es la única aprobación que vale) →
   presentando (una corrida de la tarea lo tomó) → presentado o error; o cancelado (solo antes de

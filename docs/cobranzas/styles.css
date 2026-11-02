@@ -582,3 +582,34 @@ label.f input[readonly]{color:var(--soft)}
   .hist li .mono{grid-column:1/-1}
   .mini-f{grid-template-columns:62px minmax(0,1fr) auto;gap:8px}
 }
+
+/* ───────── Chat con Claude ─────────
+   Por encima de la ficha (que queda abierta debajo, con lo que se esté editando). La conversación
+   se desliza; el cuadro para escribir queda siempre abajo, al alcance del pulgar. */
+#chat .scrim{z-index:20}
+.panel.chat{z-index:21;width:min(540px,100%);overflow:hidden;gap:0;padding-bottom:0}
+.panel.chat .phead{padding-bottom:14px;border-bottom:1px solid var(--line-soft)}
+.charla{flex:1 1 auto;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:16px 2px;overscroll-behavior:contain}
+.msj{max-width:88%;padding:10px 13px;border-radius:16px;overflow-wrap:anywhere}
+.msj.yo{align-self:flex-end;background:var(--grad);color:#fff;border-bottom-right-radius:5px;white-space:normal}
+.msj.yo.fallido{opacity:.6}
+.msj.claude{align-self:flex-start;background:var(--surface);border:1px solid var(--line-soft);border-bottom-left-radius:5px}
+.msj.claude p{margin:0 0 7px} .msj.claude p:last-child{margin-bottom:0}
+.msj.claude ul,.msj.claude ol{margin:2px 0 7px;padding-left:20px} .msj.claude ul:last-child,.msj.claude ol:last-child{margin-bottom:0}
+.msj.claude li+li{margin-top:2px}
+.msj.pensando{color:var(--muted)}
+.msj.aviso-chat{align-self:stretch;max-width:none;background:var(--surface);border:1px solid rgba(246,189,96,.4);box-shadow:inset 3px 0 0 var(--warn);border-radius:var(--r);display:grid;gap:8px}
+.hecho{list-style:none;margin:-4px 0 0;padding:0 4px;align-self:flex-start;display:grid;gap:2px;font-size:12.5px;color:var(--ok)}
+.hecho li::before{content:"✓ "}
+.chatpie{display:flex;gap:8px;align-items:flex-end;margin:0 -20px;padding:12px 20px calc(var(--abajo) + 12px);border-top:1px solid var(--line-soft);background:var(--side)}
+.chatpie textarea{flex:1;min-width:0;resize:none;padding:10px 14px;border:1px solid var(--line-soft);border-radius:18px;background:var(--sunken);color:var(--fg);max-height:168px;line-height:1.4}
+.chatpie textarea:focus{border-color:var(--accent)}
+.chatpie .btn{flex:none}
+.bienvenida{display:grid;gap:12px;padding:4px 2px}
+.sugerencias{display:flex;flex-wrap:wrap;gap:6px}
+.sugerencias .chip{white-space:normal;text-align:left;padding:7px 12px;flex:0 1 auto;max-width:100%}
+body.con-chat .toast{bottom:calc(var(--abajo) + 84px)}  /* que el aviso no tape lo que se escribe */
+@media (prefers-reduced-motion:no-preference){
+  .msj.pensando::after{content:"";display:inline-block;width:1.2em;text-align:left;animation:puntos 1.2s steps(4,end) infinite}
+  @keyframes puntos{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
+}

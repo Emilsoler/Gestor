@@ -19,6 +19,7 @@ import {
 } from './textos.js';
 import { importe, enCelda, idNuevo, r2 } from '../liquidacion.js';
 import { xlsx } from '../excel.js';
+import { abrirChat } from './chat.js';
 
 const VERSION = '1.7.0';
 const CLAVE_MIN = 10;
@@ -1839,6 +1840,7 @@ for (const v of Object.keys(VISTAS)) $('#v_' + v).onclick = () => verVista(v);
 $('#btnNuevo').onclick = $('#fabNuevo').onclick = () => abrirPanel('nuevo');
 $('#btnMensajes').onclick = () => abrirPanel('mensajes');
 $('#btnAjustes').onclick = () => abrirPanel('ajustes');
+$('#btnChat').onclick = () => { S.menu = false; renderMenu(); abrirChat(S.abierto ? deudor(S.abierto) : null); };
 $('#btnCuenta').onclick = () => { S.menu = !S.menu; renderMenu(); };
 movil.addEventListener('change', () => render());
 

@@ -29,6 +29,7 @@ export const sb = configurado && !enMarco
 const SONDEO_RAPIDO = cfg.sondeoMs || 30_000; // sin tiempo real
 const SONDEO_LENTO = 5 * 60_000; // con tiempo real, por si se perdió algún aviso
 const CACHE = 'cb.cache';
+const CHAT = 'cb.chat'; // la conversación con Claude, en este dispositivo
 const FORMA = 2; // sube cuando cambia la forma de lo que se guarda en el dispositivo
 const TABLAS = ['deudores', 'modelos_mensaje', 'ajustes_cobranzas', 'consultas_bcra', 'consultas_cheques'];
 // Las consultas al BCRA se leen sin `resultado` (lo que respondió el BCRA, que puede ser largo): el
@@ -180,7 +181,7 @@ function leerCache() {
     return c && c.uid && c.forma === FORMA && Array.isArray(c.deudores) ? c : null;
   } catch { return null; }
 }
-function borrarCache() { try { localStorage.removeItem(CACHE); } catch { /* nada */ } }
+function borrarCache() { try { localStorage.removeItem(CACHE); localStorage.removeItem(CHAT); } catch { /* nada */ } }
 function usarCache(c) {
   for (const t of TABLAS) D[t] = lista(c[t]).map(DE[t]).sort(ORDEN[t]);
   D.cargado = true; D.deCache = true; D.leido = new Date(c.ts);
@@ -533,3 +534,44 @@ export async function detalleConsulta(id) {
 }
 export const detalleGuardado = (id) => DETALLES.get(id) || null;
 export async function borrarConsulta(id) { await eliminar('consultas_bcra', id); DETALLES.delete(id); }
+
+// ───────────────────────── Chat con Claude ─────────────────────────
+// La función `chat` de Supabase (supabase/functions/chat), con `app: 'cobranzas'` para que use las
+// herramientas de deudores. La clave de la API vive allá y no llega nunca al navegador.
+
+/**
+ * Devuelve { nuevos, cambios, acciones, aviso? }. Si falla, lanza un error con `mensaje` para
+ * mostrar y `codigo` ('sin_clave', 'larga', 'red', 'claude'…).
+ */
+export async function preguntarAClaude({ historial, texto, notas }) {
+  if (!sb) throw Object.assign(new Error('La app no está conectada a su base de datos'), { codigo: 'sin_configurar' });
+  let r;
+  try { r = await sb.functions.invoke('chat', { body: { app: 'cobranzas', historial, texto, notas } }); } catch (e) { throw marcar(e); }
+  if (r.error) {
+    let detalle = null;
+    try { detalle = await r.error.context?.json(); } catch { /* sin cuerpo */ }
+    const status = r.error.context?.status;
+    const sinRed = r.error.name === 'FunctionsFetchError';
+    const e = new Error(detalle?.mensaje || (sinRed ? 'Sin conexión: el mensaje no se envió' : 'Claude no pudo responder. Probá de nuevo.'));
+    e.codigo = detalle?.error || (sinRed ? 'red' : 'claude');
+    e.status = status;
+    if (sinRed) ponerEnLinea(false);
+    if (status === 401) e.sinSesion = true;
+    throw e;
+  }
+  ponerEnLinea(true);
+  if (r.data?.cambios) sincronizar(); // por si el tiempo real no avisó
+  return r.data;
+}
+
+/** La conversación guardada en este dispositivo (se borra al cerrar sesión, con el resto de la copia). */
+export function leerChat() {
+  try {
+    const c = JSON.parse(localStorage.getItem(CHAT) || 'null');
+    return c && c.uid === D.usuario?.id && c.forma === FORMA && Array.isArray(c.mensajes) ? c : null;
+  } catch { return null; }
+}
+export function guardarChat(estado) {
+  if (!D.usuario) return;
+  try { localStorage.setItem(CHAT, JSON.stringify({ forma: FORMA, uid: D.usuario.id, ...estado })); } catch { /* sin espacio: sigue andando, sin guardarla */ }
+}

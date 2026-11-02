@@ -10,6 +10,8 @@ import { Base, ErrorBase } from './base.ts';
 import { ErrorClaude, pedirAClaude } from './claude.ts';
 import { Contexto, HERRAMIENTAS, ejecutar } from './herramientas.ts';
 import { instrucciones } from './instrucciones.ts';
+import { HERRAMIENTAS_COBRANZAS, ejecutarCobranzas } from './herramientas_cobranzas.ts';
+import { instruccionesCobranzas } from './instrucciones_cobranzas.ts';
 import { ahora } from './util.ts';
 
 const MODELO = Deno.env.get('GESTOR_MODELO') || 'claude-sonnet-5-5';
@@ -98,12 +100,16 @@ export async function manejar(req: Request): Promise<Response> {
   const nuevos: any[] = [usuario];
   const ctx: Contexto = { db, hoy: t, cambios: false, acciones: [], borradores: [] };
   const uso = { entrada: 0, salida: 0, cache_leida: 0, cache_escrita: 0, vueltas: 0 };
-  const sistema = instrucciones(acceso.nombre || 'Emi');
+  // La misma función atiende el chat del gestor y el de cobranzas; cada uno con sus herramientas.
+  const cobranzas = pedido?.app === 'cobranzas';
+  const sistema = (cobranzas ? instruccionesCobranzas : instrucciones)(acceso.nombre || 'Emi');
+  const herramientas = cobranzas ? HERRAMIENTAS_COBRANZAS : HERRAMIENTAS;
+  const correr = cobranzas ? ejecutarCobranzas : ejecutar;
 
   try {
     for (let vuelta = 1; ; vuelta++) {
       const r = await pedirAClaude({
-        model: MODELO, max_tokens: 8000, system: sistema, tools: HERRAMIENTAS, messages: mensajes,
+        model: MODELO, max_tokens: 8000, system: sistema, tools: herramientas, messages: mensajes,
         thinking: { type: 'between_tools' }, output_config: { effort: 'medium' }, cache_control: { type: 'ephemeral' },
       }, { clave, url: URL_CLAUDE });
       uso.vueltas = vuelta;
@@ -121,7 +127,7 @@ export async function manejar(req: Request): Promise<Response> {
         nuevos.push({ role: 'assistant', content: [{ type: 'text', text: 'Me quedé sin pasos para este pedido. Lo que alcancé a hacer está anotado abajo; decime cómo seguimos.' }] });
         break;
       }
-      for (const b of pedidas) resultados.push(await ejecutar(b, ctx)); // de a uno: algunos dependen del anterior
+      for (const b of pedidas) resultados.push(await correr(b, ctx)); // de a uno: algunos dependen del anterior
       const respuesta = { role: 'user', content: resultados };
       mensajes.push(respuesta); nuevos.push(respuesta);
     }
