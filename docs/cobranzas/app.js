@@ -3,12 +3,13 @@
 import {
   D, iniciar, reconectar, entrar, salir, cambiarClave, alCambiar, mensaje, ajustes, ESTADOS,
   crearDeudor, cambiarDeudor, borrarDeudor, crearModelo, guardarModelo, borrarModelo, guardarAjustes,
-  consultarBCRA, detalleConsulta, detalleGuardado, borrarConsulta, consultarCheque, entidadesCheques, borrarConsultaCheque,
+  consultarInfoAuto, consultarBCRA, detalleConsulta, detalleGuardado, borrarConsulta, consultarCheque, entidadesCheques, borrarConsultaCheque,
 } from './datos.js';
 import {
   avisoCuit, soloDigitos, fichaConsulta, filaConsulta, textoConsulta, deudoresDelCuit,
   avisoCheque, numeroCheque, bancosRecientes, opcionesBancos, bancoEnLista, fichaCheque, textoCheque, filaCheque,
 } from './creditos.js';
+import { modeloSimple, filaModelo, fichaVehiculo, preciosPorAnio } from './vehiculos.js';
 import {
   liquidar, resumen, armarPlan, estadoPlan, planVigente, sumarMeses, totalPago, TRAMOS, tramoDe, CADAS, nombrePropio, detalleCuotas, ES_FECHA,
 } from './calculo.js';
@@ -19,7 +20,7 @@ import {
 import { importe, enCelda, idNuevo, r2 } from '../liquidacion.js';
 import { xlsx } from '../excel.js';
 
-const VERSION = '1.6.0';
+const VERSION = '1.7.0';
 const CLAVE_MIN = 10;
 const TIPOS_GESTION = ['Llamada', 'WhatsApp', 'Visita', 'Email', 'Carta documento', 'Promesa de pago', 'Nota'];
 const MEDIOS = ['Efectivo', 'Transferencia', 'Depósito', 'Cheque', 'Débito', 'Otro'];
@@ -30,7 +31,7 @@ const CHIPS = [['activos', 'Activos'], ['mora', 'En mora'], ['plan', 'Con plan']
 const VISTAS = { inicio: 'Inicio', deudores: 'Deudores', planes: 'Planes', cobros: 'Cobros', creditos: 'Aprobación de créditos' };
 const AYUDA_CUIT = 'La situación en cada banco o financiera, los últimos 24 meses y los cheques rechazados.';
 const AYUDA_CHEQUE = 'Si el cheque fue denunciado como extraviado, robado o adulterado.';
-const MODOS_CREDITO = [['cuit', 'Deudas por CUIT'], ['cheque', 'Cheques denunciados']];
+const MODOS_CREDITO = [['cuit', 'Deudas por CUIT'], ['cheque', 'Cheques denunciados'], ['vehiculo', 'Vehículo']];
 const JUICIOS = '../'; // el gestor de juicios, en la misma base
 
 const S = {
@@ -44,10 +45,12 @@ const S = {
     modo: 'cuit', cuit: '', abierta: null, consultando: false, confirmar: false, error: '', errorDetalle: '', filtro: '',
     entidad: '', numero: '', chAbierta: null, chConsultando: false, chConfirmar: false, chError: '', chFiltro: '',
     bancos: null, bancosCargando: false, bancosError: '',
+    // Vehículo (InfoAuto): lo que se escribe, las marcas, los modelos encontrados y el elegido con sus precios.
+    veh: { q: '', marca: '', marcas: null, marcasCargando: false, marcasError: '', buscando: false, error: '', lista: null, sel: null, precios: null, cero: null, cargando: false, errorPrecios: '', anio: '' },
   },
 };
 try { S.vista = VISTAS[localStorage.getItem('cb.vista')] ? localStorage.getItem('cb.vista') : 'inicio'; } catch { /* sin almacenamiento */ }
-try { if (localStorage.getItem('cb.credModo') === 'cheque') S.cred.modo = 'cheque'; } catch { /* sin almacenamiento */ }
+try { const m = localStorage.getItem('cb.credModo'); if (m === 'cheque' || m === 'vehiculo') S.cred.modo = m; } catch { /* sin almacenamiento */ }
 try { S.maxi = localStorage.getItem('cb.maxi') === '1'; } catch { /* sin almacenamiento */ }
 
 // ───────────────────────── Utilidades ─────────────────────────
@@ -463,7 +466,7 @@ function vistaCobros() {
 
 function vistaCreditos() {
   const modos = `<nav class="tabs cr-modos" role="tablist" aria-label="Qué consultar">${MODOS_CREDITO.map(([k, l]) => `<button role="tab" data-cr-modo="${k}" aria-selected="${S.cred.modo === k}">${esc(l)}</button>`).join('')}</nav>`;
-  return `<div class="creditos">${modos}${S.cred.modo === 'cheque' ? vistaCheques() : vistaCuit()}</div>`;
+  return `<div class="creditos">${modos}${S.cred.modo === 'cheque' ? vistaCheques() : S.cred.modo === 'vehiculo' ? vistaVehiculo() : vistaCuit()}</div>`;
 }
 
 function cambiarModo(m) {
@@ -581,6 +584,86 @@ async function consultarChequeDe(entidad, numero) {
     render();
   }
   if (!C.chError) verResultado();
+}
+
+// ───────────────────────── Cotización de vehículos (InfoAuto) ─────────────────────────
+// Se busca por marca o por texto (la función `infoauto` pregunta a InfoAuto); al elegir un modelo se piden
+// su precio 0km y sus precios usados por año. No se guarda nada: es una consulta de referencia.
+
+function vistaVehiculo() {
+  const V = S.cred.veh;
+  subtitulo('Cotización de vehículos de InfoAuto');
+  if (!V.marcas && !V.marcasCargando && !V.marcasError) setTimeout(pedirMarcas, 0);
+  const marcas = V.marcas || [];
+  const form = `<section class="card cr-consulta">
+    <div class="card-cab"><h3>Cotizar un vehículo</h3></div>
+    <form id="fVehiculo" class="cr-form" novalidate>
+      <label class="f">Marca<select id="ve_marca" data-k="cred.veh.marca" ${marcas.length ? '' : 'disabled'}><option value="">${V.marcasCargando ? 'Cargando marcas…' : 'Elegí una marca'}</option>${marcas.map((m) => `<option value="${m.id}"${String(m.id) === String(V.marca) ? ' selected' : ''}>${esc(m.name)}</option>`).join('')}</select></label>
+      <label class="f">O buscá por modelo<input id="ve_q" ${atar('cred.veh.q')} autocomplete="off" placeholder="Ej.: onix" maxlength="60"></label>
+      <button class="btn primary" type="submit" id="ve_ir" ${V.buscando ? 'disabled' : ''}>${V.buscando ? 'Buscando…' : 'Buscar'}</button>
+    </form>
+    ${V.marcasError ? `<div class="aviso-chico cr-reintentar"><span>${esc(V.marcasError)}</span><button class="btn small" type="button" data-a="ve-marcas">Reintentar</button></div>` : ''}
+    ${V.error ? `<div class="aviso-chico" role="alert">${esc(V.error)}</div>` : ''}
+    <p class="hint m0">Elegí la marca para ver sus modelos, o escribí parte del nombre del modelo.</p>
+  </section>`;
+  let resultado = '';
+  if (V.cargando) resultado = `<section class="card cr-resultado" id="crResultado"><p class="hint m0">Buscando el precio…</p></section>`;
+  else if (V.sel) resultado = V.errorPrecios
+    ? `<section class="card cr-resultado" id="crResultado"><div class="aviso-chico cr-reintentar" role="alert"><span>${esc(V.errorPrecios)}</span><button class="btn small" type="button" data-a="ve-reintentar">Reintentar</button></div></section>`
+    : fichaVehiculo(V.sel, V.precios, V.cero, V.anio);
+  const lista = V.lista;
+  const historial = `<section class="card cr-historial">
+    <div class="card-cab"><h3>Modelos</h3>${lista ? `<span class="hint">${lista.length}</span>` : ''}</div>
+    ${lista && lista.length ? `<div class="cr-lista">${lista.slice(0, 200).map((m) => filaModelo(m, V.sel?.codia === m.codia)).join('')}</div>`
+      : `<p class="hint m0">${lista ? 'No se encontraron modelos. Probá con otra marca o con parte del nombre.' : 'Acá aparecen los modelos que encuentres.'}</p>`}
+  </section>`;
+  return `${form}${resultado}${historial}`;
+}
+
+function pedirMarcas() {
+  const V = S.cred.veh;
+  if (V.marcas || V.marcasCargando) return;
+  V.marcasCargando = true; V.marcasError = '';
+  consultarInfoAuto('/brands/')
+    .then((l) => { V.marcas = (Array.isArray(l) ? l : []).filter((m) => m && Number.isFinite(+m.id) && m.name).map((m) => ({ id: +m.id, name: String(m.name) })).sort((a, b) => a.name.localeCompare(b.name, 'es')); })
+    .catch((e) => { V.marcasError = e.sinSesion ? mensaje(e) : `No se pudieron traer las marcas. ${e.message || ''}`.trim(); })
+    .finally(() => { V.marcasCargando = false; if (S.vista === 'creditos' && S.cred.modo === 'vehiculo') render(); });
+}
+
+/** Busca modelos por marca o por texto. Guarda solo los datos mínimos de cada uno. */
+async function buscarVehiculos({ marca = '', q = '' } = {}) {
+  const V = S.cred.veh, texto = String(q).trim();
+  if (V.buscando) return;
+  if (!marca && !texto) { V.error = 'Elegí una marca o escribí parte del nombre del modelo.'; render(); return; }
+  V.buscando = true; V.error = ''; V.sel = null; V.precios = null; V.cero = null; V.errorPrecios = ''; render();
+  try {
+    const r = marca ? await consultarInfoAuto(`/brands/${+marca}/models/`) : await consultarInfoAuto('/search/', { query_string: texto });
+    V.lista = (Array.isArray(r) ? r : []).map(modeloSimple).filter(Boolean);
+  } catch (e) {
+    V.lista = null; V.error = e.sinSesion ? mensaje(e) : e.message || 'No se pudo consultar a InfoAuto';
+  } finally { V.buscando = false; render(); }
+}
+
+async function elegirVehiculo(codia) {
+  const V = S.cred.veh, m = (V.lista || []).find((x) => x.codia === +codia);
+  if (!m || V.cargando) return;
+  Object.assign(V, { sel: m, precios: null, cero: null, errorPrecios: '', cargando: true }); render(); verResultado();
+  try {
+    const [precios, cero] = await Promise.all([
+      consultarInfoAuto(`/models/${m.codia}/prices/`),
+      m.tiene0km ? consultarInfoAuto(`/models/${m.codia}/list_price`) : Promise.resolve(null),
+    ]);
+    V.precios = precios; V.cero = cero;
+    if (!V.anio || !preciosPorAnio(precios).some((p) => String(p.anio) === String(V.anio))) V.anio = '';
+  } catch (e) {
+    V.errorPrecios = e.sinSesion ? mensaje(e) : e.message || 'No se pudo consultar a InfoAuto';
+  } finally { V.cargando = false; render(); verResultado(); }
+}
+
+async function accionVehiculo(act) {
+  const V = S.cred.veh;
+  if (act === 've-marcas') { V.marcasError = ''; pedirMarcas(); render(); }
+  else if (act === 've-reintentar' && V.sel) await elegirVehiculo(V.sel.codia);
 }
 
 function abrirCheque(id) {
@@ -1635,6 +1718,8 @@ document.addEventListener('submit', async (e) => {
     });
   } else if (e.target.id === 'fCredito') {
     await consultarCuit(S.cred.cuit);
+  } else if (e.target.id === 'fVehiculo') {
+    await buscarVehiculos({ q: S.cred.veh.q });
   } else if (e.target.id === 'fCheque') {
     await consultarChequeDe(S.cred.entidad, S.cred.numero);
   } else if (e.target.id === 'fClave' || e.target.id === 'fClaveMenu') {
@@ -1675,6 +1760,7 @@ document.addEventListener('click', async (e) => {
   const ab = t.closest('[data-abrir]'); if (ab) { e.stopPropagation(); abrirDeudor(ab.dataset.abrir, ab.dataset.tab || 'resumen', ab.dataset.con || ''); return; }
   const cq = t.closest('[data-consulta]'); if (cq) { await abrirConsulta(cq.dataset.consulta); return; }
   const cm = t.closest('[data-cr-modo]'); if (cm) { cambiarModo(cm.dataset.crModo); return; }
+  const veh = t.closest('[data-vehiculo]'); if (veh) { await elegirVehiculo(veh.dataset.vehiculo); return; }
   const chq = t.closest('[data-cheque]'); if (chq) { abrirCheque(chq.dataset.cheque); return; }
   const a = t.closest('[data-a]'); if (!a) return;
   const act = a.dataset.a;
@@ -1684,6 +1770,7 @@ document.addEventListener('click', async (e) => {
     if (act === 'cr-copiar') { accionCredito(act, a); return; } // sin esperas: el portapapeles lo pide así
     await unaVez(a, (b) => accionCredito(act, b)); return;
   }
+  if (act.startsWith('ve-') && !S.panel && !S.abierto) { await unaVez(a, () => accionVehiculo(act)); return; }
   if (act.startsWith('ch-') && !S.panel && !S.abierto) {
     if (act === 'ch-copiar') { accionCheque(act, a); return; } // ídem
     await unaVez(a, (b) => accionCheque(act, b)); return;
@@ -1726,6 +1813,7 @@ document.addEventListener('change', (e) => {
   if (el.id === 'f_tasa' || el.id === 'f_hon') { guardarTasa(el.id === 'f_tasa' ? 'tasa' : 'hon', el); return; }
   if (!k) return;
   poner(k, el.type === 'checkbox' ? el.checked : el.value);
+  if (k === 'cred.veh.marca') { S.cred.veh.q = ''; if (el.value) buscarVehiculos({ marca: el.value }); return; }
   if (k === 'cred.entidad') { actualizarCheque(); return; } // por si el navegador no avisa con "input"
   if (k === 'f.msg.modelo') { const d = deudor(S.abierto); S.f.msg.propuesta = S.f.msg.propuesta && el.value === 'plan'; S.f.msg.texto = S.f.msg.base = generar(d, S.f.msg); renderFicha(); return; }
   if (k === 'f.msg.numero') { actualizarEnlace(); return; }
