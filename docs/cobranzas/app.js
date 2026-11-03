@@ -35,7 +35,7 @@ const AYUDA_CHEQUE = 'Si el cheque fue denunciado como extraviado, robado o adul
 const MODOS_CREDITO = [['cuit', 'Deudas por CUIT'], ['cheque', 'Cheques denunciados'], ['vehiculo', 'Vehículo']];
 const JUICIOS = '../'; // el gestor de juicios, en la misma base
 
-const nuevaSim = () => ({ valor: '', capital: '', capitalManual: false, cuotas: '24', tasa: '6', g: { ...GASTOS_DEFECTO } });
+const nuevaSim = () => ({ valor: '', capital: '', capitalManual: false, cuotas: '24', tasa: '7', g: { ...GASTOS_DEFECTO } });
 
 const S = {
   pantalla: 'arranque', vista: 'inicio', q: '', chip: 'activos', tramo: '', orden: 'deuda', mes: mesDe(hoy()),

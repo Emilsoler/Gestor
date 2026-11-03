@@ -55,7 +55,7 @@ test('simulador: los gastos de inscripción se financian con interés; los otros
   assert.equal(r.financiado, r.capital + r.gastos);
   assert.ok(Math.abs(r.arancel - r.totalCredito * 0.001) <= 5); // el uno por mil del total (arriba del mínimo)
   assert.equal(simularCredito({ capital: 1000000, cuotas: 12, g: G }).arancel, 13000); // y si no llega, el mínimo
-  const f = 0.06 / (1 - 1.06 ** -24);
+  const f = 0.07 / (1 - 1.07 ** -24);
   assert.ok(Math.abs(r.cuotaCapital - r.financiado * f) <= 1);
   assert.equal(r.otros, 240000 + 1200 + 2400 + r.igr);
   assert.ok(Math.abs(r.igr - 0.03 * r.intereses) <= 1);

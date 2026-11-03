@@ -63,7 +63,7 @@ export function fichaVehiculo(m, precios, listPrice, anio) {
 // iguales en las cuotas. El IGR es un % de los intereses del crédito. El sellado y el arancel son un % del
 // total del crédito (cuota final × cuotas), que depende de ellos mismos: se resuelve iterando hasta que cierra.
 const plano = (n) => String(n).replace('.', ',');
-export const TASA_MENSUAL = 6; // % sobre saldo
+export const TASA_MENSUAL = 7; // % sobre saldo
 export const CUOTAS_MAX = 120;
 export const PASO_REDONDEO = 1000;
 /** Los gastos tal como aparecen por defecto (textos, como se escriben en la pantalla). */
