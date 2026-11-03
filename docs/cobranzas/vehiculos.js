@@ -83,7 +83,7 @@ const PASO_REDONDEO = 1000;
 
 function simularConRedondeo({ capital, cuotas, g, tasa = TASA_MENSUAL }, redondeo) {
   const K = Number(capital), n = Math.trunc(Number(cuotas));
-  if (!(K > 0) || !(n >= 1) || n > CUOTAS_MAX || !g) return null;
+  if (!(K > 0) || !(n >= 1) || !(tasa >= 0) || n > CUOTAS_MAX || !g) return null;
   const i = tasa / 100, sel = Math.max(0, g.sellado) / 100, ar = Math.max(0, g.arancel) / 100, min = Math.max(0, g.arancelMin);
   const nf = i > 0 ? n * i / (1 - (1 + i) ** -n) : 1; // total del crédito por cada peso financiado
   const fijos = Math.max(0, g.contratos) + Math.max(0, g.envio) + Math.max(0, g.gestoria) + redondeo;
@@ -93,7 +93,7 @@ function simularConRedondeo({ capital, cuotas, g, tasa = TASA_MENSUAL }, redonde
   const cuota = Math.round(total / n), totalCredito = cuota * n;
   const sellado = Math.round(totalCredito * sel), arancel = Math.max(Math.round(totalCredito * ar), min);
   const gastos = sellado + arancel + fijos, financiado = K + gastos;
-  return { capital: K, cuotas: n, cuota, totalCredito, sellado, arancel, contratos: Math.max(0, g.contratos), envio: Math.max(0, g.envio),
+  return { capital: K, cuotas: n, tasa, cuota, totalCredito, sellado, arancel, contratos: Math.max(0, g.contratos), envio: Math.max(0, g.envio),
     gestoria: Math.max(0, g.gestoria), redondeo, gastos, financiado, intereses: totalCredito - financiado };
 }
 
@@ -115,13 +115,16 @@ export function estadoSimulador(precios, listPrice, sim) {
   const ref = valorDeReferencia(precios, listPrice, sim.valor);
   if (!ref) return null;
   const capitalTxt = sim.capitalManual ? sim.capital : enCelda(Math.round(ref.pesos / 2));
-  const resultado = simularCredito({ capital: importe(capitalTxt), cuotas: sim.cuotas, g: gastosDe(sim.g) });
+  const tasa = String(sim.tasa ?? '').trim() === '' ? NaN : importe(sim.tasa);
+  const resultado = simularCredito({ capital: importe(capitalTxt), cuotas: sim.cuotas, g: gastosDe(sim.g), tasa });
   return { ref, capitalTxt, resultado };
 }
 
+const plano = (n) => String(n).replace('.', ',');
+
 /** Lo que muestra el resultado de la simulación (el que se redibuja al escribir). */
 export function htmlSimulacion(r) {
-  if (!r) return '<p class="hint m0">Completá el monto y la cantidad de cuotas (de 1 a ' + CUOTAS_MAX + ').</p>';
+  if (!r) return '<p class="hint m0">Completá el monto, la cantidad de cuotas (de 1 a ' + CUOTAS_MAX + ') y la tasa.</p>';
   const f = (t, v, fuerte) => `<tr${fuerte ? ' class="fuerte"' : ''}><td>${esc(t)}</td><td class="num mono">${esc(plata(v))}</td></tr>`;
   return `<dl class="cifras grandes"><div><dt>Cuota mensual</dt><dd>${esc(plata(r.cuota))}</dd></div><div><dt>${r.cuotas} cuotas</dt><dd>${esc(plata(r.totalCredito))}</dd></div></dl>
     <div class="scrollx"><table class="tabla"><tbody>
@@ -133,10 +136,10 @@ export function htmlSimulacion(r) {
       ${f('Gestoría', r.gestoria)}
       ${f('Redondeo', r.redondeo)}
       ${f('Total financiado (capital + gastos de inscripción)', r.financiado, true)}
-      ${f(`Intereses (${TASA_MENSUAL}% mensual sobre saldo)`, r.intereses)}
+      ${f(`Intereses (${plano(r.tasa)}% mensual sobre saldo)`, r.intereses)}
       ${f('Total del crédito (cuota × cuotas)', r.totalCredito, true)}
     </tbody></table></div>
-    <p class="hint m0">Cuota fija, interés ${TASA_MENSUAL}% mensual sobre saldo. Los gastos de inscripción están incluidos en el crédito y se pagan dentro de las cuotas. Es una simulación, no una oferta.</p>`;
+    <p class="hint m0">Cuota fija, interés ${plano(r.tasa)}% mensual sobre saldo. Los gastos de inscripción están incluidos en el crédito y se pagan dentro de las cuotas. Es una simulación, no una oferta.</p>`;
 }
 
 const GASTOS_CAMPOS = [['sellado', 'Sellado', '% del total del crédito'], ['arancel', 'Arancel', '% del total del crédito'], ['arancelMin', 'Arancel: mínimo', '$'],
@@ -155,6 +158,7 @@ export function htmlSimulador(precios, listPrice, S) {
       <label class="f">Valor del vehículo<select id="si_valor" data-k="cred.veh.sim.valor">${opciones.map(([k, t]) => `<option value="${esc(k)}"${k === ref.clave ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
       <label class="f">Capital a financiar ($)<input id="si_capital" data-k="cred.veh.sim.capital" data-importe inputmode="decimal" autocomplete="off" value="${esc(est.capitalTxt)}"></label>
       <label class="f">Cantidad de cuotas<input id="si_cuotas" data-k="cred.veh.sim.cuotas" inputmode="numeric" autocomplete="off" maxlength="3" value="${esc(S.cuotas)}"></label>
+      <label class="f">Tasa de interés mensual (% sobre saldo)<input id="si_tasa" data-k="cred.veh.sim.tasa" inputmode="decimal" autocomplete="off" value="${esc(S.tasa)}"></label>
     </div>
     <p class="hint m0" id="si_sugerido">Por defecto se financia el 50% del valor (${esc(plata(Math.round(ref.pesos / 2)))}); podés cambiarlo.</p>
     <h4>Gastos de inscripción de prenda</h4>

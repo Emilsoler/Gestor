@@ -58,6 +58,9 @@ test('simulador: gastos editables, arancel proporcional y datos inválidos', () 
   assert.equal(red.redondeo, -500); // manual
   assert.equal(simularCredito({ capital: 10000000, cuotas: 24, g: { ...G, redondeo: 0 } }).redondeo, 0);
   for (const c of [5e5, 3.3e6, 7.77e6, 2.5e7]) assert.equal(simularCredito({ capital: c, cuotas: 18, g: G }).gastos % 1000, 0);
+  const t3 = simularCredito({ capital: 10000000, cuotas: 24, g: G, tasa: 3 });
+  assert.ok(t3.cuota < simularCredito({ capital: 10000000, cuotas: 24, g: G }).cuota && t3.tasa === 3);
+  assert.equal(simularCredito({ capital: 10000000, cuotas: 24, g: G, tasa: NaN }), null);
   assert.equal(simularCredito({ capital: 0, cuotas: 24, g: G }), null);
   assert.equal(simularCredito({ capital: 1000, cuotas: 0, g: G }), null);
 });
