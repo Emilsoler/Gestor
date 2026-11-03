@@ -63,15 +63,30 @@ export function fichaVehiculo(m, precios, listPrice, anio) {
 export const TASA_MENSUAL = 6; // % sobre saldo
 export const CUOTAS_MAX = 120;
 /** Gastos de inscripción de prenda tal como aparecen por defecto (textos, como se escriben en la pantalla). */
-export const GASTOS_DEFECTO = { sellado: '1,2', arancel: '0,01', arancelMin: '13.000', contratos: '20.000', envio: '20.000', gestoria: '29.000', redondeo: '' };
+export const GASTOS_DEFECTO = { sellado: '1,2', arancel: '0,01', arancelMin: '13.000', contratos: '20.000', envio: '20.000', gestoria: '29.000', redondeo: '' }; // redondeo vacío = automático (el total de gastos al próximo $1.000)
 
 /** `g`: sellado y arancel en %, el resto en pesos (números). Todo editable desde la pantalla. */
-export function simularCredito({ capital, cuotas, g, tasa = TASA_MENSUAL }) {
+export function simularCredito(p) {
+  const r = simularConRedondeo(p, p.g?.redondeo == null ? 0 : p.g.redondeo);
+  if (!r || p.g.redondeo != null) return r;
+  // Redondeo automático: el total de gastos sube al próximo múltiplo de $1.000. Como el sellado y el arancel
+  // dependen del total del crédito, y este del redondeo, se busca el redondeo mínimo que llega a ese total y
+  // después se ajusta el renglón para que cierre exacto (la diferencia es de centavos de la cuota entera).
+  const meta = Math.ceil(r.gastos / PASO_REDONDEO) * PASO_REDONDEO;
+  if (meta === r.gastos) return r;
+  let lo = 0, hi = 2 * PASO_REDONDEO;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (simularConRedondeo(p, m).gastos >= meta) hi = m; else lo = m + 1; }
+  const x = simularConRedondeo(p, lo), financiado = x.capital + meta;
+  return { ...x, redondeo: x.redondeo + meta - x.gastos, gastos: meta, financiado, intereses: x.totalCredito - financiado };
+}
+const PASO_REDONDEO = 1000;
+
+function simularConRedondeo({ capital, cuotas, g, tasa = TASA_MENSUAL }, redondeo) {
   const K = Number(capital), n = Math.trunc(Number(cuotas));
   if (!(K > 0) || !(n >= 1) || n > CUOTAS_MAX || !g) return null;
   const i = tasa / 100, sel = Math.max(0, g.sellado) / 100, ar = Math.max(0, g.arancel) / 100, min = Math.max(0, g.arancelMin);
   const nf = i > 0 ? n * i / (1 - (1 + i) ** -n) : 1; // total del crédito por cada peso financiado
-  const fijos = Math.max(0, g.contratos) + Math.max(0, g.envio) + Math.max(0, g.gestoria) + (Number(g.redondeo) || 0);
+  const fijos = Math.max(0, g.contratos) + Math.max(0, g.envio) + Math.max(0, g.gestoria) + redondeo;
   let den = 1 - nf * sel, total = den > 0 ? nf * (K + fijos + min) / den : NaN; // con el arancel mínimo
   if (ar * total > min) { den = 1 - nf * (sel + ar); total = den > 0 ? nf * (K + fijos) / den : NaN; } // arancel proporcional
   if (!Number.isFinite(total) || total <= 0) return null;
@@ -79,7 +94,7 @@ export function simularCredito({ capital, cuotas, g, tasa = TASA_MENSUAL }) {
   const sellado = Math.round(totalCredito * sel), arancel = Math.max(Math.round(totalCredito * ar), min);
   const gastos = sellado + arancel + fijos, financiado = K + gastos;
   return { capital: K, cuotas: n, cuota, totalCredito, sellado, arancel, contratos: Math.max(0, g.contratos), envio: Math.max(0, g.envio),
-    gestoria: Math.max(0, g.gestoria), redondeo: Number(g.redondeo) || 0, gastos, financiado, intereses: totalCredito - financiado };
+    gestoria: Math.max(0, g.gestoria), redondeo, gastos, financiado, intereses: totalCredito - financiado };
 }
 
 /** El valor de referencia para el crédito: el año elegido (o el más nuevo con precio) o el 0km. */
@@ -93,7 +108,7 @@ export function valorDeReferencia(precios, listPrice, sel) {
 
 /** Los gastos escritos en la pantalla → números. */
 export const gastosDe = (g) => ({ sellado: importe(g.sellado), arancel: importe(g.arancel), arancelMin: importe(g.arancelMin), contratos: importe(g.contratos),
-  envio: importe(g.envio), gestoria: importe(g.gestoria), redondeo: importe(g.redondeo) });
+  envio: importe(g.envio), gestoria: importe(g.gestoria), redondeo: String(g.redondeo ?? '').trim() === '' ? null : importe(g.redondeo) });
 
 /** Lo que vale hoy el simulador: el capital propuesto (50% del valor) mientras la persona no lo escriba. */
 export function estadoSimulador(precios, listPrice, sim) {
@@ -116,7 +131,7 @@ export function htmlSimulacion(r) {
       ${f('Contratos y gastos administrativos', r.contratos)}
       ${f('Envío de documentación', r.envio)}
       ${f('Gestoría', r.gestoria)}
-      ${r.redondeo ? f('Redondeo', r.redondeo) : ''}
+      ${f('Redondeo', r.redondeo)}
       ${f('Total financiado (capital + gastos de inscripción)', r.financiado, true)}
       ${f(`Intereses (${TASA_MENSUAL}% mensual sobre saldo)`, r.intereses)}
       ${f('Total del crédito (cuota × cuotas)', r.totalCredito, true)}
@@ -125,7 +140,7 @@ export function htmlSimulacion(r) {
 }
 
 const GASTOS_CAMPOS = [['sellado', 'Sellado', '% del total del crédito'], ['arancel', 'Arancel', '% del total del crédito'], ['arancelMin', 'Arancel: mínimo', '$'],
-  ['contratos', 'Contratos y gastos administrativos', '$'], ['envio', 'Envío de documentación', '$'], ['gestoria', 'Gestoría', '$'], ['redondeo', 'Redondeo', '$ (puede ser negativo)']];
+  ['contratos', 'Contratos y gastos administrativos', '$'], ['envio', 'Envío de documentación', '$'], ['gestoria', 'Gestoría', '$'], ['redondeo', 'Redondeo', '$ · vacío = automático']];
 
 /** La tarjeta del simulador: el valor del vehículo, el capital, las cuotas, los gastos editables y el resultado. */
 export function htmlSimulador(precios, listPrice, S) {

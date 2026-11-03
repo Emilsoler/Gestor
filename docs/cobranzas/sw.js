@@ -5,7 +5,7 @@
 // configuración, las cuentas de importes, el armado de Excel y las tipografías (../).
 //
 // Al cambiar la lista de archivos o una tipografía/ícono, subir VERSION para renovar la copia.
-const VERSION = 'cobranzas-v8';
+const VERSION = 'cobranzas-v9';
 const ESPERA_MS = 4000;
 
 const NUCLEO = [
