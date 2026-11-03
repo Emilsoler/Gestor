@@ -303,7 +303,7 @@ function renderCausas(rows) {
       <div class="causa-ult">${c.ultima ? `<time>${fmt(c.fecha)}</time><span>${esc(c.ultima)}</span>` : '<span class="hint">Sin acción cargada</span>'}${n === null ? '<small class="age old">sin fecha</small>' : `<small class="age ${n > STALE ? 'old' : ''}">hace ${n} d</small>`}</div>
       ${tagsHtml(c, ubiHtml(c) + etapaHtml(c))}
     </div>
-    <div class="causa-acc"><button class="btn small" data-lista="cautelar" data-id="${id}">Acción cautelar</button><button class="btn small primary" data-lista="abrir" data-id="${id}">Abrir</button></div>
+    <div class="causa-acc"><button class="btn small" data-lista="cautelar" data-id="${id}">Acción cautelar</button></div>
   </article>`;
   }).join('') + `</div>`;
 }
@@ -1887,7 +1887,7 @@ document.addEventListener('click', async (e) => {
   }
   const ch = e.target.closest('#chips .chip'); if (ch) { S.tag = ch.dataset.t; render(); return; }
   const dn = e.target.closest('[data-done]'); if (dn) { e.stopPropagation(); await unaVez(dn, (b) => quickDone(b.dataset.done)); return; }
-  const li = e.target.closest('[data-lista]'); // los dos botones de cada causa del listado
+  const li = e.target.closest('[data-lista]'); // el botón de acción cautelar de cada causa del listado
   if (li) { e.stopPropagation(); openCausa(li.dataset.id); if (li.dataset.lista === 'cautelar') abrirCautelar(''); return; }
   const row = e.target.closest('#main .causa[data-id], #main .fila[data-id]'); if (row) { openCausa(row.dataset.id); return; }
   const a = e.target.closest('[data-act]'); if (!a) return;

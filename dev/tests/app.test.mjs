@@ -124,7 +124,7 @@ test('listado: activas, archivadas aparte, búsqueda, filtros y vencidas', async
   // cada tarjeta muestra la carátula, el expediente con el juzgado y la última acción con su fecha
   assert.equal(await page.locator('#main .causa[data-id="1004"] .causa-linea').textContent(), 'Expte. N° 1004 · Juzg. 1° Nom. OEP');
   assert.match(await page.locator('#main .causa[data-id="1002"] .causa-ult').textContent(), /Ejecutamos sentencia/);
-  assert.equal((await page.locator('#main .causa[data-id="1002"] [data-lista]').allTextContents()).join('|'), 'Acción cautelar|Abrir');
+  assert.equal((await page.locator('#main .causa[data-id="1002"] [data-lista]').allTextContents()).join('|'), 'Acción cautelar');
 });
 
 test('un dato con HTML se muestra como texto, no se ejecuta', async () => {

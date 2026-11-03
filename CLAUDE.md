@@ -335,7 +335,7 @@ recién cuando la persona toca "Presentar ahora" y después "Ejecutar ahora" en 
   «+ Nueva causa» es un botón flotante en todas las pantallas.
 - Listado: una tarjeta por causa (`renderCausas`), igual en la computadora y en el celular: carátula,
   expediente y juzgado («Juzg. 1° Nom. Sec.2»: nominación y oficina), última acción con su fecha y los
-  botones «Acción cautelar» y «Abrir». El resumen son cuatro tarjetas —Casillero, A despacho,
+  botón «Acción cautelar» (la tarjeta entera abre la causa al tocarla). El resumen son cuatro tarjetas —Casillero, A despacho,
   Acuerdos, Archivados— que filtran al tocarlas (y una quinta, «Con escritos para el SAC», solo si
   hay). La próxima acción y su vencimiento se ven en Agenda y en la ficha; ya no hay tablero ni
   tabla ni selector de orden (el listado va por el movimiento más antiguo primero).
