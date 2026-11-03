@@ -40,8 +40,8 @@ const G = gastosDe(GASTOS_DEFECTO);
 // cargados (sellado 1,2% y arancel 0,1%, sin redondeo). La cuenta de acá coincide salvo unos pesos de la cuota francesa.
 test('simulador: coincide con el programa del estudio (927.440)', () => {
   const r = simularCredito({ capital: 10000000, cuotas: 24, tasa: 7, g: gastosDe({ ...GASTOS_DEFECTO, redondeo: '0' }) });
-  assert.ok(Math.abs(r.cuota - 927440) <= 15, `cuota ${r.cuota}`);
-  assert.ok(Math.abs(r.financiado - 10358360.8) <= 5);
+  assert.ok(Math.abs(r.cuota - 927440 - 100) <= 15, `cuota ${r.cuota}`); // el programa cobró 2.400 de cuota social (acá 200 × 24 = 4.800: +100 por cuota)
+  assert.ok(Math.abs(r.financiado - 10358360.8) <= 50); // (la cuota social de acá es 2.400 más)
   assert.ok(Math.abs(r.igr - 339506.61) <= 5);
   assert.equal(r.cuotaOtros, Math.round(r.otros / 24));
   assert.equal(r.totalCredito, r.cuota * 24);
@@ -59,7 +59,10 @@ test('simulador: los gastos de inscripción se financian con interés; los otros
   assert.ok(Math.abs(r.cuotaCapital - r.financiado * f) <= 1);
   assert.equal(r.seguro, 240000); // 1 por mil del capital × 24 cuotas
   assert.equal(simularCredito({ capital: 5000000, cuotas: 24, g: G }).seguro, 120000);
-  assert.equal(r.otros, 240000 + 1200 + 2400 + r.igr);
+  assert.equal(r.administrativos, 1200); // 50 por cuota
+  assert.equal(r.cuotaSocial, 4800); // 200 por cuota
+  assert.equal(simularCredito({ capital: 10000000, cuotas: 12, g: G }).cuotaSocial, 2400);
+  assert.equal(r.otros, 240000 + 1200 + 4800 + r.igr);
   assert.ok(Math.abs(r.igr - 0.03 * r.intereses) <= 1);
   assert.equal(r.cuota, r.cuotaCapital + r.cuotaOtros);
   assert.ok(r.cuota > r.cuotaPaso1);
