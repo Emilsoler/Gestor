@@ -32,7 +32,7 @@ const CHIPS = [['activos', 'Activos'], ['mora', 'En mora'], ['plan', 'Con plan']
 const VISTAS = { inicio: 'Inicio', deudores: 'Deudores', planes: 'Planes', creditos: 'Aprobación de créditos' };
 const AYUDA_CUIT = 'La situación en cada banco o financiera, los últimos 24 meses y los cheques rechazados.';
 const AYUDA_CHEQUE = 'Si el cheque fue denunciado como extraviado, robado o adulterado.';
-const MODOS_CREDITO = [['cuit', 'Deudas por CUIT'], ['cheque', 'Cheques denunciados'], ['vehiculo', 'Vehículo']];
+const MODOS_CREDITO = [['cuit', 'Deudas por CUIT'], ['cheque', 'Cheques denunciados'], ['vehiculo', 'Vehículo'], ['simulacion', 'Simulación']];
 const JUICIOS = '../'; // el gestor de juicios, en la misma base
 
 const nuevaSim = () => ({ valor: '', capital: '', capitalManual: false, cuotas: '24', tasa: '7', g: { ...GASTOS_DEFECTO } });
@@ -55,7 +55,7 @@ const S = {
   },
 };
 try { S.vista = VISTAS[localStorage.getItem('cb.vista')] ? localStorage.getItem('cb.vista') : 'inicio'; } catch { /* sin almacenamiento */ }
-try { const m = localStorage.getItem('cb.credModo'); if (m === 'cheque' || m === 'vehiculo') S.cred.modo = m; } catch { /* sin almacenamiento */ }
+try { const m = localStorage.getItem('cb.credModo'); if (m === 'cheque' || m === 'vehiculo' || m === 'simulacion') S.cred.modo = m; } catch { /* sin almacenamiento */ }
 try { S.maxi = localStorage.getItem('cb.maxi') === '1'; } catch { /* sin almacenamiento */ }
 
 // ───────────────────────── Utilidades ─────────────────────────
@@ -441,7 +441,7 @@ function vistaPlanes(todos) {
 
 function vistaCreditos() {
   const modos = `<nav class="tabs cr-modos" role="tablist" aria-label="Qué consultar">${MODOS_CREDITO.map(([k, l]) => `<button role="tab" data-cr-modo="${k}" aria-selected="${S.cred.modo === k}">${esc(l)}</button>`).join('')}</nav>`;
-  return `<div class="creditos">${modos}${S.cred.modo === 'cheque' ? vistaCheques() : S.cred.modo === 'vehiculo' ? vistaVehiculo() : vistaCuit()}</div>`;
+  return `<div class="creditos">${modos}${S.cred.modo === 'cheque' ? vistaCheques() : S.cred.modo === 'vehiculo' ? vistaVehiculo() : S.cred.modo === 'simulacion' ? vistaSimulacion() : vistaCuit()}</div>`;
 }
 
 function cambiarModo(m) {
@@ -585,7 +585,8 @@ function vistaVehiculo() {
   if (V.cargando) resultado = `<section class="card cr-resultado" id="crResultado"><p class="hint m0">Buscando el precio…</p></section>`;
   else if (V.sel) resultado = V.errorPrecios
     ? `<section class="card cr-resultado" id="crResultado"><div class="aviso-chico cr-reintentar" role="alert"><span>${esc(V.errorPrecios)}</span><button class="btn small" type="button" data-a="ve-reintentar">Reintentar</button></div></section>`
-    : fichaVehiculo(V.sel, V.precios, V.cero, V.anio) + htmlSimulador(V.precios, V.cero, V.sim);
+    : fichaVehiculo(V.sel, V.precios, V.cero, V.anio)
+      + `<p class="hint m0 cr-ir-sim"><button class="btn small" type="button" data-cr-modo="simulacion">Simular un crédito con este vehículo →</button></p>`;
   const lista = V.lista;
   const historial = `<section class="card cr-historial">
     <div class="card-cab"><h3>Modelos</h3>${lista ? `<span class="hint">${lista.length}</span>` : ''}</div>
@@ -593,6 +594,19 @@ function vistaVehiculo() {
       : `<p class="hint m0">${lista ? 'No se encontraron modelos. Probá con otra marca o con parte del nombre.' : 'Acá aparecen los modelos que encuentres.'}</p>`}
   </section>`;
   return `${form}${resultado}${historial}`;
+}
+
+
+/** La pestaña "Simulación": usa el vehículo elegido en la pestaña Vehículo (su valor de referencia). */
+function vistaSimulacion() {
+  const V = S.cred.veh;
+  subtitulo('Simulador de crédito prendario');
+  if (V.cargando) return `<section class="card cr-sim-vista"><p class="hint m0">Buscando el precio…</p></section>`;
+  if (!V.sel || !V.precios || V.errorPrecios) return `<section class="card cr-sim-vista cr-vacio-sim">
+    <p class="m0"><b>Primero elegí un vehículo.</b></p>
+    <p class="hint m0">El simulador parte del valor del vehículo. Buscalo en la pestaña Vehículo y volvé acá.</p>
+    <div><button class="btn small primary" type="button" data-cr-modo="vehiculo">Ir a Vehículo</button></div></section>`;
+  return htmlSimulador(V.precios, V.cero, V.sim, V.sel);
 }
 
 function pedirMarcas() {

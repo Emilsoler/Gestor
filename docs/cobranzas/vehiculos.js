@@ -133,36 +133,17 @@ export function estadoSimulador(precios, listPrice, sim) {
   return { ref, capitalTxt, resultado };
 }
 
-/** Lo que muestra el resultado de la simulación (el que se redibuja al escribir). */
+/** Lo que muestra el resultado de la simulación (el que se redibuja al escribir). Compacto: cifras arriba y tres cuadros chicos. */
 export function htmlSimulacion(r) {
   if (!r) return '<p class="hint m0">Completá el monto, la cantidad de cuotas (de 1 a ' + CUOTAS_MAX + ') y la tasa.</p>';
   const f = (t, v, fuerte) => `<tr${fuerte ? ' class="fuerte"' : ''}><td>${esc(t)}</td><td class="num mono">${esc(plata(v))}</td></tr>`;
-  return `<h4>Paso 1 · Crédito sin gastos de inscripción</h4>
-    <div class="scrollx"><table class="tabla"><tbody>
-      ${f(`Cuota de ${plata(r.capital)} en ${r.cuotas} cuotas al ${plano(r.tasa)}% mensual (con otros gastos)`, r.cuotaPaso1, true)}
-    </tbody></table></div>
-    <h4>Paso 2 · Gastos de inscripción de prenda (se financian)</h4>
-    <div class="scrollx"><table class="tabla"><tbody>
-      ${f('Sellado', r.sellado)}
-      ${f('Arancel', r.arancel)}
-      ${f('Contratos y gastos administrativos', r.contratos)}
-      ${f('Envío de documentación', r.envio)}
-      ${f('Gestoría', r.gestoria)}
-      ${f('Redondeo', r.redondeo)}
-      ${f('Total de gastos de inscripción', r.gastos, true)}
-      ${f('Monto financiado (capital + gastos de inscripción)', r.financiado)}
-      ${f(`Cuota de ese monto en ${r.cuotas} cuotas al ${plano(r.tasa)}%`, r.cuotaCapital)}
-    </tbody></table></div>
-    <h4>Otros gastos (sin interés, repartidos en las cuotas)</h4>
-    <div class="scrollx"><table class="tabla"><tbody>
-      ${f('Seguro de vida', r.seguro)}
-      ${f('Gastos administrativos', r.administrativos)}
-      ${f('Cuota social', r.cuotaSocial)}
-      ${f('IGR (sobre los intereses)', r.igr)}
-      ${f('Total de otros gastos', r.otros, true)}
-      ${f(`Por cuota (÷ ${r.cuotas})`, r.cuotaOtros)}
-    </tbody></table></div>
-    <dl class="cifras grandes"><div><dt>Cuota final</dt><dd>${esc(plata(r.cuota))}</dd></div><div><dt>${r.cuotas} cuotas</dt><dd>${esc(plata(r.totalCredito))}</dd></div></dl>
+  const cuadro = (titulo, filas) => `<div class="sim-cuadro"><h4>${esc(titulo)}</h4><table class="tabla sim-tabla"><tbody>${filas}</tbody></table></div>`;
+  return `<dl class="cifras grandes sim-cifras"><div><dt>Cuota final</dt><dd>${esc(plata(r.cuota))}</dd></div><div><dt>Total en ${r.cuotas} cuotas</dt><dd>${esc(plata(r.totalCredito))}</dd></div><div><dt>Monto financiado</dt><dd>${esc(plata(r.financiado))}</dd></div></dl>
+    <div class="sim-cuadros">
+      ${cuadro('1 · Sin gastos de inscripción', f(`${plata(r.capital)} · ${r.cuotas} cuotas · ${plano(r.tasa)}% mensual`, r.cuotaPaso1, true))}
+      ${cuadro('2 · Inscripción de prenda (se financia)', `${f('Sellado', r.sellado)}${f('Arancel', r.arancel)}${f('Contratos y administrativos', r.contratos)}${f('Envío de documentación', r.envio)}${f('Gestoría', r.gestoria)}${f('Redondeo', r.redondeo)}${f('Total inscripción', r.gastos, true)}${f(`Cuota de ${plata(r.financiado)}`, r.cuotaCapital)}`)}
+      ${cuadro('Otros gastos (sin interés)', `${f('Seguro de vida', r.seguro)}${f('Administrativos', r.administrativos)}${f('Cuota social', r.cuotaSocial)}${f('IGR (sobre intereses)', r.igr)}${f('Total otros gastos', r.otros, true)}${f(`Por cuota (÷ ${r.cuotas})`, r.cuotaOtros)}`)}
+    </div>
     <p class="hint m0">Cuota fija sobre saldo. Es una simulación, no una oferta.</p>`;
 }
 
@@ -170,26 +151,29 @@ const GASTOS_INSCRIPCION = [['sellado', 'Sellado', '% del total del crédito'], 
   ['contratos', 'Contratos y gastos administrativos', '$'], ['envio', 'Envío de documentación', '$'], ['gestoria', 'Gestoría', '$'], ['redondeo', 'Redondeo', '$ · vacío = automático']];
 const GASTOS_OTROS = [['seguro', 'Seguro de vida', '% del capital por cuota'], ['administrativos', 'Gastos administrativos', '$ por cuota'], ['cuotaSocial', 'Cuota social', '$ por cuota'], ['igr', 'IGR', '% de los intereses']];
 
-/** La tarjeta del simulador: el valor del vehículo, el capital, las cuotas, los gastos editables y el resultado. */
-export function htmlSimulador(precios, listPrice, S) {
+/** La tarjeta del simulador (pestaña "Simulación"): el valor del vehículo, el capital, las cuotas, los gastos editables y el resultado. */
+export function htmlSimulador(precios, listPrice, S, modelo) {
   const filas = preciosPorAnio(precios), cero = enPesos(listPrice?.list_price), est = estadoSimulador(precios, listPrice, S);
-  if (!est) return '';
+  if (!est) return '<section class="card cr-sim-vista"><p class="hint m0">InfoAuto no informa precios para este vehículo, así que no hay valor de referencia.</p></section>';
   const { ref } = est;
   const opciones = [...filas.map((x) => [String(x.anio), `Año ${x.anio} · ${plata(x.pesos)}`]), ...(cero ? [['cero', `0km (lista) · ${plata(cero)}`]] : [])];
   const gasto = ([k, t, u]) => `<label class="f">${esc(t)} <small class="hint">${esc(u)}</small><input id="si_g_${k}" data-k="cred.veh.sim.g.${k}" inputmode="decimal" autocomplete="off"${u.startsWith('$') ? ' data-importe' : ''} value="${esc(S.g[k])}"></label>`;
-  return `<section class="card cr-simulador" id="crSimulador">
-    <div class="card-cab"><h3>Simulador de crédito</h3><span class="hint">Prendario</span></div>
-    <div class="cr-form">
-      <label class="f">Valor del vehículo<select id="si_valor" data-k="cred.veh.sim.valor">${opciones.map(([k, t]) => `<option value="${esc(k)}"${k === ref.clave ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
+  return `<section class="card cr-simulador cr-sim-vista" id="crSimulador">
+    <div class="card-cab"><h3>${esc(modelo?.descripcion || 'Simulador de crédito')}</h3><span class="hint">Prendario${modelo ? ` · CODIA ${modelo.codia}` : ''}</span></div>
+    <div class="sim-form">
+      <label class="f sim-ancho">Valor del vehículo<select id="si_valor" data-k="cred.veh.sim.valor">${opciones.map(([k, t]) => `<option value="${esc(k)}"${k === ref.clave ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
       <label class="f">Capital a financiar ($)<input id="si_capital" data-k="cred.veh.sim.capital" data-importe inputmode="decimal" autocomplete="off" value="${esc(est.capitalTxt)}"></label>
-      <label class="f">Cantidad de cuotas<input id="si_cuotas" data-k="cred.veh.sim.cuotas" inputmode="numeric" autocomplete="off" maxlength="3" value="${esc(S.cuotas)}"></label>
-      <label class="f">Tasa de interés mensual (% sobre saldo)<input id="si_tasa" data-k="cred.veh.sim.tasa" inputmode="decimal" autocomplete="off" value="${esc(S.tasa)}"></label>
+      <label class="f">Cuotas<input id="si_cuotas" data-k="cred.veh.sim.cuotas" inputmode="numeric" autocomplete="off" maxlength="3" value="${esc(S.cuotas)}"></label>
+      <label class="f">Tasa mensual (%)<input id="si_tasa" data-k="cred.veh.sim.tasa" inputmode="decimal" autocomplete="off" value="${esc(S.tasa)}"></label>
     </div>
     <p class="hint m0" id="si_sugerido">Por defecto se financia el 50% del valor (${esc(plata(Math.round(ref.pesos / 2)))}); podés cambiarlo.</p>
-    <h4>Gastos de inscripción de prenda</h4>
-    <div class="cr-form cr-gastos">${GASTOS_INSCRIPCION.map(gasto).join('')}</div>
-    <h4>Otros gastos <small class="hint">sin interés, repartidos en las cuotas</small></h4>
-    <div class="cr-form cr-gastos">${GASTOS_OTROS.map(gasto).join('')}</div>
+    <details class="sim-gastos">
+      <summary>Gastos (editables)</summary>
+      <h4>Inscripción de prenda</h4>
+      <div class="sim-form sim-chico">${GASTOS_INSCRIPCION.map(gasto).join('')}</div>
+      <h4>Otros gastos <small class="hint">sin interés, repartidos en las cuotas</small></h4>
+      <div class="sim-form sim-chico">${GASTOS_OTROS.map(gasto).join('')}</div>
+    </details>
     <div id="simResultado">${htmlSimulacion(est.resultado)}</div>
   </section>`;
 }

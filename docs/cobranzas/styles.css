@@ -614,3 +614,23 @@ body.con-chat .toast{bottom:calc(var(--abajo) + 84px)}  /* que el aviso no tape 
   @keyframes puntos{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
 }
 .cr-gastos label.f{flex:1 1 150px}
+/* Simulación: una sola tarjeta, campos y tablas chicos. */
+.cr-sim-vista{order:2;grid-column:1 / -1;display:grid;gap:10px}
+.cr-vacio-sim{place-items:start;gap:8px}
+.cr-ir-sim{order:2}
+.sim-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px 10px}
+.sim-form .sim-ancho{grid-column:1 / -1}
+.sim-form label.f{font-size:11.5px;gap:3px}
+.sim-form label.f input,.sim-form label.f select{padding:6px 9px;font:14px var(--f-mono);color:var(--fg)}
+.sim-chico{grid-template-columns:repeat(auto-fill,minmax(110px,1fr))}
+.sim-chico label.f small{display:block;font-size:10.5px;line-height:1.2}
+.cr-sim-vista h4{margin:6px 0 4px;font-size:12px}
+.sim-gastos{border:1px solid var(--line-soft);border-radius:var(--r-s);padding:6px 10px}
+.sim-gastos summary{cursor:pointer;font-size:12.5px;font-weight:500;color:var(--soft)}
+.sim-cifras{gap:6px 22px;padding:2px 0}
+.sim-cifras dd{font-size:20px}
+.sim-cuadros{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:4px 16px;align-items:start}
+.sim-cuadro h4{text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:500}
+.tabla.sim-tabla{min-width:0;font-size:12.5px}
+.sim-tabla td{padding:3px 6px}
+@media (min-width:1140px){.cr-sim-vista{grid-row:2}}
