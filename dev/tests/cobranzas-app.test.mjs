@@ -348,26 +348,8 @@ test('lo que registra Claude por SQL aparece solo en la ficha abierta', async ()
   await cerrar(page);
 });
 
-test('cobros del mes y descarga en Excel', async () => {
-  await page.click('#v_cobros');
-  await page.waitForSelector('table.cobros');
-  assert.equal(await page.locator('table.cobros tbody tr').count(), 3);
-  const pie = await page.locator('table.cobros tfoot td').allTextContents();
-  assert.equal(norm(pie.at(-1)), '$ 201.234');
-  const [descarga] = await Promise.all([page.waitForEvent('download'), page.click('[data-a="excel-cobros"]')]);
-  assert.match(descarga.suggestedFilename(), /^cobros-\d{4}-\d{2}\.xlsx$/);
-  const partes = []; for await (const c of await descarga.createReadStream()) partes.push(c);
-  const buf = Buffer.concat(partes);
-  assert.equal(buf.readUInt32LE(0), 0x04034b50, 'es un zip (xlsx)');
-  assert.ok(buf.includes(Buffer.from('PRUEBA PAGADOR')));
-  // El listado de deudores en Excel, sin la columna del saldo según la Mutual.
-  await page.click('#btnCuenta');
-  const [lista] = await Promise.all([page.waitForEvent('download'), page.click('[data-m="exportar"]')]);
-  assert.match(lista.suggestedFilename(), /^deudores-\d{4}-\d{2}-\d{2}\.xlsx$/);
-  const trozos = []; for await (const c of await lista.createReadStream()) trozos.push(c);
-  const xl = Buffer.concat(trozos);
-  assert.ok(xl.includes(Buffer.from('Saldo exigible')));
-  assert.ok(!xl.includes(Buffer.from('Según la Mutual')));
+test('ya no hay solapa Cobros', async () => {
+  assert.equal(await page.locator('#v_cobros').count(), 0);
 });
 
 test('nuevo deudor con sus cuotas impagas', async () => {
@@ -470,7 +452,7 @@ test('celular: tarjetas, ficha a pantalla completa y nada se sale de costado', a
   await p.waitForSelector('#fIngreso, #vApp:not([hidden])');
   if (await p.$('#fIngreso')) { await p.fill('#i_email', EMAIL); await p.fill('#i_clave', CLAVE); await p.click('#fIngreso button[type=submit]'); }
   await p.waitForSelector('#vApp:not([hidden])');
-  for (const v of ['inicio', 'deudores', 'planes', 'cobros']) {
+  for (const v of ['inicio', 'deudores', 'planes']) {
     await p.click('#v_' + v); await p.waitForTimeout(100);
     assert.ok(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `la vista ${v} no se sale de costado`);
   }

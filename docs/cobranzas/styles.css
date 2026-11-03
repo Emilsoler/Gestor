@@ -233,7 +233,7 @@ table.lista{width:100%;border-collapse:collapse;min-width:900px}
    a la izquierda y el resultado a la derecha. El semáforo nunca es solo un color: lleva su nombre. */
 .creditos{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;align-items:start}
 .cr-modos{order:0} .creditos>.empty{order:1}
-.cr-consulta{order:1} .cr-resultado{order:2} .cr-historial{order:3}
+.cr-consulta{order:1} .cr-resultado{order:2} .cr-simulador{order:2} .cr-historial{order:3}
 .cr-vacio{display:none}
 .cr-form{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
 .cr-form label.f{flex:1 1 220px}

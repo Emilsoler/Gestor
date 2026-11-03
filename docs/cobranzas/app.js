@@ -9,7 +9,7 @@ import {
   avisoCuit, soloDigitos, fichaConsulta, filaConsulta, textoConsulta, deudoresDelCuit,
   avisoCheque, numeroCheque, bancosRecientes, opcionesBancos, bancoEnLista, fichaCheque, textoCheque, filaCheque,
 } from './creditos.js';
-import { modeloSimple, filaModelo, fichaVehiculo, preciosPorAnio } from './vehiculos.js';
+import { modeloSimple, filaModelo, fichaVehiculo, preciosPorAnio, htmlSimulador, htmlSimulacion, estadoSimulador } from './vehiculos.js';
 import {
   liquidar, resumen, armarPlan, estadoPlan, planVigente, sumarMeses, totalPago, TRAMOS, tramoDe, CADAS, nombrePropio, detalleCuotas, ES_FECHA,
 } from './calculo.js';
@@ -29,7 +29,7 @@ const CONCEPTOS = ['Tasa de justicia', 'Aportes Caja de Abogados', 'Martillero',
 const TABS = [['resumen', 'Resumen'], ['liquidacion', 'Liquidación'], ['pagos', 'Pagos'], ['plan', 'Plan'], ['gestiones', 'Gestiones'], ['mensaje', 'WhatsApp'], ['datos', 'Datos']];
 const CLASE = { mora: 's-bad', plan: 's-ok', 'plan-atrasado': 's-warn', 'plan-caer': 's-bad', 'plan-cumplido': 's-ok', juicio: 's-violet', 'al-dia': 's-info' };
 const CHIPS = [['activos', 'Activos'], ['mora', 'En mora'], ['plan', 'Con plan'], ['atrasados', 'Planes atrasados'], ['promesas', 'Promesas'], ['juicio', 'En juicio'], ['cerrados', 'Cancelados y archivados']];
-const VISTAS = { inicio: 'Inicio', deudores: 'Deudores', planes: 'Planes', cobros: 'Cobros', creditos: 'Aprobación de créditos' };
+const VISTAS = { inicio: 'Inicio', deudores: 'Deudores', planes: 'Planes', creditos: 'Aprobación de créditos' };
 const AYUDA_CUIT = 'La situación en cada banco o financiera, los últimos 24 meses y los cheques rechazados.';
 const AYUDA_CHEQUE = 'Si el cheque fue denunciado como extraviado, robado o adulterado.';
 const MODOS_CREDITO = [['cuit', 'Deudas por CUIT'], ['cheque', 'Cheques denunciados'], ['vehiculo', 'Vehículo']];
@@ -47,7 +47,9 @@ const S = {
     entidad: '', numero: '', chAbierta: null, chConsultando: false, chConfirmar: false, chError: '', chFiltro: '',
     bancos: null, bancosCargando: false, bancosError: '',
     // Vehículo (InfoAuto): lo que se escribe, las marcas, los modelos encontrados y el elegido con sus precios.
-    veh: { q: '', marca: '', marcas: null, marcasCargando: false, marcasError: '', buscando: false, error: '', lista: null, sel: null, precios: null, cero: null, cargando: false, errorPrecios: '', anio: '' },
+    veh: { q: '', marca: '', marcas: null, marcasCargando: false, marcasError: '', buscando: false, error: '', lista: null, sel: null, precios: null, cero: null, cargando: false, errorPrecios: '', anio: '',
+      // Simulador de crédito: valor elegido ('' = el año más nuevo), capital (propuesto salvo que se escriba), cuotas y gestoría.
+      sim: { valor: '', capital: '', capitalManual: false, cuotas: '24', gestoria: false } },
   },
 };
 try { S.vista = VISTAS[localStorage.getItem('cb.vista')] ? localStorage.getItem('cb.vista') : 'inicio'; } catch { /* sin almacenamiento */ }
@@ -258,7 +260,7 @@ function render() {
   insignia('#nPlanes', atrasados, 'urg', atrasados === 1 ? 'plan atrasado' : 'planes atrasados');
   const dia = hoy(), urgentes = todos.filter((x) => x.r.activo && pendientesDe(x.d, x.r).some((p) => p.tarde || (p.fecha && p.fecha <= dia))).length;
   insignia('#nDeudores', urgentes, 'pend', urgentes === 1 ? 'deudor con algo para hoy o atrasado' : 'deudores con algo para hoy o atrasado');
-  main.innerHTML = { inicio: vistaInicio, deudores: vistaDeudores, planes: vistaPlanes, cobros: vistaCobros, creditos: vistaCreditos }[S.vista](todos);
+  main.innerHTML = { inicio: vistaInicio, deudores: vistaDeudores, planes: vistaPlanes, creditos: vistaCreditos }[S.vista](todos);
   aplicarAnchos(main);
   $('#fabNuevo').hidden = S.vista === 'creditos'; // en el celular taparía el resultado, y ahí no hace falta
   // Los 24 meses se ven desde el más reciente: si no entran (celular), el corrimiento arranca a la derecha.
@@ -289,7 +291,7 @@ function vistaInicio(todos) {
   }
   const kpis = [
     { ir: 'deudores:activos', l: 'Deuda en gestión', v: compacto(deuda), s: `<span class="kpi-s">${cuantos(activos.length, 'deudor activo', 'deudores activos')}</span>`, i: 'balanza' },
-    { ir: 'cobros:', l: `Cobrado en ${nombreMes(mes).split(' ')[0]}`, v: compacto(cobrado), s: delta, i: 'billete' },
+    { ir: 'deudores:', l: `Cobrado en ${nombreMes(mes).split(' ')[0]}`, v: compacto(cobrado), s: delta, i: 'billete' },
     { ir: 'deudores:mora', l: 'En mora, sin plan', v: String(enMora.length), s: `<span class="kpi-s">${compacto(suma(enMora, (x) => x.r.saldo))}</span>`, i: 'alarma' },
     { ir: 'planes:', l: 'Planes vigentes', v: String(conPlan.length), s: `<span class="kpi-s ${planesAtras ? 'baja' : ''}">${planesAtras ? cuantos(planesAtras, 'atrasado', 'atrasados') : 'todos al día'}</span>`, i: 'cuotas' },
     { ir: 'deudores:promesas', l: 'Promesas para hoy', v: String(promHoy), s: `<span class="kpi-s ${promMal ? 'baja' : ''}">${promMal ? cuantos(promMal, 'incumplida', 'incumplidas') : 'ninguna incumplida'}</span>`, i: 'apreton' },
@@ -321,7 +323,7 @@ function vistaInicio(todos) {
 
   const ultimos = pagos.filter((x) => ES_FECHA.test(x.p.fecha || '')).sort((a, b) => b.p.fecha.localeCompare(a.p.fecha)).slice(0, 6);
   const cobros = `<section class="card">
-    <div class="card-cab"><h3>Últimos cobros</h3><button class="btn small" data-ir="cobros:">Ver cobros</button></div>
+    <div class="card-cab"><h3>Últimos cobros</h3></div>
     ${ultimos.length ? `<div class="mini">${ultimos.map((x) => `<button class="mini-f" data-abrir="${esc(x.d.id)}" data-tab="pagos"><span class="mono">${fmt(x.p.fecha)}</span><span class="mini-n">${esc(nombre(x.d))}</span><b class="mono">${esc(plata(x.total))}</b></button>`).join('')}</div>`
       : '<p class="hint m0">Todavía no registraste cobros. Se cargan desde la ficha de cada deudor, en “Pagos”.</p>'}
   </section>`;
@@ -428,36 +430,6 @@ function vistaPlanes(todos) {
   return `${conPlan.length ? `<div class="planes">${conPlan.map(tarjeta).join('')}</div>` : vacio('No hay planes vigentes', 'Los planes de pago se arman desde la ficha de cada deudor, en “Plan”.')}
     ${cerrados.length ? `<section class="card cerrados"><div class="card-cab"><h3>Planes cerrados</h3><span class="hint">${cerrados.length}</span></div>
       <div class="mini">${cerrados.map(({ d, p, ep }) => `<button class="mini-f" data-abrir="${esc(d.id)}" data-tab="plan"><span class="mono">${fmt(p.cierre?.fecha || p.fecha)}</span><span class="mini-n">${esc(nombre(d))} · ${esc((SITUACION_PLAN[p.estado] || [p.estado])[0])}</span><span class="mono">${esc(plata(ep.pagado))} de ${esc(plata(ep.total))}</span></button>`).join('')}</div></section>` : ''}`;
-}
-
-// ───────────────────────── Cobros ─────────────────────────
-
-/** Los pagos de un mes, con lo imputado a cada grupo de rubros (los gastos y honorarios fijos van por su tipo). */
-function cobrosDelMes(mes) {
-  return D.deudores.flatMap((d) => d.pagos.filter((p) => mesDe(p.fecha) === mes).map((p) => {
-    const g = { capital: 0, intereses: 0, honorarios: 0, gastos: 0 };
-    for (const [k, v] of Object.entries(p.imp || {})) {
-      if (k in g && k !== 'gastos') g[k] += +v || 0;
-      else { const gasto = d.gastos.find((x) => x.id === k); g[gasto?.tipo === 'honorarios' ? 'honorarios' : 'gastos'] += +v || 0; }
-    }
-    return { d, p, ...g, total: totalPago(p) };
-  })).sort((a, b) => a.p.fecha.localeCompare(b.p.fecha) || nombre(a.d).localeCompare(nombre(b.d), 'es'));
-}
-
-function vistaCobros() {
-  const xs = cobrosDelMes(S.mes), tot = (k) => suma(xs, (x) => x[k]);
-  subtitulo(`${cuantos(xs.length, 'pago', 'pagos')} en ${nombreMes(S.mes)}`);
-  const esteMes = S.mes >= mesDe(hoy());
-  const cab = `<div class="mes-nav"><button class="btn small" data-mes="-1" aria-label="Mes anterior">‹</button><b>${esc(nombreMes(S.mes))}</b><button class="btn small" data-mes="1" aria-label="Mes siguiente" ${esteMes ? 'disabled' : ''}>›</button>
-    <span class="sep"></span>${xs.length ? '<button class="btn small" data-a="excel-cobros">Descargar en Excel</button>' : ''}</div>`;
-  const cifras = `<dl class="cifras grandes"><div><dt>Total cobrado</dt><dd>${esc(plata(tot('total')))}</dd></div><div><dt>Capital</dt><dd>${esc(plata(tot('capital')))}</dd></div><div><dt>Intereses</dt><dd>${esc(plata(tot('intereses')))}</dd></div><div><dt>Honorarios</dt><dd>${esc(plata(tot('honorarios')))}</dd></div><div><dt>Gastos</dt><dd>${esc(plata(tot('gastos')))}</dd></div></dl>`;
-  if (!xs.length) return `${cab}${vacio(`No hay cobros en ${nombreMes(S.mes)}`, 'Los pagos se registran desde la ficha de cada deudor, en “Pagos”.')}`;
-  const fila = (x) => `<tr data-abrir="${esc(x.d.id)}" data-tab="pagos" tabindex="0"><td class="mono">${fmt(x.p.fecha)}</td><td class="car"><b>${esc(nombre(x.d))}</b><small>${esc([x.p.recibo ? 'Recibo ' + x.p.recibo : '', x.p.medio].filter(Boolean).join(' · '))}</small></td>
-    ${['capital', 'intereses', 'honorarios', 'gastos', 'total'].map((k) => `<td class="num mono${k === 'total' ? ' fuerte' : ''}">${x[k] ? esc(plata(x[k])) : '<span class="hint">—</span>'}</td>`).join('')}</tr>`;
-  return `${cab}<section class="sec">${cifras}</section>
-    <div class="tablebox"><table class="lista cobros"><thead><tr><th>Fecha</th><th>Deudor</th><th class="num">Capital</th><th class="num">Intereses</th><th class="num">Honorarios</th><th class="num">Gastos</th><th class="num">Total</th></tr></thead>
-    <tbody>${xs.map(fila).join('')}</tbody>
-    <tfoot><tr><td></td><td>Total</td>${['capital', 'intereses', 'honorarios', 'gastos', 'total'].map((k) => `<td class="num mono">${esc(plata(tot(k)))}</td>`).join('')}</tr></tfoot></table></div>`;
 }
 
 // ───────────────────────── Aprobación de créditos ─────────────────────────
@@ -611,7 +583,7 @@ function vistaVehiculo() {
   if (V.cargando) resultado = `<section class="card cr-resultado" id="crResultado"><p class="hint m0">Buscando el precio…</p></section>`;
   else if (V.sel) resultado = V.errorPrecios
     ? `<section class="card cr-resultado" id="crResultado"><div class="aviso-chico cr-reintentar" role="alert"><span>${esc(V.errorPrecios)}</span><button class="btn small" type="button" data-a="ve-reintentar">Reintentar</button></div></section>`
-    : fichaVehiculo(V.sel, V.precios, V.cero, V.anio);
+    : fichaVehiculo(V.sel, V.precios, V.cero, V.anio) + htmlSimulador(V.precios, V.cero, V.sim);
   const lista = V.lista;
   const historial = `<section class="card cr-historial">
     <div class="card-cab"><h3>Modelos</h3>${lista ? `<span class="hint">${lista.length}</span>` : ''}</div>
@@ -648,7 +620,7 @@ async function buscarVehiculos({ marca = '', q = '' } = {}) {
 async function elegirVehiculo(codia) {
   const V = S.cred.veh, m = (V.lista || []).find((x) => x.codia === +codia);
   if (!m || V.cargando) return;
-  Object.assign(V, { sel: m, precios: null, cero: null, errorPrecios: '', cargando: true }); render(); verResultado();
+  Object.assign(V, { sel: m, precios: null, cero: null, errorPrecios: '', cargando: true, sim: { valor: '', capital: '', capitalManual: false, cuotas: '24', gestoria: false } }); render(); verResultado();
   try {
     const [precios, cero] = await Promise.all([
       consultarInfoAuto(`/models/${m.codia}/prices/`),
@@ -659,6 +631,18 @@ async function elegirVehiculo(codia) {
   } catch (e) {
     V.errorPrecios = e.sinSesion ? mensaje(e) : e.message || 'No se pudo consultar a InfoAuto';
   } finally { V.cargando = false; render(); verResultado(); }
+}
+
+/** Redibuja solo el resultado (y el capital propuesto) para no perder el foco al escribir. */
+function actualizarSimulador(k) {
+  const V = S.cred.veh, est = estadoSimulador(V.precios, V.cero, V.sim);
+  if (!est) return;
+  if (k === 'cred.veh.sim.capital') V.sim.capitalManual = !!V.sim.capital.trim();
+  if (k === 'cred.veh.sim.valor') { V.sim.capitalManual = false; const c = $('#si_capital'); if (c) c.value = est.capitalTxt; }
+  else if (!V.sim.capitalManual && k === 'cred.veh.sim.capital') { const c = $('#si_capital'); if (c) c.value = est.capitalTxt; }
+  const e2 = estadoSimulador(V.precios, V.cero, V.sim);
+  const r = $('#simResultado'); if (r) r.innerHTML = htmlSimulacion(e2.resultado);
+  const h = $('#si_sugerido'); if (h) h.textContent = `Por defecto se financia el 50% del valor (${plata(Math.round(e2.ref.pesos / 2))}); podés cambiarlo.`;
 }
 
 async function accionVehiculo(act) {
@@ -1507,20 +1491,6 @@ function textoLiquidacion(d) {
     ...liq.rubros.filter((rb) => rb.saldo).map((rb) => `${rb.nombre}: ${plata(rb.saldo)}`), `Total: ${plata(liq.total.saldo)}`].filter(Boolean).join('\n');
 }
 
-function descargarCobros() {
-  const xs = cobrosDelMes(S.mes), ini = 5, fin = ini + xs.length - 1;
-  const filas = [
-    [{ v: `Cobros de ${nombreMes(S.mes)}`, s: 'titulo' }],
-    [{ v: `${cuantos(xs.length, 'pago', 'pagos')} · bajado de la app de cobranzas el ${fmtLargo(hoy())}` }],
-    [],
-    ['Fecha', 'Deudor', 'Socio', 'Recibo', 'Medio', 'Capital', 'Intereses', 'Honorarios', 'Gastos', 'Total'].map((v) => ({ v, s: 'cab' })),
-  ];
-  xs.forEach((x, i) => { const f = ini + i; filas.push([{ v: x.p.fecha, fecha: true, s: 'fecha' }, { v: x.d.nombre, s: 'texto' }, { v: x.d.socio || '', s: 'texto' }, { v: x.p.recibo || '', s: 'texto' }, { v: x.p.medio || '', s: 'texto' },
-    { v: x.capital || null, s: 'pesos' }, { v: x.intereses || null, s: 'pesos' }, { v: x.honorarios || null, s: 'pesos' }, { v: x.gastos || null, s: 'pesos' }, { f: `SUM(F${f}:I${f})`, v: x.total, s: 'calculo' }]); });
-  filas.push([{ v: 'Total', s: 'totTexto' }, { s: 'totTexto' }, { s: 'totTexto' }, { s: 'totTexto' }, { s: 'totTexto' }, ...['F', 'G', 'H', 'I', 'J'].map((c) => ({ f: `SUM(${c}${ini}:${c}${fin})`, v: suma(xs, (x) => ({ F: x.capital, G: x.intereses, H: x.honorarios, I: x.gastos, J: x.total }[c])), s: 'totPesos' }))]);
-  bajar([{ nombre: 'Cobros', anchos: [12, 34, 9, 12, 14, 15, 15, 15, 15, 16], filas, congelar: { fila: 4 } }], `cobros-${S.mes}.xlsx`);
-}
-
 function descargarDeudores() {
   const xs = D.deudores.map((d) => ({ d, r: res(d) })).sort((a, b) => b.r.saldo - a.r.saldo);
   const saldo = (r, id) => r.liq.rubros.find((x) => x.id === id)?.saldo || 0;
@@ -1756,7 +1726,6 @@ document.addEventListener('click', async (e) => {
   const tr = t.closest('[data-tramo]'); if (tr) { S.chip = 'mora'; S.tramo = tr.dataset.tramo; S.orden = 'mora'; verVista('deudores'); return; }
   if (t.closest('[data-tramo-x]')) { S.tramo = ''; render(); return; }
   const ch = t.closest('[data-chip]'); if (ch) { S.chip = ch.dataset.chip; S.tramo = ''; render(); return; }
-  const ms = t.closest('[data-mes]'); if (ms) { S.mes = mesMas(S.mes, +ms.dataset.mes); render(); return; }
   const tab = t.closest('[data-tab-ir]'); if (tab) { irATab(tab.dataset.tabIr); return; }
   const ab = t.closest('[data-abrir]'); if (ab) { e.stopPropagation(); abrirDeudor(ab.dataset.abrir, ab.dataset.tab || 'resumen', ab.dataset.con || ''); return; }
   const cq = t.closest('[data-consulta]'); if (cq) { await abrirConsulta(cq.dataset.consulta); return; }
@@ -1766,7 +1735,6 @@ document.addEventListener('click', async (e) => {
   const a = t.closest('[data-a]'); if (!a) return;
   const act = a.dataset.a;
   if (act === 'cerrar') { cerrarFicha(); return; }
-  if (act === 'excel-cobros') { descargarCobros(); return; }
   if (act.startsWith('cr-') && !S.panel && !S.abierto) {
     if (act === 'cr-copiar') { accionCredito(act, a); return; } // sin esperas: el portapapeles lo pide así
     await unaVez(a, (b) => accionCredito(act, b)); return;
@@ -1795,6 +1763,7 @@ document.addEventListener('input', (e) => {
   if (el.id === 'q') { S.q = el.value; render(); return; }
   const k = el.dataset?.k; if (!k) return;
   poner(k, el.type === 'checkbox' ? el.checked : el.value);
+  if (k.startsWith('cred.veh.sim.')) { actualizarSimulador(k); return; }
   if (k === 'cred.cuit') { actualizarCuit(); return; }
   if (k === 'cred.numero' || k === 'cred.entidad') { actualizarCheque(); return; }
   if (k === 'cred.filtro' || k === 'cred.chFiltro') { render(); return; }
@@ -1814,6 +1783,7 @@ document.addEventListener('change', (e) => {
   if (el.id === 'f_tasa' || el.id === 'f_hon') { guardarTasa(el.id === 'f_tasa' ? 'tasa' : 'hon', el); return; }
   if (!k) return;
   poner(k, el.type === 'checkbox' ? el.checked : el.value);
+  if (k.startsWith('cred.veh.sim.')) { actualizarSimulador(k); return; }
   if (k === 'cred.veh.marca') { S.cred.veh.q = ''; if (el.value) buscarVehiculos({ marca: el.value }); return; }
   if (k === 'cred.entidad') { actualizarCheque(); return; } // por si el navegador no avisa con "input"
   if (k === 'f.msg.modelo') { const d = deudor(S.abierto); S.f.msg.propuesta = S.f.msg.propuesta && el.value === 'plan'; S.f.msg.texto = S.f.msg.base = generar(d, S.f.msg); renderFicha(); return; }
