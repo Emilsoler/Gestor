@@ -56,45 +56,32 @@ export function fichaVehiculo(m, precios, listPrice, anio) {
 }
 
 // ───────────────────────── Simulador de crédito prendario ─────────────────────────
-// Sistema francés (cuota fija) con interés sobre saldo. Los gastos de inscripción de prenda se financian
-// dentro del crédito, y como el sellado y el arancel son un % del total del crédito (cuota × cantidad de
-// cuotas) y ese total depende a su vez de los gastos, se resuelve la ecuación en vez de iterar:
-// total = n·f·(capital + gastos), con gastos = sellado·total + max(arancel·total, mínimo) + fijos.
+// Dos pasos, como se arma a mano: 1) capital en n cuotas al x % mensual sobre saldo (sistema francés, cuota fija);
+// 2) a ese crédito se le calculan los gastos de inscripción de prenda —el sellado y el arancel son un % del
+// total del paso 1 (cuota × cuotas)— y se financian con la misma tasa y la misma cantidad de cuotas, así que la
+// cuota final es la del capital más la de los gastos.
+const plano = (n) => String(n).replace('.', ',');
 export const TASA_MENSUAL = 6; // % sobre saldo
 export const CUOTAS_MAX = 120;
+export const PASO_REDONDEO = 1000;
 /** Gastos de inscripción de prenda tal como aparecen por defecto (textos, como se escriben en la pantalla). */
 export const GASTOS_DEFECTO = { sellado: '1,2', arancel: '0,01', arancelMin: '13.000', contratos: '20.000', envio: '20.000', gestoria: '29.000', redondeo: '' }; // redondeo vacío = automático (el total de gastos al próximo $1.000)
 
 /** `g`: sellado y arancel en %, el resto en pesos (números). Todo editable desde la pantalla. */
-export function simularCredito(p) {
-  const r = simularConRedondeo(p, p.g?.redondeo == null ? 0 : p.g.redondeo);
-  if (!r || p.g.redondeo != null) return r;
-  // Redondeo automático: el total de gastos sube al próximo múltiplo de $1.000. Como el sellado y el arancel
-  // dependen del total del crédito, y este del redondeo, se busca el redondeo mínimo que llega a ese total y
-  // después se ajusta el renglón para que cierre exacto (la diferencia es de centavos de la cuota entera).
-  const meta = Math.ceil(r.gastos / PASO_REDONDEO) * PASO_REDONDEO;
-  if (meta === r.gastos) return r;
-  let lo = 0, hi = 2 * PASO_REDONDEO;
-  while (lo < hi) { const m = (lo + hi) >> 1; if (simularConRedondeo(p, m).gastos >= meta) hi = m; else lo = m + 1; }
-  const x = simularConRedondeo(p, lo), financiado = x.capital + meta;
-  return { ...x, redondeo: x.redondeo + meta - x.gastos, gastos: meta, financiado, intereses: x.totalCredito - financiado };
-}
-const PASO_REDONDEO = 1000;
-
-function simularConRedondeo({ capital, cuotas, g, tasa = TASA_MENSUAL }, redondeo) {
+export function simularCredito({ capital, cuotas, g, tasa = TASA_MENSUAL }) {
   const K = Number(capital), n = Math.trunc(Number(cuotas));
   if (!(K > 0) || !(n >= 1) || !(tasa >= 0) || n > CUOTAS_MAX || !g) return null;
-  const i = tasa / 100, sel = Math.max(0, g.sellado) / 100, ar = Math.max(0, g.arancel) / 100, min = Math.max(0, g.arancelMin);
-  const nf = i > 0 ? n * i / (1 - (1 + i) ** -n) : 1; // total del crédito por cada peso financiado
-  const fijos = Math.max(0, g.contratos) + Math.max(0, g.envio) + Math.max(0, g.gestoria) + redondeo;
-  let den = 1 - nf * sel, total = den > 0 ? nf * (K + fijos + min) / den : NaN; // con el arancel mínimo
-  if (ar * total > min) { den = 1 - nf * (sel + ar); total = den > 0 ? nf * (K + fijos) / den : NaN; } // arancel proporcional
-  if (!Number.isFinite(total) || total <= 0) return null;
-  const cuota = Math.round(total / n), totalCredito = cuota * n;
-  const sellado = Math.round(totalCredito * sel), arancel = Math.max(Math.round(totalCredito * ar), min);
-  const gastos = sellado + arancel + fijos, financiado = K + gastos;
-  return { capital: K, cuotas: n, tasa, cuota, totalCredito, sellado, arancel, contratos: Math.max(0, g.contratos), envio: Math.max(0, g.envio),
-    gestoria: Math.max(0, g.gestoria), redondeo, gastos, financiado, intereses: totalCredito - financiado };
+  const i = tasa / 100, f = i > 0 ? i / (1 - (1 + i) ** -n) : 1 / n; // cuota por cada peso financiado
+  const cuotaBase = Math.round(K * f), totalBase = cuotaBase * n; // paso 1
+  const sellado = Math.round(totalBase * Math.max(0, g.sellado) / 100);
+  const arancel = Math.max(Math.round(totalBase * Math.max(0, g.arancel) / 100), Math.max(0, g.arancelMin));
+  const contratos = Math.max(0, g.contratos), envio = Math.max(0, g.envio), gestoria = Math.max(0, g.gestoria);
+  const subtotal = sellado + arancel + contratos + envio + gestoria;
+  const redondeo = g.redondeo == null ? Math.ceil(subtotal / PASO_REDONDEO) * PASO_REDONDEO - subtotal : Number(g.redondeo) || 0;
+  const gastos = subtotal + redondeo; // paso 2
+  const cuotaGastos = Math.round(gastos * f), cuota = cuotaBase + cuotaGastos, totalCredito = cuota * n;
+  return { capital: K, cuotas: n, tasa, cuotaBase, totalBase, sellado, arancel, contratos, envio, gestoria, redondeo, gastos,
+    cuotaGastos, cuota, totalCredito, financiado: K + gastos, intereses: totalCredito - K - gastos };
 }
 
 /** El valor de referencia para el crédito: el año elegido (o el más nuevo con precio) o el 0km. */
@@ -120,26 +107,28 @@ export function estadoSimulador(precios, listPrice, sim) {
   return { ref, capitalTxt, resultado };
 }
 
-const plano = (n) => String(n).replace('.', ',');
-
 /** Lo que muestra el resultado de la simulación (el que se redibuja al escribir). */
 export function htmlSimulacion(r) {
   if (!r) return '<p class="hint m0">Completá el monto, la cantidad de cuotas (de 1 a ' + CUOTAS_MAX + ') y la tasa.</p>';
   const f = (t, v, fuerte) => `<tr${fuerte ? ' class="fuerte"' : ''}><td>${esc(t)}</td><td class="num mono">${esc(plata(v))}</td></tr>`;
-  return `<dl class="cifras grandes"><div><dt>Cuota mensual</dt><dd>${esc(plata(r.cuota))}</dd></div><div><dt>${r.cuotas} cuotas</dt><dd>${esc(plata(r.totalCredito))}</dd></div></dl>
+  return `<h4>Paso 1 · Crédito sin gastos</h4>
     <div class="scrollx"><table class="tabla"><tbody>
-      ${f('Capital a financiar', r.capital)}
+      ${f(`Cuota de ${plata(r.capital)} en ${r.cuotas} cuotas al ${plano(r.tasa)}% mensual`, r.cuotaBase, true)}
+      ${f('Total del crédito (cuota × cuotas)', r.totalBase)}
+    </tbody></table></div>
+    <h4>Paso 2 · Gastos de inscripción de prenda (sobre el total del paso 1)</h4>
+    <div class="scrollx"><table class="tabla"><tbody>
       ${f('Sellado', r.sellado)}
       ${f('Arancel', r.arancel)}
       ${f('Contratos y gastos administrativos', r.contratos)}
       ${f('Envío de documentación', r.envio)}
       ${f('Gestoría', r.gestoria)}
       ${f('Redondeo', r.redondeo)}
-      ${f('Total financiado (capital + gastos de inscripción)', r.financiado, true)}
-      ${f(`Intereses (${plano(r.tasa)}% mensual sobre saldo)`, r.intereses)}
-      ${f('Total del crédito (cuota × cuotas)', r.totalCredito, true)}
+      ${f('Total de gastos (se financian en las mismas cuotas)', r.gastos, true)}
+      ${f('Cuota de los gastos', r.cuotaGastos)}
     </tbody></table></div>
-    <p class="hint m0">Cuota fija, interés ${plano(r.tasa)}% mensual sobre saldo. Los gastos de inscripción están incluidos en el crédito y se pagan dentro de las cuotas. Es una simulación, no una oferta.</p>`;
+    <dl class="cifras grandes"><div><dt>Cuota final</dt><dd>${esc(plata(r.cuota))}</dd></div><div><dt>${r.cuotas} cuotas</dt><dd>${esc(plata(r.totalCredito))}</dd></div></dl>
+    <p class="hint m0">Cuota fija, interés ${plano(r.tasa)}% mensual sobre saldo; la cuota final es la del crédito más la de los gastos. Es una simulación, no una oferta.</p>`;
 }
 
 const GASTOS_CAMPOS = [['sellado', 'Sellado', '% del total del crédito'], ['arancel', 'Arancel', '% del total del crédito'], ['arancelMin', 'Arancel: mínimo', '$'],
