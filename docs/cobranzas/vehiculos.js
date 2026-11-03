@@ -141,8 +141,8 @@ export function htmlSimulacion(r) {
   return `<dl class="cifras grandes sim-cifras"><div><dt>Cuota final</dt><dd>${esc(plata(r.cuota))}</dd></div><div><dt>Total en ${r.cuotas} cuotas</dt><dd>${esc(plata(r.totalCredito))}</dd></div><div><dt>Monto financiado</dt><dd>${esc(plata(r.financiado))}</dd></div></dl>
     <div class="sim-cuadros">
       ${cuadro('1 · Sin gastos de inscripción', f(`${plata(r.capital)} · ${r.cuotas} cuotas · ${plano(r.tasa)}% mensual`, r.cuotaPaso1, true))}
-      ${cuadro('2 · Inscripción de prenda (se financia)', `${f('Sellado', r.sellado)}${f('Arancel', r.arancel)}${f('Contratos y administrativos', r.contratos)}${f('Envío de documentación', r.envio)}${f('Gestoría', r.gestoria)}${f('Redondeo', r.redondeo)}${f('Total inscripción', r.gastos, true)}${f(`Cuota de ${plata(r.financiado)}`, r.cuotaCapital)}`)}
-      ${cuadro('Otros gastos (sin interés)', `${f('Seguro de vida', r.seguro)}${f('Administrativos', r.administrativos)}${f('Cuota social', r.cuotaSocial)}${f('IGR (sobre intereses)', r.igr)}${f('Total otros gastos', r.otros, true)}${f(`Por cuota (÷ ${r.cuotas})`, r.cuotaOtros)}`)}
+      ${cuadro('2 · Inscripción de prenda (se financia)', `${f('Sellado', r.sellado)}${f('Arancel', r.arancel)}${f('Contratos y administrativos', r.contratos)}${f('Envío de documentación', r.envio)}${f('Gestoría', r.gestoria)}${f('Redondeo', r.redondeo)}${f('Total inscripción', r.gastos, true)}`)}
+      ${cuadro('Otros gastos (sin interés)', `${f('Seguro de vida', r.seguro)}${f('Administrativos', r.administrativos)}${f('Cuota social', r.cuotaSocial)}${f('IGR (sobre intereses)', r.igr)}${f('Total otros gastos', r.otros, true)}`)}
     </div>
     <p class="hint m0">Cuota fija sobre saldo. Es una simulación, no una oferta.</p>`;
 }
@@ -171,8 +171,10 @@ export function htmlSimulador(precios, listPrice, S, modelo) {
       <summary>Gastos (editables)</summary>
       <h4>Inscripción de prenda</h4>
       <div class="sim-form sim-chico">${GASTOS_INSCRIPCION.map(gasto).join('')}</div>
-      <h4>Otros gastos <small class="hint">sin interés, repartidos en las cuotas</small></h4>
-      <div class="sim-form sim-chico">${GASTOS_OTROS.map(gasto).join('')}</div>
+      <details class="sim-otros">
+        <summary><span>Otros gastos <small class="hint">sin interés</small></span><b class="mono" id="si_tot_otros">${est.resultado ? esc(plata(est.resultado.otros)) : ''}</b></summary>
+        <div class="sim-form sim-chico">${GASTOS_OTROS.map(gasto).join('')}</div>
+      </details>
     </details>
     <div id="simResultado">${htmlSimulacion(est.resultado)}</div>
   </section>`;

@@ -634,3 +634,8 @@ body.con-chat .toast{bottom:calc(var(--abajo) + 84px)}  /* que el aviso no tape 
 .tabla.sim-tabla{min-width:0;font-size:12.5px}
 .sim-tabla td{padding:3px 6px}
 @media (min-width:1140px){.cr-sim-vista{grid-row:2}}
+
+.sim-otros{margin-top:6px;border-top:1px solid var(--line-soft);padding-top:6px}
+.sim-otros summary{cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12.5px;font-weight:500;color:var(--soft)}
+.sim-otros summary b{color:var(--fg);font-weight:600}
+.sim-otros .sim-form{margin-top:8px}

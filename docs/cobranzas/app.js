@@ -658,6 +658,7 @@ function actualizarSimulador(k) {
   else if (!V.sim.capitalManual && k === 'cred.veh.sim.capital') { const c = $('#si_capital'); if (c) c.value = est.capitalTxt; }
   const e2 = estadoSimulador(V.precios, V.cero, V.sim);
   const r = $('#simResultado'); if (r) r.innerHTML = htmlSimulacion(e2.resultado);
+  const t = $('#si_tot_otros'); if (t) t.textContent = e2.resultado ? plata(e2.resultado.otros) : '';
   const h = $('#si_sugerido'); if (h) h.textContent = `Por defecto se financia el 50% del valor (${plata(Math.round(e2.ref.pesos / 2))}); podés cambiarlo.`;
 }
 
