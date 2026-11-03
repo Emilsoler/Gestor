@@ -72,7 +72,8 @@ export const GASTOS_DEFECTO = {
   sellado: '1,2', arancel: '0,1', arancelMin: '13.000', contratos: '20.000', envio: '20.000', gestoria: '29.000',
   redondeo: '', // vacío = automático (el total de gastos de inscripción al próximo $1.000)
   // otros gastos (sin interés, repartidos en las cuotas)
-  seguro: '240.000', administrativos: '1.200', cuotaSocial: '2.400', igr: '3',
+  seguro: '0,1', // % del capital por cada cuota (el uno por mil: 10.000.000 × 0,1% × 24 = 240.000)
+  administrativos: '1.200', cuotaSocial: '2.400', igr: '3',
 };
 
 /** `g`: porcentajes en % y el resto en pesos (números). Todo editable desde la pantalla. */
@@ -82,7 +83,8 @@ export function simularCredito({ capital, cuotas, g, tasa = TASA_MENSUAL }) {
   const pos = (x) => Math.max(0, Number(x) || 0);
   const i = tasa / 100, f = i > 0 ? i / (1 - (1 + i) ** -n) : 1 / n; // cuota por cada peso financiado
   const sel = pos(g.sellado) / 100, ar = pos(g.arancel) / 100, min = pos(g.arancelMin), igrPct = pos(g.igr) / 100;
-  const otrosFijos = pos(g.seguro) + pos(g.administrativos) + pos(g.cuotaSocial);
+  const seguro = Math.round(K * pos(g.seguro) / 100 * n); // sobre el capital pedido, no sobre el monto con gastos
+  const otrosFijos = seguro + pos(g.administrativos) + pos(g.cuotaSocial);
   const contratos = pos(g.contratos), envio = pos(g.envio), gestoria = pos(g.gestoria);
   const calc = (F) => { // un monto financiado F: su cuota, sus intereses, el IGR y lo que se reparte sin interés
     const cuotaF = F * f, intereses = cuotaF * n - F, igr = igrPct * intereses, otros = otrosFijos + igr;
@@ -102,7 +104,7 @@ export function simularCredito({ capital, cuotas, g, tasa = TASA_MENSUAL }) {
   const cuotaCapital = Math.round(r.c.cuotaF), cuotaOtros = Math.round(r.c.otros / n), cuota = cuotaCapital + cuotaOtros;
   return { capital: K, cuotas: n, tasa, cuotaPaso1: Math.round(paso1.cuota),
     sellado: r.sellado, arancel: r.arancel, contratos, envio, gestoria, redondeo: r.redondeo, gastos: r.gastos, financiado: r.financiado,
-    cuotaCapital, intereses: Math.round(r.c.intereses), seguro: pos(g.seguro), administrativos: pos(g.administrativos), cuotaSocial: pos(g.cuotaSocial),
+    cuotaCapital, intereses: Math.round(r.c.intereses), seguro, administrativos: pos(g.administrativos), cuotaSocial: pos(g.cuotaSocial),
     igr: Math.round(r.c.igr), otros: Math.round(r.c.otros), cuotaOtros, cuota, totalCredito: cuota * n };
 }
 
@@ -165,7 +167,7 @@ export function htmlSimulacion(r) {
 
 const GASTOS_INSCRIPCION = [['sellado', 'Sellado', '% del total del crédito'], ['arancel', 'Arancel', '% del total del crédito'], ['arancelMin', 'Arancel: mínimo', '$'],
   ['contratos', 'Contratos y gastos administrativos', '$'], ['envio', 'Envío de documentación', '$'], ['gestoria', 'Gestoría', '$'], ['redondeo', 'Redondeo', '$ · vacío = automático']];
-const GASTOS_OTROS = [['seguro', 'Seguro de vida', '$'], ['administrativos', 'Gastos administrativos', '$'], ['cuotaSocial', 'Cuota social', '$'], ['igr', 'IGR', '% de los intereses']];
+const GASTOS_OTROS = [['seguro', 'Seguro de vida', '% del capital por cuota'], ['administrativos', 'Gastos administrativos', '$'], ['cuotaSocial', 'Cuota social', '$'], ['igr', 'IGR', '% de los intereses']];
 
 /** La tarjeta del simulador: el valor del vehículo, el capital, las cuotas, los gastos editables y el resultado. */
 export function htmlSimulador(precios, listPrice, S) {
