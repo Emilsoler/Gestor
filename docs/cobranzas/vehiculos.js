@@ -56,27 +56,30 @@ export function fichaVehiculo(m, precios, listPrice, anio) {
 }
 
 // ───────────────────────── Simulador de crédito prendario ─────────────────────────
-// Sistema francés (cuota fija) con interés sobre saldo. Los gastos de prenda se financian dentro del
-// crédito, y como el arancel y el sellado son un % del total del crédito (cuota × cantidad de cuotas) y ese
-// total depende a su vez de los gastos, se resuelve la ecuación en vez de iterar: total = n·f·(capital + gastos),
-// con gastos = arancel·total + max(sellado·total, mínimo) + fijos.
+// Sistema francés (cuota fija) con interés sobre saldo. Los gastos de inscripción de prenda se financian
+// dentro del crédito, y como el sellado y el arancel son un % del total del crédito (cuota × cantidad de
+// cuotas) y ese total depende a su vez de los gastos, se resuelve la ecuación en vez de iterar:
+// total = n·f·(capital + gastos), con gastos = sellado·total + max(arancel·total, mínimo) + fijos.
 export const TASA_MENSUAL = 6; // % sobre saldo
-export const GASTOS_PRENDA = { arancel: 1.2, sellado: 0.01, selladoMinimo: 13000, administrativos: 15000, contratos: 30000, gestoria: 29000 };
 export const CUOTAS_MAX = 120;
+/** Gastos de inscripción de prenda tal como aparecen por defecto (textos, como se escriben en la pantalla). */
+export const GASTOS_DEFECTO = { sellado: '1,2', arancel: '0,01', arancelMin: '13.000', contratos: '20.000', envio: '20.000', gestoria: '29.000', redondeo: '' };
 
-export function simularCredito({ capital, cuotas, gestoria = false, tasa = TASA_MENSUAL }) {
+/** `g`: sellado y arancel en %, el resto en pesos (números). Todo editable desde la pantalla. */
+export function simularCredito({ capital, cuotas, g, tasa = TASA_MENSUAL }) {
   const K = Number(capital), n = Math.trunc(Number(cuotas));
-  if (!(K > 0) || !(n >= 1) || n > CUOTAS_MAX) return null;
-  const G = GASTOS_PRENDA, i = tasa / 100, a = G.arancel / 100, s = G.sellado / 100;
+  if (!(K > 0) || !(n >= 1) || n > CUOTAS_MAX || !g) return null;
+  const i = tasa / 100, sel = Math.max(0, g.sellado) / 100, ar = Math.max(0, g.arancel) / 100, min = Math.max(0, g.arancelMin);
   const nf = i > 0 ? n * i / (1 - (1 + i) ** -n) : 1; // total del crédito por cada peso financiado
-  const fijos = G.administrativos + G.contratos + (gestoria ? G.gestoria : 0);
-  let total = nf * (K + fijos + G.selladoMinimo) / (1 - nf * a); // con el sellado mínimo
-  if (s * total > G.selladoMinimo) total = nf * (K + fijos) / (1 - nf * (a + s)); // sellado proporcional
+  const fijos = Math.max(0, g.contratos) + Math.max(0, g.envio) + Math.max(0, g.gestoria) + (Number(g.redondeo) || 0);
+  let den = 1 - nf * sel, total = den > 0 ? nf * (K + fijos + min) / den : NaN; // con el arancel mínimo
+  if (ar * total > min) { den = 1 - nf * (sel + ar); total = den > 0 ? nf * (K + fijos) / den : NaN; } // arancel proporcional
+  if (!Number.isFinite(total) || total <= 0) return null;
   const cuota = Math.round(total / n), totalCredito = cuota * n;
-  const arancel = Math.round(totalCredito * a), sellado = Math.max(Math.round(totalCredito * s), G.selladoMinimo);
-  const gastos = arancel + sellado + fijos, financiado = K + gastos;
-  return { capital: K, cuotas: n, cuota, totalCredito, arancel, sellado, administrativos: G.administrativos, contratos: G.contratos,
-    gestoria: gestoria ? G.gestoria : 0, gastos, financiado, intereses: totalCredito - financiado };
+  const sellado = Math.round(totalCredito * sel), arancel = Math.max(Math.round(totalCredito * ar), min);
+  const gastos = sellado + arancel + fijos, financiado = K + gastos;
+  return { capital: K, cuotas: n, cuota, totalCredito, sellado, arancel, contratos: Math.max(0, g.contratos), envio: Math.max(0, g.envio),
+    gestoria: Math.max(0, g.gestoria), redondeo: Number(g.redondeo) || 0, gastos, financiado, intereses: totalCredito - financiado };
 }
 
 /** El valor de referencia para el crédito: el año elegido (o el más nuevo con precio) o el 0km. */
@@ -88,6 +91,19 @@ export function valorDeReferencia(precios, listPrice, sel) {
   return cero ? { clave: 'cero', etiqueta: '0km (lista)', pesos: cero } : null;
 }
 
+/** Los gastos escritos en la pantalla → números. */
+export const gastosDe = (g) => ({ sellado: importe(g.sellado), arancel: importe(g.arancel), arancelMin: importe(g.arancelMin), contratos: importe(g.contratos),
+  envio: importe(g.envio), gestoria: importe(g.gestoria), redondeo: importe(g.redondeo) });
+
+/** Lo que vale hoy el simulador: el capital propuesto (50% del valor) mientras la persona no lo escriba. */
+export function estadoSimulador(precios, listPrice, sim) {
+  const ref = valorDeReferencia(precios, listPrice, sim.valor);
+  if (!ref) return null;
+  const capitalTxt = sim.capitalManual ? sim.capital : enCelda(Math.round(ref.pesos / 2));
+  const resultado = simularCredito({ capital: importe(capitalTxt), cuotas: sim.cuotas, g: gastosDe(sim.g) });
+  return { ref, capitalTxt, resultado };
+}
+
 /** Lo que muestra el resultado de la simulación (el que se redibuja al escribir). */
 export function htmlSimulacion(r) {
   if (!r) return '<p class="hint m0">Completá el monto y la cantidad de cuotas (de 1 a ' + CUOTAS_MAX + ').</p>';
@@ -95,33 +111,29 @@ export function htmlSimulacion(r) {
   return `<dl class="cifras grandes"><div><dt>Cuota mensual</dt><dd>${esc(plata(r.cuota))}</dd></div><div><dt>${r.cuotas} cuotas</dt><dd>${esc(plata(r.totalCredito))}</dd></div></dl>
     <div class="scrollx"><table class="tabla"><tbody>
       ${f('Capital a financiar', r.capital)}
-      ${f('Arancel registro (1,2% del total del crédito)', r.arancel)}
-      ${f('Sellado (0,01%, mínimo $13.000)', r.sellado)}
-      ${f('Gastos administrativos', r.administrativos)}
-      ${f('Contratos', r.contratos)}
-      ${r.gestoria ? f('Gestoría propia', r.gestoria) : ''}
-      ${f('Total financiado (capital + gastos de prenda)', r.financiado, true)}
+      ${f('Sellado', r.sellado)}
+      ${f('Arancel', r.arancel)}
+      ${f('Contratos y gastos administrativos', r.contratos)}
+      ${f('Envío de documentación', r.envio)}
+      ${f('Gestoría', r.gestoria)}
+      ${r.redondeo ? f('Redondeo', r.redondeo) : ''}
+      ${f('Total financiado (capital + gastos de inscripción)', r.financiado, true)}
       ${f(`Intereses (${TASA_MENSUAL}% mensual sobre saldo)`, r.intereses)}
       ${f('Total del crédito (cuota × cuotas)', r.totalCredito, true)}
     </tbody></table></div>
-    <p class="hint m0">Cuota fija, interés ${TASA_MENSUAL}% mensual sobre saldo. Los gastos de prenda están incluidos en el crédito y se pagan dentro de las cuotas. Es una simulación, no una oferta.</p>`;
+    <p class="hint m0">Cuota fija, interés ${TASA_MENSUAL}% mensual sobre saldo. Los gastos de inscripción están incluidos en el crédito y se pagan dentro de las cuotas. Es una simulación, no una oferta.</p>`;
 }
 
-/** Lo que vale hoy el simulador: el capital propuesto (50% del valor) mientras la persona no lo escriba. */
-export function estadoSimulador(precios, listPrice, sim) {
-  const ref = valorDeReferencia(precios, listPrice, sim.valor);
-  if (!ref) return null;
-  const capitalTxt = sim.capitalManual ? sim.capital : enCelda(Math.round(ref.pesos / 2));
-  const resultado = simularCredito({ capital: importe(capitalTxt), cuotas: sim.cuotas, gestoria: sim.gestoria });
-  return { ref, capitalTxt, resultado };
-}
+const GASTOS_CAMPOS = [['sellado', 'Sellado', '% del total del crédito'], ['arancel', 'Arancel', '% del total del crédito'], ['arancelMin', 'Arancel: mínimo', '$'],
+  ['contratos', 'Contratos y gastos administrativos', '$'], ['envio', 'Envío de documentación', '$'], ['gestoria', 'Gestoría', '$'], ['redondeo', 'Redondeo', '$ (puede ser negativo)']];
 
-/** La tarjeta del simulador: el valor del vehículo, el capital, las cuotas y el resultado. */
+/** La tarjeta del simulador: el valor del vehículo, el capital, las cuotas, los gastos editables y el resultado. */
 export function htmlSimulador(precios, listPrice, S) {
   const filas = preciosPorAnio(precios), cero = enPesos(listPrice?.list_price), est = estadoSimulador(precios, listPrice, S);
   if (!est) return '';
   const { ref } = est;
   const opciones = [...filas.map((x) => [String(x.anio), `Año ${x.anio} · ${plata(x.pesos)}`]), ...(cero ? [['cero', `0km (lista) · ${plata(cero)}`]] : [])];
+  const gasto = ([k, t, u]) => `<label class="f">${esc(t)} <small class="hint">${esc(u)}</small><input id="si_g_${k}" data-k="cred.veh.sim.g.${k}" inputmode="decimal" autocomplete="off"${u.startsWith('$') ? ' data-importe' : ''} value="${esc(S.g[k])}"></label>`;
   return `<section class="card cr-simulador" id="crSimulador">
     <div class="card-cab"><h3>Simulador de crédito</h3><span class="hint">Prendario</span></div>
     <div class="cr-form">
@@ -129,8 +141,9 @@ export function htmlSimulador(precios, listPrice, S) {
       <label class="f">Capital a financiar ($)<input id="si_capital" data-k="cred.veh.sim.capital" data-importe inputmode="decimal" autocomplete="off" value="${esc(est.capitalTxt)}"></label>
       <label class="f">Cantidad de cuotas<input id="si_cuotas" data-k="cred.veh.sim.cuotas" inputmode="numeric" autocomplete="off" maxlength="3" value="${esc(S.cuotas)}"></label>
     </div>
-    <label class="chk"><input type="checkbox" id="si_gestoria" data-k="cred.veh.sim.gestoria"${S.gestoria ? ' checked' : ''}> Incluir gestoría propia (${esc(plata(GASTOS_PRENDA.gestoria))})</label>
     <p class="hint m0" id="si_sugerido">Por defecto se financia el 50% del valor (${esc(plata(Math.round(ref.pesos / 2)))}); podés cambiarlo.</p>
+    <h4>Gastos de inscripción de prenda</h4>
+    <div class="cr-form cr-gastos">${GASTOS_CAMPOS.map(gasto).join('')}</div>
     <div id="simResultado">${htmlSimulacion(est.resultado)}</div>
   </section>`;
 }

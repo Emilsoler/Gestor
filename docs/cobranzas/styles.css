@@ -613,3 +613,4 @@ body.con-chat .toast{bottom:calc(var(--abajo) + 84px)}  /* que el aviso no tape 
   .msj.pensando::after{content:"";display:inline-block;width:1.2em;text-align:left;animation:puntos 1.2s steps(4,end) infinite}
   @keyframes puntos{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
 }
+.cr-gastos label.f{flex:1 1 150px}

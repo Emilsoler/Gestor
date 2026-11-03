@@ -9,7 +9,7 @@ import {
   avisoCuit, soloDigitos, fichaConsulta, filaConsulta, textoConsulta, deudoresDelCuit,
   avisoCheque, numeroCheque, bancosRecientes, opcionesBancos, bancoEnLista, fichaCheque, textoCheque, filaCheque,
 } from './creditos.js';
-import { modeloSimple, filaModelo, fichaVehiculo, preciosPorAnio, htmlSimulador, htmlSimulacion, estadoSimulador } from './vehiculos.js';
+import { modeloSimple, filaModelo, fichaVehiculo, preciosPorAnio, htmlSimulador, htmlSimulacion, estadoSimulador, GASTOS_DEFECTO } from './vehiculos.js';
 import {
   liquidar, resumen, armarPlan, estadoPlan, planVigente, sumarMeses, totalPago, TRAMOS, tramoDe, CADAS, nombrePropio, detalleCuotas, ES_FECHA,
 } from './calculo.js';
@@ -35,6 +35,8 @@ const AYUDA_CHEQUE = 'Si el cheque fue denunciado como extraviado, robado o adul
 const MODOS_CREDITO = [['cuit', 'Deudas por CUIT'], ['cheque', 'Cheques denunciados'], ['vehiculo', 'Vehículo']];
 const JUICIOS = '../'; // el gestor de juicios, en la misma base
 
+const nuevaSim = () => ({ valor: '', capital: '', capitalManual: false, cuotas: '24', g: { ...GASTOS_DEFECTO } });
+
 const S = {
   pantalla: 'arranque', vista: 'inicio', q: '', chip: 'activos', tramo: '', orden: 'deuda', mes: mesDe(hoy()),
   abierto: null, tab: 'resumen', f: null, confirmar: '', // la ficha abierta y lo que se escribe en ella
@@ -49,7 +51,7 @@ const S = {
     // Vehículo (InfoAuto): lo que se escribe, las marcas, los modelos encontrados y el elegido con sus precios.
     veh: { q: '', marca: '', marcas: null, marcasCargando: false, marcasError: '', buscando: false, error: '', lista: null, sel: null, precios: null, cero: null, cargando: false, errorPrecios: '', anio: '',
       // Simulador de crédito: valor elegido ('' = el año más nuevo), capital (propuesto salvo que se escriba), cuotas y gestoría.
-      sim: { valor: '', capital: '', capitalManual: false, cuotas: '24', gestoria: false } },
+      sim: nuevaSim() },
   },
 };
 try { S.vista = VISTAS[localStorage.getItem('cb.vista')] ? localStorage.getItem('cb.vista') : 'inicio'; } catch { /* sin almacenamiento */ }
@@ -620,7 +622,7 @@ async function buscarVehiculos({ marca = '', q = '' } = {}) {
 async function elegirVehiculo(codia) {
   const V = S.cred.veh, m = (V.lista || []).find((x) => x.codia === +codia);
   if (!m || V.cargando) return;
-  Object.assign(V, { sel: m, precios: null, cero: null, errorPrecios: '', cargando: true, sim: { valor: '', capital: '', capitalManual: false, cuotas: '24', gestoria: false } }); render(); verResultado();
+  Object.assign(V, { sel: m, precios: null, cero: null, errorPrecios: '', cargando: true, sim: nuevaSim() }); render(); verResultado();
   try {
     const [precios, cero] = await Promise.all([
       consultarInfoAuto(`/models/${m.codia}/prices/`),
