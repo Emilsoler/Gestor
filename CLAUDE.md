@@ -83,7 +83,7 @@ Después de escribir, leer la fila y contar qué quedó. La app abierta lo muest
     deja `A despacho` ("pasó a despacho", "volvió al casillero" es esto).
   - `estado`: la etapa del juicio (`gestor.estados_base()`): `0. Iniciamos`, `1.1 Demanda`,
     `1.2 Contestación`, `2. No oposición de excepciones`, `3. Sentencia`, `4. Ejecución de Sentencia`,
-    `5. Martillero Designado`. Cada una es una columna del tablero. Vacío: sin estado (solo en causas
+    `5. Martillero Designado`. Vacío: sin estado (solo en causas
     que venían de antes).
   - `cautelar` (en la app, "Etiqueta Cautelar"): `Sin Cautelar`, `Embargo de sueldo` o `Vehículo secuestrado`.
   - `situacion`: `En trámite`, `Acuerdo` o `Archivada`. Las archivadas no aparecen en el listado ni
@@ -319,16 +319,26 @@ recién cuando la persona toca "Presentar ahora" y después "Ejecutar ahora" en 
 
 - Textos de la interfaz en castellano rioplatense, de vos, frases cortas. Un botón dice lo que
   hace ("Guardar cambios") y el aviso posterior usa las mismas palabras ("Cambios guardados").
-- El diseño ya tiene su lenguaje: tema oscuro único (azul noche), un solo acento en degradado
-  azul → violeta (`--grad`: botón principal, vista y cifra elegidas, mensajes propios del chat),
-  colores de estado aclarados para leerse sobre fondo oscuro, IBM Plex Sans (300 solo para las
-  cifras grandes del resumen) y Plex Mono para expedientes e importes, tarjetas redondeadas y
-  botones píldora. Los avisos son tarjetas con una franja a la izquierda del color de lo que
+- El diseño ya tiene su lenguaje: tema claro único, celeste y dorado. Fondo en degradado de celeste
+  a marfil (`body`), tarjetas casi blancas con borde dorado (`--line`, `--line-soft`), celeste como
+  acento (`--grad`: botón principal, vista elegida, mensajes propios del chat) y dorado para las
+  insignias, el borde izquierdo de las causas «A despacho», `--oro-grad` y lo elegido en el resumen
+  (`--oro-soft`). Colores de estado oscurecidos para leerse sobre fondo claro, IBM Plex Sans (300 solo
+  para las cifras grandes del resumen) y Plex Mono para expedientes e importes, esquinas muy redondas
+  (`--r`) y botones píldora. Los avisos son tarjetas con una franja a la izquierda del color de lo que
   avisan. Los íconos son SVG de trazo dentro de `styles.css`, usados como máscara (`--i-…`).
   Las pantallas nuevas lo siguen; no sumar librerías.
-- Armado: en la computadora, barra lateral con las vistas (columna de íconos desde 721 px,
-  entera desde 1140 px); en el celular, las vistas quedan debajo del buscador. Es el mismo
-  HTML: `.lateral` y `.wrap` pasan a `display: contents` y el orden lo da `order`.
+- Armado: en la computadora, barra lateral con las vistas (Lista, Agenda, Acuerdos) y Plantillas
+  (columna de íconos desde 721 px, entera desde 1140 px); en el celular, las vistas quedan debajo del
+  buscador. Es el mismo HTML: `.lateral` y `.wrap` pasan a `display: contents` y el orden lo da
+  `order`. Los botones del encabezado (Exportar, Claude, SAC y la cuenta) van junto al título y
+  «+ Nueva causa» es un botón flotante en todas las pantallas.
+- Listado: una tarjeta por causa (`renderCausas`), igual en la computadora y en el celular: carátula,
+  expediente y juzgado («Juzg. 1° Nom. Sec.2»: nominación y oficina), última acción con su fecha y los
+  botones «Acción cautelar» y «Abrir». El resumen son cuatro tarjetas —Casillero, A despacho,
+  Acuerdos, Archivados— que filtran al tocarlas (y una quinta, «Con escritos para el SAC», solo si
+  hay). La próxima acción y su vencimiento se ven en Agenda y en la ficha; ya no hay tablero ni
+  tabla ni selector de orden (el listado va por el movimiento más antiguo primero).
 - Comentarios en el código: por qué, no qué.
 
 ## Cobranzas (`docs/cobranzas/`)

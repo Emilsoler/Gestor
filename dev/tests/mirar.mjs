@@ -44,7 +44,6 @@ async function ingresar(page, foto) {
   await page.waitForTimeout(400);
   await foto('03-lista');
   await foto('03-lista-completa', { fullPage: true });
-  await page.click('#vTablero'); await page.waitForTimeout(200); await foto('04-tablero');
   await page.click('#vAcuerdos'); await page.waitForTimeout(200); await foto('05-acuerdos');
   await page.click('#vLista');
   await page.click('#main tbody tr >> nth=0'); await page.waitForSelector('.panel'); await page.waitForTimeout(300);
@@ -72,7 +71,6 @@ async function ingresar(page, foto) {
   await page.waitForSelector('#main .filas');
   await page.waitForTimeout(400);
   await foto('03-lista');
-  await page.click('#vTablero'); await page.waitForTimeout(200); await foto('04-tablero');
   await page.click('#vAcuerdos'); await page.waitForTimeout(200); await foto('05-acuerdos');
   await page.click('#vLista');
   await page.click('#main .fila >> nth=0'); await page.waitForSelector('.panel'); await page.waitForTimeout(300);

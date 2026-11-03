@@ -59,7 +59,6 @@ const ingresar = async (page) => {
   await ingresar(page);
   await page.tap('#btnFiltros'); await page.selectOption('#fEstado', '4. Ejecución de Sentencia'); await page.waitForTimeout(150);
   await page.screenshot({ path: `${dir}/6-cel-filtros.png` });
-  await page.tap('#vTablero'); await page.waitForTimeout(200);
   await page.screenshot({ path: `${dir}/7-cel-tablero.png` });
   await ctx.close();
 }

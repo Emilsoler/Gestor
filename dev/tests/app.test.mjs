@@ -41,8 +41,8 @@ async function entrar(p, email, clave, consulta = '') {
 const caido = (v) => fetch(`${env.SUPABASE_URL}/__caido`, { method: 'POST', body: JSON.stringify({ caido: v }) });
 const tiempoReal = (v) => fetch(`${env.SUPABASE_URL}/__realtime`, { method: 'POST', body: JSON.stringify({ activo: v }) });
 const toast = (p, texto) => p.waitForFunction((t) => { const e = document.querySelector('#toast'); return e && !e.hidden && e.textContent.includes(t); }, texto, { timeout: 8000 });
-const fila = (p, expte) => p.locator(`#main tr[data-id="${expte}"]`);
-const abrir = async (p, expte) => { await fila(p, expte).locator('td.car').click(); await p.waitForSelector('.panel'); };
+const fila = (p, expte) => p.locator(`#main .causa[data-id="${expte}"]`);
+const abrir = async (p, expte) => { await fila(p, expte).locator('.causa-info h3').click(); await p.waitForSelector('.panel'); };
 const cerrado = (p) => p.waitForSelector('#drawer', { state: 'hidden' });
 const enfocado = (p) => p.evaluate(() => document.activeElement?.id);
 async function leer(descarga) { const partes = []; for await (const c of await descarga.createReadStream()) partes.push(c); return Buffer.concat(partes); }
@@ -87,30 +87,32 @@ test('ingreso: clave equivocada, clave temporal y elección de la definitiva', a
   await page.fill('#n_clave', CLAVE); await page.fill('#n_clave2', CLAVE + 'x'); await page.click('#fClave button[type=submit]');
   assert.match(await page.textContent('#i_error'), /no coinciden/);
   await page.fill('#n_clave2', CLAVE); await page.click('#fClave button[type=submit]');
-  await page.waitForSelector('#main .tablebox');
+  await page.waitForSelector('#main .causas');
   assert.equal(sql(`select clave_temporal from gestor.miembros where email='${EMAIL}'`), 'f');
   assert.equal(await page.locator('#ingresoCuerpo input').count(), 0, 'la clave no queda en la página');
 });
 
 test('listado: activas, archivadas aparte, búsqueda, filtros y vencidas', async () => {
-  assert.equal(await page.locator('#main tbody tr').count(), 3); // la archivada no se lista
+  assert.equal(await page.locator('#main .causa').count(), 3); // la archivada no se lista
   assert.match(await page.textContent('#sub'), /3 de 4 causas/);
-  assert.equal(await page.textContent('.stat[data-q="due"] b'), '1');   // 1001 venció hace 2 días
-  assert.equal(await page.textContent('.stat[data-q="stale"] b'), '1'); // 1001 sin movimiento hace 40 días
+  // el resumen: dos en el casillero, una a despacho, ningún acuerdo y la archivada
+  assert.deepEqual(await page.locator('#stats .stat').evaluateAll((bs) => bs.map((b) => b.dataset.q + '=' + b.querySelector('b').textContent)),
+    ['u:Casillero=2', 'u:A despacho=1', 'acu=0', 'arch=1']);
   await page.click('.stat[data-q="arch"]');
-  assert.equal(await page.locator('#main tbody tr').count(), 1);
+  assert.equal(await page.locator('#main .causa').count(), 1);
   assert.match(await fila(page, '1003').textContent(), /GAMA CARLA/);
   await page.click('.stat[data-q="arch"]');
   await page.fill('#q', 'beta');
-  assert.equal(await page.locator('#main tbody tr').count(), 1);
+  assert.equal(await page.locator('#main .causa').count(), 1);
   await page.fill('#q', '');
   await page.selectOption('#fNom', '1');
-  assert.equal(await page.locator('#main tbody tr').count(), 2);
+  assert.equal(await page.locator('#main .causa').count(), 2);
   await page.selectOption('#fNom', '');
-  const ids = () => page.locator('#main tbody tr').evaluateAll((rs) => rs.map((r) => r.dataset.id).sort());
-  await page.click('#chips .chip[data-t="u:A despacho"]');
+  const ids = () => page.locator('#main .causa').evaluateAll((rs) => rs.map((r) => r.dataset.id).sort());
+  await page.click('.stat[data-q="u:A despacho"]');
   assert.deepEqual(await ids(), ['1002']);
-  await page.click('#chips .chip[data-t="u:Casillero"]');
+  assert.equal(await page.getAttribute('.stat[data-q="u:A despacho"]', 'aria-pressed'), 'true');
+  await page.click('.stat[data-q="u:Casillero"]');
   assert.deepEqual(await ids(), ['1001', '1004'], 'la archivada tampoco aparece en el casillero');
   await page.click('#chips .chip[data-t="c:Embargo de sueldo"]');
   assert.deepEqual(await ids(), ['1004']);
@@ -119,10 +121,10 @@ test('listado: activas, archivadas aparte, búsqueda, filtros y vencidas', async
   await page.selectOption('#fEstado', '1.1 Demanda');
   assert.deepEqual(await ids(), ['1001']);
   await page.selectOption('#fEstado', '');
-  // orden por demandado
-  await page.click('th[data-k="demandado"]');
-  assert.match(await page.locator('#main tbody tr').first().textContent(), /DELTA/); // "<img…" ordena primero
-  await page.click('th[data-k="dias"]'); await page.click('th[data-k="dias"]');
+  // cada tarjeta muestra la carátula, el expediente con el juzgado y la última acción con su fecha
+  assert.equal(await page.locator('#main .causa[data-id="1004"] .causa-linea').textContent(), 'Expte. N° 1004 · Juzg. 1° Nom. OEP');
+  assert.match(await page.locator('#main .causa[data-id="1002"] .causa-ult').textContent(), /Ejecutamos sentencia/);
+  assert.equal((await page.locator('#main .causa[data-id="1002"] [data-lista]').allTextContents()).join('|'), 'Acción cautelar|Abrir');
 });
 
 test('un dato con HTML se muestra como texto, no se ejecuta', async () => {
@@ -133,12 +135,12 @@ test('un dato con HTML se muestra como texto, no se ejecuta', async () => {
 
 test('la sesión se mantiene al recargar', async () => {
   await page.reload();
-  await page.waitForSelector('#main .tablebox');
+  await page.waitForSelector('#main .causas');
   assert.equal(await page.locator('#fIngreso').count(), 0);
 });
 
 test('nueva causa: validaciones, alta y autoría', async () => {
-  await page.click('#btnNew'); await page.waitForSelector('.panel');
+  await page.click('#fabNew'); await page.waitForSelector('.panel');
   await page.fill('#c_actor', ''); // sin actor ni demandado no hay con qué nombrarla
   await page.click('.ppie [data-act=save]'); await toast(page, 'Falta el actor o el demandado');
   await page.fill('#c_actor', 'AMB');
@@ -159,20 +161,15 @@ test('nueva causa: validaciones, alta y autoría', async () => {
 });
 
 test('causa sin demandado: se guarda, se nombra por el actor y se puede editar', async () => {
-  await page.click('#btnNew'); await page.waitForSelector('.panel');
+  await page.click('#fabNew'); await page.waitForSelector('.panel');
   await page.fill('#c_actor', 'PEREZ PABLO'); await page.fill('#c_tipo', 'DECLARATORIA DE HEREDEROS');
   await page.fill('#c_expte', '3001'); await page.fill('#c_nom', '1'); await page.fill('#c_oficina', 'SECRETARIA 2');
   await page.click('.ppie [data-act=save]'); await toast(page, 'Causa creada'); await cerrado(page);
   assert.equal(sql(`select actor || '|' || demandado || '|' || tipo from public.causas where expte='3001'`), 'PEREZ PABLO||DECLARATORIA DE HEREDEROS');
   // en el listado el nombre es el actor, sin "c/", y ordena entre los demandados
-  assert.equal(await fila(page, '3001').locator('td.car b').textContent(), 'PEREZ PABLO');
-  assert.equal(await fila(page, '3001').locator('td.car small').textContent(), 'DECLARATORIA DE HEREDEROS');
-  await page.click('th[data-k="demandado"]');
-  assert.deepEqual((await page.locator('#main tbody td.car b').allTextContents()).slice(-2), ['OMEGA OSCAR', 'PEREZ PABLO']);
-  await page.click('th[data-k="dias"]'); await page.click('th[data-k="dias"]');
-  // el tablero y la lista de causas de los acuerdos la nombran igual
-  await page.click('#vTablero');
-  assert.equal(await page.locator('#main .card[data-id="3001"] b').first().textContent(), 'PEREZ PABLO');
+  assert.equal(await fila(page, '3001').locator('h3').textContent(), 'PEREZ PABLO');
+  assert.equal(await fila(page, '3001').locator('.causa-linea').textContent(), 'Expte. N° 3001 · Juzg. 1° Nom. SECRETARIA 2');
+  // la lista de causas de los acuerdos la nombra igual
   await page.click('#vAcuerdos');
   await page.click('[data-ac=nuevo]'); // el formulario de un acuerdo nuevo
   assert.equal(await page.locator('#na_expte option[value="3001"]').textContent(), 'PEREZ PABLO · 3001');
@@ -181,10 +178,10 @@ test('causa sin demandado: se guarda, se nombra por el actor y se puede editar',
   await page.click('#vLista');
   // en el celular, la tarjeta también
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.waitForSelector('#main .filas');
-  assert.equal(await page.locator('#main .fila[data-id="3001"] .fila-top b').textContent(), 'PEREZ PABLO');
+  await page.waitForSelector('#main .causas');
+  assert.equal(await page.locator('#main .causa[data-id="3001"] h3').textContent(), 'PEREZ PABLO');
   await page.setViewportSize({ width: 1280, height: 860 });
-  await page.waitForSelector('#main .tablebox');
+  await page.waitForSelector('#main .causas');
   // la ficha: carátula sin "c/", también en las plantillas y al consultar a Claude; y guarda los cambios
   await abrir(page, '3001');
   assert.equal(await page.textContent('.panel h2'), 'PEREZ PABLO – DECLARATORIA DE HEREDEROS');
@@ -219,17 +216,21 @@ test('ficha: registrar movimientos actualiza la última acción', async () => {
     `Oficio diligenciado|${dia(-3)}|5. Martillero Designado|Casillero|2`);
 });
 
-test('acción realizada desde el listado: pasa a movimientos con su fecha de vencimiento', async () => {
-  await fila(page, '1001').locator('[data-done]').click();
+test('acción realizada desde la agenda: pasa a movimientos con su fecha de vencimiento', async () => {
+  await page.click('#vAgenda');
+  await page.locator('#main .agitem[data-id="1001"] [data-done]').click();
   await toast(page, 'Acción realizada');
   assert.equal(sql(`select proxima || '|' || coalesce(vence::text, '') || '|' || ultima || '|' || fecha || '|' || (historial -> -1 ->> 'hecha') from public.causas where expte='1001'`),
     `||Pedir embargo|${dia(-2)}|true`);
-  await page.waitForFunction(() => !document.querySelector('#main tr[data-id="1001"] [data-done]'));
+  await page.waitForFunction(() => !document.querySelector('#main .agitem[data-id="1001"] [data-done]'));
+  await page.click('#vLista');
 });
 
 test('acción realizada antes de su vencimiento: queda con la fecha de hoy, no con una futura', async () => {
-  await fila(page, '1004').locator('[data-done]').click(); // vence dentro de 3 días
+  await page.click('#vAgenda');
+  await page.locator('#main .agitem[data-id="1004"] [data-done]').click(); // vence dentro de 3 días
   await toast(page, 'Acción realizada');
+  await page.click('#vLista');
   assert.equal(sql(`select ultima || '|' || fecha || '|' || (historial -> -1 ->> 'fecha') from public.causas where expte='1004'`),
     `Enviar cédulas|${dia(0)}|${dia(0)}`);
 });
@@ -468,7 +469,7 @@ test('acuerdos en la ficha: el de la causa se ve y se marca ahí; sin acuerdo, s
   await page.fill('#naf_capital_n', '2'); await page.fill('#naf_capital_monto', '100000'); await page.fill('#naf_capital_fecha', dia(30));
   // si mientras tanto llega un cambio de la base (redibuja), lo escrito queda
   sql(`select gestor.movimiento('1004', 'Otro movimiento mientras tanto')`);
-  await page.waitForFunction(() => /Otro movimiento mientras tanto/.test(document.querySelector('#main tr[data-id="1004"]')?.textContent || ''), null, { timeout: 10000 });
+  await page.waitForFunction(() => /Otro movimiento mientras tanto/.test(document.querySelector('#main .causa[data-id="1004"]')?.textContent || ''), null, { timeout: 10000 });
   // y también si se redibuja la ficha entera
   await page.click('.panel [data-act=maxi]'); await page.click('.panel [data-act=maxi]');
   assert.equal(await page.inputValue('#naf_capital_n'), '2');
@@ -531,7 +532,7 @@ test('acuerdos en el celular: la lista plegada y el desarrollo entran en la pant
   assert.equal(cortados, 0, 'los campos y botones de cada cuota se ven enteros');
   await page.setViewportSize({ width: 1280, height: 860 });
   await page.click('#vLista');
-  await page.waitForSelector('#main .tablebox');
+  await page.waitForSelector('#main .causas');
   // los acuerdos de prueba no siguen a las demás pruebas
   sql(`delete from public.acuerdos`);
 });
@@ -546,7 +547,7 @@ test('exportar: descarga un CSV con lo que se ve', async () => {
 
 test('lo que actualiza Claude aparece solo, sin recargar', async () => {
   sql(`select gestor.presentacion('1004', 'Solicita se libre oficio')`);
-  await page.waitForFunction(() => /Solicita se libre oficio/.test(document.querySelector('#main tr[data-id="1004"]')?.textContent || ''), null, { timeout: 10000 });
+  await page.waitForFunction(() => /Solicita se libre oficio/.test(document.querySelector('#main .causa[data-id="1004"]')?.textContent || ''), null, { timeout: 10000 });
   assert.match(await fila(page, '1004').textContent(), /A despacho/);
 });
 
@@ -616,10 +617,10 @@ test('sin conexión con la base: avisa, no pierde lo escrito y se recupera sola'
 
 test('sin internet: la app abre igual y muestra lo último guardado en el dispositivo', async () => {
   await page.waitForFunction(() => navigator.serviceWorker?.controller != null || navigator.serviceWorker.ready.then(() => true), null, { timeout: 10000 });
-  await page.reload(); await page.waitForSelector('#main .tablebox'); // ya controlada por el service worker
+  await page.reload(); await page.waitForSelector('#main .causas'); // ya controlada por el service worker
   await ctx.setOffline(true);
   await page.reload();
-  await page.waitForSelector('#main .tablebox', { timeout: 15000 });
+  await page.waitForSelector('#main .causas', { timeout: 15000 });
   assert.match(await page.textContent('#franja'), /Sin conexión\. Estás viendo lo guardado en este dispositivo/);
   assert.match(await fila(page, '1002').textContent(), /BETA BRUNO/);
   assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('h1')).fontFamily.includes('IBM Plex Sans')), true);
@@ -637,26 +638,27 @@ test('cambiar la contraseña desde el menú', async () => {
   await entrar(p, EMAIL, CLAVE);
   await p.waitForFunction(() => document.querySelector('#i_error')?.textContent.includes('incorrectos'));
   await p.fill('#i_clave', CLAVE + '-2'); await p.click('#fIngreso button[type=submit]');
-  await p.waitForSelector('#main .tablebox');
+  await p.waitForSelector('#main .causas');
   await c.close();
 });
 
 test('celular: tarjetas, filtros plegados y botón de nueva causa', async () => {
   const { c, p } = await nuevoContexto({ nombre: 'cel', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   await entrar(p, EMAIL, CLAVE + '-2');
-  await p.waitForSelector('#main .filas');
-  assert.equal(await p.locator('#main .fila').count(), 3);
+  await p.waitForSelector('#main .causas');
+  assert.equal(await p.locator('#main .causa').count(), 3);
+  assert.equal(await p.isVisible('#fabNew'), true, 'Nueva causa flota en el celular');
+  assert.equal(await p.isVisible('#btnTpl'), true, 'Plantillas está entre las vistas');
   assert.equal(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, 'sin desplazamiento horizontal de la página');
   assert.equal(await p.isVisible('#fEstado'), false);
   await p.tap('#btnFiltros');
   assert.equal(await p.isVisible('#fEstado'), true);
-  await p.selectOption('#fOrden', 'demandado:1');
-  assert.match(await p.locator('#main .fila').first().textContent(), /DELTA/);
+  await p.selectOption('#fEstado', '1.1 Demanda');
+  assert.equal(await p.locator('#main .causa').count(), 1);
   assert.match(await p.textContent('#btnFiltros'), /Filtros · 1/);
-  await p.tap('#vTablero');
-  assert.equal(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, 'el tablero se desliza dentro de su caja');
+  await p.selectOption('#fEstado', '');
   await p.tap('#vLista');
-  await p.tap('#main .fila[data-id="1002"] .fila-top');
+  await p.tap('#main .causa[data-id="1002"] h3');
   await p.waitForSelector('.panel');
   assert.equal(await p.evaluate(() => { const s = document.querySelector('.panel'); return s.scrollWidth <= s.clientWidth; }), true, 'la ficha entra en el ancho');
   await p.tap('#secLiq [data-act=planilla]'); await p.waitForSelector('.panel.plan');
@@ -668,7 +670,7 @@ test('celular: tarjetas, filtros plegados y botón de nueva causa', async () => 
   assert.match(await p.textContent('.panel h2'), /Nueva causa/);
   await p.tap('.ppie [data-act=close]');
   await p.tap('#btnCuenta'); await p.waitForSelector('.menu');
-  assert.equal(await p.isVisible('[data-m=plantillas]'), true);
+  assert.equal(await p.isVisible('[data-m=exportar]'), true);
   await c.close();
 });
 
@@ -723,11 +725,11 @@ test('con tiempo real el cambio de Claude llega al instante; si se corta, sigue 
   await tiempoReal(true);
   const { c, p } = await nuevoContexto({ nombre: 'vivo' });
   await entrar(p, EMAIL, CLAVE + '-2', '?sondeo=3000');
-  await p.waitForSelector('#main .tablebox');
+  await p.waitForSelector('#main .causas');
   await p.waitForSelector('#sub .vivo', { timeout: 10000 }); // "en vivo": con el canal abierto solo relee cada 5 minutos
   let t0 = Date.now();
   sql(`select gestor.movimiento('1002', 'Aviso por tiempo real')`);
-  await p.waitForFunction(() => /Aviso por tiempo real/.test(document.querySelector('#main tr[data-id="1002"]')?.textContent || ''), null, { timeout: 2500 });
+  await p.waitForFunction(() => /Aviso por tiempo real/.test(document.querySelector('#main .causa[data-id="1002"]')?.textContent || ''), null, { timeout: 2500 });
   assert.ok(Date.now() - t0 < 2500, 'llegó por el aviso, no por el sondeo');
   // plantillas y acuerdos también avisan
   sql(`begin; select set_config('gestor.autor', 'Claude', true); update public.plantillas set titulo = 'Solicita aprobación (v2)' where id = 'aprobacion'; commit;`);
@@ -738,7 +740,7 @@ test('con tiempo real el cambio de Claude llega al instante; si se corta, sigue 
   await tiempoReal(false);
   await p.waitForFunction(() => !document.querySelector('#sub .vivo'), null, { timeout: 15000 });
   sql(`select gestor.movimiento('1002', 'Aviso por sondeo', '${dia(1)}')`);
-  await p.waitForFunction(() => /Aviso por sondeo/.test(document.querySelector('#main tr[data-id="1002"]')?.textContent || ''), null, { timeout: 12000 });
+  await p.waitForFunction(() => /Aviso por sondeo/.test(document.querySelector('#main .causa[data-id="1002"]')?.textContent || ''), null, { timeout: 12000 });
   await c.close();
 });
 
@@ -808,7 +810,7 @@ test('chat: un escrito para el SAC queda en borrador hasta tocar Agendar, con lo
   assert.match(ultimo, /\[Nota del gestor: Confirmaste y quedó agendado "Solicita aprobación \(v2\)" en la causa 1001 para el .+ \(con cambios tuyos en el texto\)\. No se presenta solo\.\]\nGracias$/);
   // en el listado y en la ficha
   await page.keyboard.press('Escape');
-  assert.match(await fila(page, '1001').textContent(), /SAC \d\d\/\d\d/);
+  assert.match(await fila(page, '1001').textContent(), /SAC \d{1,2}\/\d{1,2}/);
   await abrir(page, '1001');
   assert.match(await page.textContent('#agendaFicha'), /Agendado.*Agendado para el .+\. No se presenta solo: cuando quieras presentarlo, tocá “Presentar ahora”/);
   // la tarea del SAC lo presenta (acá, a mano): la ficha y el listado lo muestran solos
@@ -816,7 +818,7 @@ test('chat: un escrito para el SAC queda en borrador hasta tocar Agendar, con lo
   sql(`select gestor.agenda_presentada((select id from public.agenda))`);
   await page.waitForFunction(() => /Presentado en el SAC/.test(document.querySelector('#agendaFicha')?.textContent || ''), null, { timeout: 8000 });
   await page.keyboard.press('Escape');
-  await page.waitForFunction(() => /A despacho/.test(document.querySelector('#main tr[data-id="1001"]')?.textContent || ''));
+  await page.waitForFunction(() => /A despacho/.test(document.querySelector('#main .causa[data-id="1001"]')?.textContent || ''));
   assert.equal(sql(`select proxima from public.causas where expte='1001'`), '');
 });
 
@@ -837,7 +839,7 @@ test('escritos para el SAC: uno que no se pudo presentar se ve, se vuelve a pedi
   sql(`delete from public.agenda`);
   const id = sql(`insert into public.agenda (expte, titulo, cuerpo, fecha, estado) values ('1002', 'Acompaña cédula', 'Texto', gestor.hoy(), 'pendiente') returning id`);
   sql(`select gestor.agenda_fallida('${id}', 'La compu del estudio estaba apagada')`);
-  await page.waitForFunction(() => /SAC: no se presentó/.test(document.querySelector('#main tr[data-id="1002"]')?.textContent || ''), null, { timeout: 8000 });
+  await page.waitForFunction(() => /SAC: no se presentó/.test(document.querySelector('#main .causa[data-id="1002"]')?.textContent || ''), null, { timeout: 8000 });
   assert.equal(await page.textContent('.stat[data-q="sac"] b'), '1');
   assert.match(await page.getAttribute('.stat[data-q="sac"]', 'class'), /alert/);
   await abrir(page, '1002');
@@ -864,7 +866,7 @@ test('escritos para el SAC: «Ahora» deja el borrador listo, con lo que corrigi
   sql(`delete from public.agenda`);
   await espiarPestañas(page);
   const id = borradorDeClaude('1002', 'Designa martillero', `'${habil()}'`);
-  await page.waitForFunction(() => /Escrito sin confirmar/.test(document.querySelector('#main tr[data-id="1002"]')?.textContent || ''), null, { timeout: 8000 });
+  await page.waitForFunction(() => /Escrito sin confirmar/.test(document.querySelector('#main .causa[data-id="1002"]')?.textContent || ''), null, { timeout: 8000 });
   await abrir(page, '1002');
   const tarjeta = page.locator('#agendaFicha .agcard.borrador');
   assert.match(await tarjeta.textContent(), /Con “Ahora” se abre la tarea de Claude: tocá “Ejecutar ahora”/);
@@ -896,7 +898,7 @@ test('escritos para el SAC: «Agendar» no presenta solo; «Presentar ahora» lo
   sql(`delete from public.agenda`);
   await espiarPestañas(page);
   const id = borradorDeClaude('1001', 'Solicita oficio', `'${habil()}'`);
-  await page.waitForFunction(() => /Escrito sin confirmar/.test(document.querySelector('#main tr[data-id="1001"]')?.textContent || ''), null, { timeout: 8000 });
+  await page.waitForFunction(() => /Escrito sin confirmar/.test(document.querySelector('#main .causa[data-id="1001"]')?.textContent || ''), null, { timeout: 8000 });
   await abrir(page, '1001');
   await page.click('#agendaFicha [data-ag=agendar]');
   await toast(page, 'Ese día tocá “Presentar ahora”');
@@ -927,7 +929,7 @@ test('escritos para el SAC: uno que se cortó mientras se presentaba se puede ma
   sql(`delete from public.agenda`);
   const id = sql(`insert into public.agenda (expte, titulo, cuerpo, fecha, estado, ahora) values ('1002', 'Pide embargo', 'Texto', gestor.hoy(), 'pendiente', now()) returning id`);
   sql(`select id from gestor.agenda_tomar(true)`);
-  await page.waitForFunction(() => /SAC: presentándose/.test(document.querySelector('#main tr[data-id="1002"]')?.textContent || ''), null, { timeout: 8000 });
+  await page.waitForFunction(() => /SAC: presentándose/.test(document.querySelector('#main .causa[data-id="1002"]')?.textContent || ''), null, { timeout: 8000 });
   await abrir(page, '1002');
   assert.match(await page.textContent('#agendaFicha'), /Claude lo está presentando en el SAC \(empezó a las \d\d:\d\d\)/);
   assert.equal(await page.locator('#agendaFicha [data-ag=nopresentado]').count(), 0, 'mientras está en curso, nada');
@@ -954,7 +956,7 @@ test('acción cautelar: embargo de haberes con su oficio, de la ficha a la agend
     update public.causas set demandados = '[{"nombre":"Alfa Ana","dni":"28.555.111","telefono":"","domicilio":"San Juan 1520, Villa María, Córdoba","notas":""},{"nombre":"Garante Gómez","dni":"20-30123456-7","telefono":"","domicilio":"Rivadavia 300, Bell Ville, Córdoba","notas":""}]',
       titulos = '[{"tipo":"pagare","monto":1000000,"vence":"${dia(-30)}","descripcion":"Pagaré","vehiculo":""}]' where expte = '1001';
     commit;`);
-  await page.reload(); await page.waitForSelector('#main .tablebox'); // con los datos recién cargados
+  await page.reload(); await page.waitForSelector('#main .causas'); // con los datos recién cargados
   await abrir(page, '1001');
   await page.click('[data-act=cautelar]');
   await page.waitForSelector('.cautelar .opcion');
@@ -1038,7 +1040,7 @@ test('acción cautelar: secuestro con los datos de la prenda; sin enervar, la cl
       ('oficio-secuestro-automotor', $tx$${MODELOS['oficio-secuestro-automotor'].titulo}$tx$, $tx$${MODELOS['oficio-secuestro-automotor'].cuerpo}$tx$),
       ('solicita-secuestro-automotor', $tx$${MODELOS['solicita-secuestro-automotor'].titulo}$tx$, $tx$${MODELOS['solicita-secuestro-automotor'].cuerpo}$tx$);
     commit;`);
-  await page.reload(); await page.waitForSelector('#main .tablebox');
+  await page.reload(); await page.waitForSelector('#main .causas');
   await abrir(page, '1002');
   // en "Escritos" no aparece el modelo de oficio; el escrito del secuestro lleva a armarlo completo
   const opciones = await page.locator('#tp_sel option').allTextContents();
@@ -1170,20 +1172,13 @@ test('ubicación, estado, etiqueta cautelar y situación: se ven, se filtran, se
     update public.causas set ubicacion = 'A despacho', estado = '5. Martillero Designado', cautelar = 'Vehículo secuestrado', situacion = 'En trámite' where expte = '1002';
     update public.causas set ubicacion = 'Casillero', estado = '', cautelar = 'Sin Cautelar', situacion = 'En trámite' where expte = '1001';
     commit;`);
-  await page.waitForFunction(() => /5\. Martillero Designado/.test(document.querySelector('#main tr[data-id="1002"]')?.textContent || ''), null, { timeout: 8000 });
-  await page.waitForFunction(() => !document.querySelector('#main tr[data-id="1001"] .tag.etapa'), null, { timeout: 8000 });
+  await page.waitForFunction(() => /5\. Martillero Designado/.test(document.querySelector('#main .causa[data-id="1002"]')?.textContent || ''), null, { timeout: 8000 });
+  await page.waitForFunction(() => !document.querySelector('#main .causa[data-id="1001"] .tag.etapa'), null, { timeout: 8000 });
   // en el listado: la ubicación en su columna; la etapa y la cautelar como etiquetas debajo de la carátula (sin cautelar, ninguna)
   assert.deepEqual(await fila(page, '1002').locator('.pill').allTextContents(), ['A despacho']);
-  assert.deepEqual((await fila(page, '1002').locator('td.car .tag').allTextContents()).slice(0, 2), ['5. Martillero Designado', 'Vehículo secuestrado']);
+  assert.deepEqual((await fila(page, '1002').locator('.tag').allTextContents()).slice(0, 2), ['5. Martillero Designado', 'Vehículo secuestrado']);
+  assert.equal(await fila(page, '1002').getAttribute('data-ub'), 'A despacho');
   assert.ok(!(await fila(page, '1001').locator('.tag').allTextContents()).some((t) => /cautelar|trámite/i.test(t)));
-  assert.equal(await page.evaluate(() => { const b = document.querySelector('.tablebox'); return b.scrollWidth <= b.clientWidth; }), true, 'la tabla entra en 1280 px, sin deslizar');
-  // tablero: una columna por etapa, en orden, y la de las causas sin estado al final
-  await page.click('#vTablero');
-  assert.deepEqual(await page.locator('#main .col h3 span:first-child').allTextContents(), [...ESTADOS, '(sin estado)']);
-  assert.equal(await page.locator('#main .col').nth(6).locator('.card[data-id="1002"]').count(), 1);
-  assert.equal(await page.textContent('#main .card[data-id="1002"] .card-top .pill'), 'A despacho');
-  assert.equal(await page.locator('#main .col').nth(7).locator('.card[data-id="1001"]').count(), 1);
-  await page.click('#vLista');
   // la ficha: un desplegable por dato, con sus valores fijos
   await abrir(page, '1001');
   assert.deepEqual(await page.locator('#c_ubicacion option').allTextContents(), ['Casillero', 'A despacho']);
@@ -1203,7 +1198,7 @@ test('ubicación, estado, etiqueta cautelar y situación: se ven, se filtran, se
   assert.match(await fila(page, '1001').textContent(), /Archivada/);
   await page.click('.stat[data-q="arch"]');
   sql(`begin; select set_config('gestor.autor', 'Semilla', true); update public.causas set situacion = 'En trámite' where expte = '1001'; commit;`);
-  await page.waitForFunction(() => !!document.querySelector('#main tr[data-id="1001"]'), null, { timeout: 8000 });
+  await page.waitForFunction(() => !!document.querySelector('#main .causa[data-id="1001"]'), null, { timeout: 8000 });
 });
 
 test('pase a juicio: la causa nueva llega armada desde Cobranzas y, al crearla, el deudor queda En juicio', async () => {
@@ -1294,16 +1289,16 @@ test('cerrar sesión borra del dispositivo la sesión y la copia de los datos', 
   assert.equal(await page.evaluate(() => localStorage.getItem('gj.cache')), null);
   assert.equal(await page.evaluate(() => localStorage.getItem('gestor.sesion')), null);
   assert.equal(await page.evaluate(() => localStorage.getItem('gj.chat')), null);
-  assert.equal(await page.locator('#main tr').count(), 0, 'no quedan causas en la página');
+  assert.equal(await page.locator('#main .causa').count(), 0, 'no quedan causas en la página');
 });
 
 test('si se le quita el acceso a alguien que está usando la app, deja de ver los datos', async () => {
   await page.fill('#i_email', EMAIL); await page.fill('#i_clave', CLAVE + '-2'); await page.click('#fIngreso button[type=submit]');
-  await page.waitForSelector('#main .tablebox');
+  await page.waitForSelector('#main .causas');
   sql(`delete from gestor.miembros where email='${EMAIL}'`);
   await page.waitForFunction(() => /no está autorizada/.test(document.querySelector('#ingresoCuerpo')?.textContent || ''), null, { timeout: 10000 });
   assert.equal(await page.evaluate(() => localStorage.getItem('gj.cache')), null);
-  assert.equal(await page.locator('#main tr').count(), 0);
+  assert.equal(await page.locator('#main .causa').count(), 0);
 });
 
 test('sin errores en la consola durante todo el recorrido', () => {

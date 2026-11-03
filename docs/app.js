@@ -47,6 +47,7 @@ const S = {
   chat: null, // la conversación con Claude (ver "Chat con Claude")
 };
 try { S.view = localStorage.getItem('gj.view') || 'lista'; } catch { /* sin almacenamiento */ }
+if (S.view !== 'agenda' && S.view !== 'acuerdos') S.view = 'lista'; // el tablero ya no existe
 try { S.maxi = localStorage.getItem('gj.maxi') === '1'; } catch { /* sin almacenamiento */ }
 
 // ───────────────────────── Utilidades ─────────────────────────
@@ -97,7 +98,6 @@ function conFoco(raiz, redibujar) {
 function dueState(c) { const d = parse(c.vence); if (!d || !(c.proxima || '').trim()) return ''; const n = Math.round((d - today()) / 864e5); return n < 0 ? 'late' : n <= 7 ? 'soon' : ''; }
 const isArch = (c) => c.situacion === 'Archivada';
 const isAcu = (c) => c.situacion === 'Acuerdo';
-function isStale(c) { if (isArch(c) || isAcu(c)) return false; const n = days(c.fecha); return n === null || n > STALE; }
 
 // ───────────────────────── Pantallas de ingreso ─────────────────────────
 
@@ -210,8 +210,8 @@ async function reintentar(boton) {
 
 // ───────────────────────── Listado ─────────────────────────
 
-// Filtros rápidos: u: ubicación, c: etiqueta cautelar.
-const CHIPS = [{ k: 'u:Casillero', l: 'Casillero' }, { k: 'u:A despacho', l: 'A despacho' }, { k: 'c:Embargo de sueldo', l: 'Embargos de sueldo' }, { k: 'c:Vehículo secuestrado', l: 'Vehículos secuestrados' }];
+// Filtros rápidos: u: ubicación (se eligen con las tarjetas del resumen), c: etiqueta cautelar (estas fichas).
+const CHIPS = [{ k: 'c:Embargo de sueldo', l: 'Embargos de sueldo' }, { k: 'c:Vehículo secuestrado', l: 'Vehículos secuestrados' }];
 function chipMatch(c, k) { const v = k.slice(2); return (k[0] === 'u' ? c.ubicacion : c.cautelar) === v; }
 
 function filtered() {
@@ -220,9 +220,6 @@ function filtered() {
     if (S.estado && (c.estado || '(sin estado)') !== S.estado) return false;
     if (S.nom && String(c.nom) !== S.nom) return false;
     if (S.tag && !chipMatch(c, S.tag)) return false;
-    if (S.quick === 'stale' && !isStale(c)) return false;
-    if (S.quick === 'due' && dueState(c) !== 'late') return false;
-    if (S.quick === 'next' && !c.proxima) return false;
     if (S.quick !== 'arch' && isArch(c)) return false;
     if (S.quick === 'arch' && !isArch(c)) return false;
     if (S.quick === 'acu' && !isAcu(c)) return false;
@@ -238,18 +235,18 @@ function filtered() {
 }
 
 function renderStats() {
-  const act = D.causas.filter((c) => !isArch(c) && !isAcu(c)), acu = D.causas.filter(isAcu);
+  const vivas = D.causas.filter((c) => !isArch(c) && !isAcu(c));
   const items = [
-    { id: '', n: act.length, l: 'Causas activas' },
-    { id: 'stale', n: act.filter(isStale).length, l: `Sin movimiento +${STALE} días o sin fecha`, cls: 'alert' },
-    { id: 'due', n: act.filter((c) => dueState(c) === 'late').length, l: 'Vencidas', cls: 'alert' },
-    { id: 'next', n: act.filter((c) => c.proxima).length, l: 'Con próxima acción anotada' },
-    { id: 'acu', n: acu.length, l: 'Con acuerdo' },
-    { id: 'arch', n: D.causas.filter(isArch).length, l: 'Archivadas' }];
+    { id: 'u:Casillero', n: vivas.filter((c) => c.ubicacion === 'Casillero').length, l: 'Casillero' },
+    { id: 'u:A despacho', n: vivas.filter((c) => c.ubicacion === 'A despacho').length, l: 'A despacho' },
+    { id: 'acu', n: D.causas.filter(isAcu).length, l: 'Acuerdos' },
+    { id: 'arch', n: D.causas.filter(isArch).length, l: 'Archivados' }];
   // Escritos para el SAC: solo aparece si hay alguno, y en rojo si alguno no se pudo presentar.
   const sac = D.causas.filter((c) => agendaAbierta(c.expte).length);
-  if (sac.length || S.quick === 'sac') items.push({ id: 'sac', n: sac.length, l: 'Con escritos para el SAC', cls: D.agenda.some((a) => a.estado === 'error') ? 'alert' : '' });
-  $('#stats').innerHTML = items.map((i) => `<button class="stat ${i.cls || ''}" data-q="${i.id}" aria-pressed="${S.quick === i.id}"><b>${i.n}</b><span>${i.l}</span></button>`).join('');
+  if (sac.length || S.quick === 'sac') items.push({ id: 'sac', n: sac.length, l: 'Con escritos para el SAC', cls: D.agenda.some((x) => x.estado === 'error') ? 'alert' : '' });
+  // Casillero y A despacho filtran por la ubicación; las otras, por la situación de la causa.
+  const puesta = (id) => (id.startsWith('u:') ? S.tag === id : S.quick === id);
+  $('#stats').innerHTML = items.map((i) => `<button class="stat ${i.cls || ''}" data-q="${esc(i.id)}" aria-pressed="${puesta(i.id)}"><b>${i.n}</b><span>${i.l}</span></button>`).join('');
 }
 
 function renderFilters() {
@@ -257,13 +254,11 @@ function renderFilters() {
   const noms = [...new Set(D.causas.map((c) => String(c.nom || '')).filter(Boolean))].sort();
   $('#fEstado').innerHTML = '<option value="">Todos los estados</option>' + est.map((e) => `<option ${S.estado === e ? 'selected' : ''}>${esc(e)}</option>`).join('');
   $('#fNom').innerHTML = '<option value="">Todas las nominaciones</option>' + noms.map((n) => `<option value="${esc(n)}" ${S.nom === n ? 'selected' : ''}>${esc(n)}° Nom.</option>`).join('');
-  const orden = `${S.sort.k}:${S.sort.dir}`;
-  $('#fOrden').value = [...$('#fOrden').options].some((o) => o.value === orden) ? orden : '';
-  const usados = (S.estado ? 1 : 0) + (S.nom ? 1 : 0) + (orden !== 'dias:-1' ? 1 : 0);
+  const usados = (S.estado ? 1 : 0) + (S.nom ? 1 : 0);
   $('#btnFiltros').textContent = usados ? `Filtros · ${usados}` : 'Filtros';
   const live = D.causas.filter((c) => !isArch(c) && !isAcu(c));
   $('#chips').innerHTML = `<button class="chip" data-t="" aria-pressed="${!S.tag}">Todas · ${live.length}</button>` + CHIPS.map((t) => `<button class="chip" data-t="${esc(t.k)}" aria-pressed="${S.tag === t.k}">${esc(t.l)} · ${live.filter((c) => chipMatch(c, t.k)).length}</button>`).join('');
-  $('#vAgenda').setAttribute('aria-pressed', S.view === 'agenda'); $('#vAcuerdos').setAttribute('aria-pressed', S.view === 'acuerdos'); $('#vLista').setAttribute('aria-pressed', S.view === 'lista'); $('#vTablero').setAttribute('aria-pressed', S.view === 'tablero');
+  $('#vAgenda').setAttribute('aria-pressed', S.view === 'agenda'); $('#vAcuerdos').setAttribute('aria-pressed', S.view === 'acuerdos'); $('#vLista').setAttribute('aria-pressed', S.view === 'lista');
   // Insignias de las vistas: lo de la agenda que es para hoy o venció (en coral si algo venció) y
   // las cuotas de acuerdos que esperan confirmación. Sin búsqueda: cuentan todo, no lo filtrado.
   const hoy = iso(today()), urgentes = itemsAgenda('').filter((x) => x.fecha && x.fecha <= hoy), cuotas = cuotasPorPreguntar().length;
@@ -293,36 +288,23 @@ function tagsHtml(c, antes = '') {
   return ts.length ? `<div class="tags">${ts.join('')}</div>` : '';
 }
 
-function renderList(rows) {
-  if (movil.matches) return renderFilas(rows);
-  const th = (k, l) => `<th data-k="${k}">${l}${S.sort.k === k ? (S.sort.dir > 0 ? ' ↑' : ' ↓') : ''}</th>`;
-  return `<div class="tablebox"><table><thead><tr>${th('demandado', 'Carátula')}${th('expte', 'Expte.')}${th('nom', 'Nom. / Oficina')}${th('ubicacion', 'Ubicación')}${th('ultima', 'Última acción')}${th('dias', 'Fecha')}${th('proxima', 'Próxima acción')}${th('vence', 'Vence')}</tr></thead><tbody>` +
-    rows.map((c) => `<tr data-id="${esc(c.expte)}" tabindex="0"><td class="car"><b>${esc(titulo(c))}</b><small>${esc(bajada(c))}</small>${tagsHtml(c, etapaHtml(c))}</td>
-   <td class="mono">${esc(c.expte)}</td><td>${c.nom ? esc(c.nom) + '°' : ''} ${esc(c.oficina)}</td>
-   <td>${ubiHtml(c) || '<span class="hint">—</span>'}</td>
-   <td>${esc(c.ultima) || '<span class="hint">—</span>'}</td><td>${ageHtml(c)}</td>
-   <td class="next ${c.proxima ? '' : 'none'}">${esc(c.proxima) || '—'}${c.proxima ? `<div><button class="btn small donebtn" data-done="${esc(c.expte)}">✓ Realizada</button></div>` : ''}</td>
-   <td>${c.vence && c.proxima ? `<span class="due ${dueState(c)}">${fmt(c.vence)}</span>` : '<span class="hint">—</span>'}</td></tr>`).join('') + `</tbody></table></div>`;
-}
+/** Juzgado como lo escribe el estudio: «Juzg. 1° Nom. Sec.2» (nominación y oficina o secretaría de la causa). */
+const juzgado = (c) => (c.nom ? `Juzg. ${c.nom}° Nom.${c.oficina ? ' ' + c.oficina : ''}` : c.oficina || '');
 
-// En pantallas chicas, cada causa es una tarjeta: se lee de arriba abajo sin deslizar de costado.
-function renderFilas(rows) {
-  return `<div class="filas">` + rows.map((c) => `<article class="fila" data-id="${esc(c.expte)}" tabindex="0" role="button" aria-label="Abrir la ficha de ${esc(titulo(c))}">
-    <div class="fila-top"><b>${esc(titulo(c))}</b>${ubiHtml(c)}</div>
-    <div class="mono">${esc(c.expte)} · ${c.nom ? esc(c.nom) + '° ' : ''}${esc(c.oficina)}${c.tipo ? ' · ' + esc(c.tipo) : ''}</div>
-    ${tagsHtml(c, etapaHtml(c))}
-    <div class="fila-ult"><span>${esc(c.ultima) || '<span class="hint">Sin acción cargada</span>'}</span>${ageHtml(c)}</div>
-    ${c.proxima ? `<div class="fila-prox"><div><span class="next">${esc(c.proxima)}</span>${c.vence ? `<div class="due ${dueState(c)}">Vence el ${fmt(c.vence)}</div>` : ''}</div><button class="btn small donebtn" data-done="${esc(c.expte)}">✓ Realizada</button></div>` : ''}
-  </article>`).join('') + `</div>`;
-}
-
-function renderBoard(rows) {
-  // Una columna por etapa del juicio, en orden; las causas sin estado, al final.
-  const cols = [...ESTADOS, ...(rows.some((c) => !c.estado) ? ['(sin estado)'] : [])];
-  return `<div class="board">` + cols.map((e) => {
-    const cs = rows.filter((c) => (c.estado || '(sin estado)') === e);
-    if (!cs.length && movil.matches) return ''; // en el celular, las columnas vacías no ocupan pantalla
-    return `<section class="col"><h3><span>${esc(e)}</span><span>${cs.length}</span></h3>` + cs.map((c) => `<button class="card" data-id="${esc(c.expte)}"><div class="card-top"><b>${esc(titulo(c))}</b>${ubiHtml(c)}</div><div class="mono">${esc(c.expte)} · ${c.nom ? esc(c.nom) + '° ' : ''}${esc(c.oficina)}</div>${tagsHtml(c)}<p>${esc(c.ultima || 'Sin acción cargada')}</p>${ageHtml(c)}${c.proxima ? `<p><b>→</b> ${esc(c.proxima)}</p>` : ''}</button>`).join('') + `</section>`;
+// Cada causa es una tarjeta, en la computadora y en el celular: carátula, expediente y juzgado, la
+// última acción con su fecha, y los dos botones. La próxima acción y su vencimiento se ven en Agenda.
+function renderCausas(rows) {
+  return `<div class="causas">` + rows.map((c) => {
+    const n = days(c.fecha), id = esc(c.expte), j = juzgado(c);
+    return `<article class="causa" data-id="${id}" data-ub="${esc(c.ubicacion || '')}">
+    <div class="causa-info">
+      <h3>${esc(titulo(c))}</h3>
+      <div class="causa-linea"><b class="mono">Expte. N° ${id}</b>${j ? ' · ' + esc(j) : ''}</div>
+      <div class="causa-ult">${c.ultima ? `<time>${fmt(c.fecha)}</time><span>${esc(c.ultima)}</span>` : '<span class="hint">Sin acción cargada</span>'}${n === null ? '<small class="age old">sin fecha</small>' : `<small class="age ${n > STALE ? 'old' : ''}">hace ${n} d</small>`}</div>
+      ${tagsHtml(c, ubiHtml(c) + etapaHtml(c))}
+    </div>
+    <div class="causa-acc"><button class="btn small" data-lista="cautelar" data-id="${id}">Acción cautelar</button><button class="btn small primary" data-lista="abrir" data-id="${id}">Abrir</button></div>
+  </article>`;
   }).join('') + `</div>`;
 }
 
@@ -384,7 +366,7 @@ function dibujar() {
   const main = $('#main'), isAc = S.view === 'acuerdos', isAg = S.view === 'agenda';
   ['#stats', '#chips', '#btnFiltros', '#filtros', '#fabNew'].forEach((k) => { $(k).hidden = isAc || isAg; });
   $('#toolbar').hidden = isAc; // en Acuerdos no hay qué buscar ni filtrar
-  $('#tVista').textContent = { tablero: 'Tablero', agenda: 'Agenda', acuerdos: 'Acuerdos' }[S.view] || 'Causas'; // título en la computadora, con la barra lateral
+  $('#tVista').textContent = { agenda: 'Agenda', acuerdos: 'Acuerdos' }[S.view] || 'Causas'; // título en la computadora, con la barra lateral
   if (!D.cargado) {
     main.innerHTML = `<div class="empty"><b>Cargando tus causas…</b>Acá vas a ver el listado de juicios con su estado, última acción y próxima acción.</div>`;
     subtitulo('Cargando causas…');
@@ -401,7 +383,7 @@ function dibujar() {
   } else {
     const rows = filtered();
     subtitulo(`${rows.length} de ${D.causas.length} causas`);
-    main.innerHTML = rows.length ? (S.view === 'tablero' ? renderBoard(rows) : renderList(rows)) : `<div class="empty"><b>Ninguna causa coincide con los filtros</b>Probá con otra búsqueda o quitá algún filtro.</div>`;
+    main.innerHTML = rows.length ? renderCausas(rows) : `<div class="empty"><b>Ninguna causa coincide con los filtros</b>Probá con otra búsqueda o quitá algún filtro.</div>`;
   }
 }
 
@@ -1827,7 +1809,6 @@ function renderMenu() {
   m.innerHTML = `<div class="scrim claro" data-m="cerrar"></div>
   <div class="menu" role="menu" aria-label="Cuenta y opciones">
    <div class="menu-quien"><b>${esc(D.acceso?.nombre || 'Mi cuenta')}</b><span class="hint">${esc(D.usuario?.email || '')}</span></div>
-   <button class="op solo-movil" role="menuitem" data-m="plantillas">Plantillas de escritos</button>
    <button class="op solo-movil" role="menuitem" data-m="exportar">Exportar a Excel (CSV)</button>
    <a class="op" role="menuitem" href="${COBRANZAS}" target="_blank" rel="noopener">Abrir la app de cobranzas</a>
    ${S.instalar ? '<button class="op" role="menuitem" data-m="instalar">Instalar la app en este dispositivo</button>' : ''}
@@ -1897,11 +1878,18 @@ document.addEventListener('click', async (e) => {
   const ag = e.target.closest('[data-ag]'); if (ag) { await unaVez(ag, agAct); return; }
   const tp = e.target.closest('[data-tp]'); if (tp) { await unaVez(tp, tplAct); return; }
   const acb = e.target.closest('[data-ac]'); if (acb) { await unaVez(acb, acAct); return; }
-  const st = e.target.closest('.stat'); if (st) { S.quick = S.quick === st.dataset.q ? '' : st.dataset.q; render(); return; }
+  const st = e.target.closest('.stat');
+  if (st) {
+    const q = st.dataset.q;
+    if (q.startsWith('u:')) { S.tag = S.tag === q ? '' : q; S.quick = ''; } // ubicación
+    else { S.quick = S.quick === q ? '' : q; if (S.tag.startsWith('u:')) S.tag = ''; }
+    render(); return;
+  }
   const ch = e.target.closest('#chips .chip'); if (ch) { S.tag = ch.dataset.t; render(); return; }
-  const th = e.target.closest('th[data-k]'); if (th) { const k = th.dataset.k; S.sort = { k, dir: S.sort.k === k ? -S.sort.dir : 1 }; render(); return; }
   const dn = e.target.closest('[data-done]'); if (dn) { e.stopPropagation(); await unaVez(dn, (b) => quickDone(b.dataset.done)); return; }
-  const row = e.target.closest('#main tr[data-id], #main .card[data-id], #main .fila[data-id]'); if (row) { openCausa(row.dataset.id); return; }
+  const li = e.target.closest('[data-lista]'); // los dos botones de cada causa del listado
+  if (li) { e.stopPropagation(); openCausa(li.dataset.id); if (li.dataset.lista === 'cautelar') abrirCautelar(''); return; }
+  const row = e.target.closest('#main .causa[data-id], #main .fila[data-id]'); if (row) { openCausa(row.dataset.id); return; }
   const a = e.target.closest('[data-act]'); if (!a) return;
   const act = a.dataset.act, c = S.open;
   if (act === 'close') { closeDrawer(); return; }
@@ -1985,7 +1973,7 @@ document.addEventListener('keydown', (e) => {
     if (S.chat?.abierto) { cerrarChat(); return; }
     if (S.menu) { S.menu = false; renderMenu(); } else if (S.planilla && S.open) { readForm(); volverAFicha(); } else if (S.cau && S.open) { S.cau = null; renderDrawer(); } else if (S.open || S.tpl || S.clave) closeDrawer();
   }
-  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('tr[data-id], .fila[data-id]')) { e.preventDefault(); openCausa(e.target.dataset.id); }
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.fila[data-id]')) { e.preventDefault(); openCausa(e.target.dataset.id); }
   if (e.key === 'Enter' && e.target.id === 'h_texto') document.querySelector('[data-act="histadd"]').click();
   if (e.key === 'Enter' && e.target.id === 'chatTexto' && !e.shiftKey && !movil.matches && !e.isComposing) { e.preventDefault(); $('#fChat').requestSubmit(); }
 });
@@ -1998,10 +1986,9 @@ document.addEventListener('change', (e) => {
 $('#q').addEventListener('input', (e) => { S.q = e.target.value; render(); });
 $('#fEstado').addEventListener('change', (e) => { S.estado = e.target.value; render(); });
 $('#fNom').addEventListener('change', (e) => { S.nom = e.target.value; render(); });
-$('#fOrden').addEventListener('change', (e) => { const [k, dir] = e.target.value.split(':'); if (k) { S.sort = { k, dir: +dir }; render(); } });
 const verVista = (v) => () => { S.view = v; try { localStorage.setItem('gj.view', v); } catch { /* sin almacenamiento */ } render(); };
-$('#vLista').onclick = verVista('lista'); $('#vAgenda').onclick = verVista('agenda'); $('#vAcuerdos').onclick = verVista('acuerdos'); $('#vTablero').onclick = verVista('tablero');
-$('#btnNew').onclick = $('#fabNew').onclick = () => openCausa(null);
+$('#vLista').onclick = verVista('lista'); $('#vAgenda').onclick = verVista('agenda'); $('#vAcuerdos').onclick = verVista('acuerdos');
+$('#fabNew').onclick = () => openCausa(null);
 $('#btnTpl').onclick = abrirPlantillas;
 $('#btnExport').onclick = exportar;
 // Para lo que el chat de la app no hace (por ejemplo presentar un escrito con archivos adjuntos):
