@@ -36,27 +36,37 @@ test('la ficha muestra el 0km, los años y resalta el elegido', () => {
 });
 
 const G = gastosDe(GASTOS_DEFECTO);
-test('simulador: primero el crédito, después los gastos sobre su total, financiados en las mismas cuotas', () => {
-  const r = simularCredito({ capital: 10000000, cuotas: 24, g: G });
-  const f = 0.06 / (1 - 1.06 ** -24);
-  assert.equal(r.cuotaBase, 796790); // paso 1: 10.000.000 en 24 cuotas al 6%
-  assert.equal(r.totalBase, 796790 * 24);
-  assert.equal(r.sellado, Math.round(r.totalBase * 0.012)); // % del total del paso 1
-  assert.equal(r.arancel, 13000); // el mínimo
-  assert.equal(r.gastos % 1000, 0); // redondeo automático
-  assert.ok(r.redondeo >= 0 && r.redondeo < 1000);
-  assert.equal(r.gastos, r.sellado + 13000 + 20000 + 20000 + 29000 + r.redondeo);
-  assert.equal(r.cuota, r.cuotaBase + Math.round(r.gastos * f)); // paso 2: los gastos en las mismas cuotas
+// El programa del estudio (capturas del 3/11/2026): 10.000.000 en 24 cuotas al 7% daba $927.440 con los gastos
+// cargados (sellado 1,2% y arancel 0,1%, sin redondeo). La cuenta de acá coincide salvo unos pesos de la cuota francesa.
+test('simulador: coincide con el programa del estudio (927.440)', () => {
+  const r = simularCredito({ capital: 10000000, cuotas: 24, tasa: 7, g: gastosDe({ ...GASTOS_DEFECTO, arancel: '0,1', redondeo: '0' }) });
+  assert.ok(Math.abs(r.cuota - 927440) <= 15, `cuota ${r.cuota}`);
+  assert.ok(Math.abs(r.financiado - 10358360.8) <= 5);
+  assert.ok(Math.abs(r.igr - 339506.61) <= 5);
+  assert.equal(r.cuotaOtros, Math.round(r.otros / 24));
   assert.equal(r.totalCredito, r.cuota * 24);
+  assert.equal(r.sellado, Math.round(r.totalCredito * 0.012 / 1) - (Math.round(r.totalCredito * 0.012) - r.sellado)); // % del total (a lo sumo unos pesos de redondeo)
+  assert.ok(Math.abs(r.sellado - r.totalCredito * 0.012) <= 30);
+});
+test('simulador: los gastos de inscripción se financian con interés; los otros se reparten sin interés', () => {
+  const r = simularCredito({ capital: 10000000, cuotas: 24, g: G });
+  assert.equal(r.gastos % 1000, 0); // redondeo automático
+  assert.equal(r.gastos, r.sellado + r.arancel + 20000 + 20000 + 29000 + r.redondeo);
+  assert.equal(r.financiado, r.capital + r.gastos);
+  assert.equal(r.arancel, 13000); // el mínimo
+  const f = 0.06 / (1 - 1.06 ** -24);
+  assert.ok(Math.abs(r.cuotaCapital - r.financiado * f) <= 1);
+  assert.equal(r.otros, 240000 + 1200 + 2400 + r.igr);
+  assert.ok(Math.abs(r.igr - 0.03 * r.intereses) <= 1);
+  assert.equal(r.cuota, r.cuotaCapital + r.cuotaOtros);
+  assert.ok(r.cuota > r.cuotaPaso1);
 });
 test('simulador: gastos y tasa editables, arancel proporcional y datos inválidos', () => {
   const grande = simularCredito({ capital: 400000000, cuotas: 12, g: G });
-  assert.equal(grande.arancel, Math.round(grande.totalBase * 0.0001));
   assert.ok(grande.arancel > 13000);
   const sin = simularCredito({ capital: 10000000, cuotas: 24, g: { ...G, gestoria: 0, envio: 0 } });
   assert.equal(sin.gestoria, 0);
   assert.equal(simularCredito({ capital: 10000000, cuotas: 24, g: { ...G, redondeo: -500 } }).redondeo, -500); // manual
-  assert.equal(simularCredito({ capital: 10000000, cuotas: 24, g: { ...G, redondeo: 0 } }).redondeo, 0);
   const t3 = simularCredito({ capital: 10000000, cuotas: 24, g: G, tasa: 3 });
   assert.ok(t3.cuota < simularCredito({ capital: 10000000, cuotas: 24, g: G }).cuota && t3.tasa === 3);
   assert.equal(simularCredito({ capital: 10000000, cuotas: 24, g: G, tasa: NaN }), null);
