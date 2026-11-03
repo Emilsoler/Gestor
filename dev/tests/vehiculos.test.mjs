@@ -39,7 +39,7 @@ const G = gastosDe(GASTOS_DEFECTO);
 // El programa del estudio (capturas del 3/11/2026): 10.000.000 en 24 cuotas al 7% daba $927.440 con los gastos
 // cargados (sellado 1,2% y arancel 0,1%, sin redondeo). La cuenta de acá coincide salvo unos pesos de la cuota francesa.
 test('simulador: coincide con el programa del estudio (927.440)', () => {
-  const r = simularCredito({ capital: 10000000, cuotas: 24, tasa: 7, g: gastosDe({ ...GASTOS_DEFECTO, arancel: '0,1', redondeo: '0' }) });
+  const r = simularCredito({ capital: 10000000, cuotas: 24, tasa: 7, g: gastosDe({ ...GASTOS_DEFECTO, redondeo: '0' }) });
   assert.ok(Math.abs(r.cuota - 927440) <= 15, `cuota ${r.cuota}`);
   assert.ok(Math.abs(r.financiado - 10358360.8) <= 5);
   assert.ok(Math.abs(r.igr - 339506.61) <= 5);
@@ -53,7 +53,8 @@ test('simulador: los gastos de inscripción se financian con interés; los otros
   assert.equal(r.gastos % 1000, 0); // redondeo automático
   assert.equal(r.gastos, r.sellado + r.arancel + 20000 + 20000 + 29000 + r.redondeo);
   assert.equal(r.financiado, r.capital + r.gastos);
-  assert.equal(r.arancel, 13000); // el mínimo
+  assert.ok(Math.abs(r.arancel - r.totalCredito * 0.001) <= 5); // el uno por mil del total (arriba del mínimo)
+  assert.equal(simularCredito({ capital: 1000000, cuotas: 12, g: G }).arancel, 13000); // y si no llega, el mínimo
   const f = 0.06 / (1 - 1.06 ** -24);
   assert.ok(Math.abs(r.cuotaCapital - r.financiado * f) <= 1);
   assert.equal(r.otros, 240000 + 1200 + 2400 + r.igr);

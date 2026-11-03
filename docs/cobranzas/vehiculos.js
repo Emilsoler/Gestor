@@ -69,7 +69,7 @@ export const PASO_REDONDEO = 1000;
 /** Los gastos tal como aparecen por defecto (textos, como se escriben en la pantalla). */
 export const GASTOS_DEFECTO = {
   // de inscripción de prenda (se financian)
-  sellado: '1,2', arancel: '0,01', arancelMin: '13.000', contratos: '20.000', envio: '20.000', gestoria: '29.000',
+  sellado: '1,2', arancel: '0,1', arancelMin: '13.000', contratos: '20.000', envio: '20.000', gestoria: '29.000',
   redondeo: '', // vacío = automático (el total de gastos de inscripción al próximo $1.000)
   // otros gastos (sin interés, repartidos en las cuotas)
   seguro: '240.000', administrativos: '1.200', cuotaSocial: '2.400', igr: '3',
