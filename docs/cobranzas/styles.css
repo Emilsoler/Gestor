@@ -639,3 +639,11 @@ body.con-chat .toast{bottom:calc(var(--abajo) + 84px)}  /* que el aviso no tape 
 .sim-otros summary{cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12.5px;font-weight:500;color:var(--soft)}
 .sim-otros summary b{color:var(--fg);font-weight:600}
 .sim-otros .sim-form{margin-top:8px}
+.sim-final{display:grid;gap:2px;margin-top:10px;padding:10px 6px 4px}
+.sim-final span{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.sim-final b{font-size:34px;line-height:1.1;font-weight:600;color:var(--fg)}
+.sim-otros-res{border-top:1px solid var(--line-soft);padding-top:6px}
+.sim-otros-res summary{cursor:pointer;display:flex;justify-content:space-between;gap:10px;font-size:12.5px;font-weight:500;color:var(--soft)}
+.sim-otros-res summary b{color:var(--fg);font-weight:600}
+.sim-otros-res .tabla{margin-top:6px;max-width:460px}
+.sim-cuadros{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}

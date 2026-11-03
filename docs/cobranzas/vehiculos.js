@@ -137,13 +137,16 @@ export function estadoSimulador(precios, listPrice, sim) {
 export function htmlSimulacion(r) {
   if (!r) return '<p class="hint m0">Completá el monto, la cantidad de cuotas (de 1 a ' + CUOTAS_MAX + ') y la tasa.</p>';
   const f = (t, v, fuerte) => `<tr${fuerte ? ' class="fuerte"' : ''}><td>${esc(t)}</td><td class="num mono">${esc(plata(v))}</td></tr>`;
-  const cuadro = (titulo, filas) => `<div class="sim-cuadro"><h4>${esc(titulo)}</h4><table class="tabla sim-tabla"><tbody>${filas}</tbody></table></div>`;
-  return `<dl class="cifras grandes sim-cifras"><div><dt>Cuota final</dt><dd>${esc(plata(r.cuota))}</dd></div><div><dt>Total en ${r.cuotas} cuotas</dt><dd>${esc(plata(r.totalCredito))}</dd></div><div><dt>Monto financiado</dt><dd>${esc(plata(r.financiado))}</dd></div></dl>
+  const cuadro = (titulo, filas, extra = '') => `<div class="sim-cuadro"><h4>${esc(titulo)}</h4><table class="tabla sim-tabla"><tbody>${filas}</tbody></table>${extra}</div>`;
+  const final = `<div class="sim-final"><span>Cuota final</span><b class="mono">${esc(plata(r.cuota))}</b></div>`;
+  return `<dl class="cifras grandes sim-cifras"><div><dt>Total en ${r.cuotas} cuotas</dt><dd>${esc(plata(r.totalCredito))}</dd></div><div><dt>Monto financiado</dt><dd>${esc(plata(r.financiado))}</dd></div></dl>
     <div class="sim-cuadros">
-      ${cuadro('1 · Sin gastos de inscripción', f(`${plata(r.capital)} · ${r.cuotas} cuotas · ${plano(r.tasa)}% mensual`, r.cuotaPaso1, true))}
+      ${cuadro('1 · Sin gastos de inscripción', f(`${plata(r.capital)} · ${r.cuotas} cuotas · ${plano(r.tasa)}% mensual`, r.cuotaPaso1, true), final)}
       ${cuadro('2 · Inscripción de prenda (se financia)', `${f('Sellado', r.sellado)}${f('Arancel', r.arancel)}${f('Contratos y administrativos', r.contratos)}${f('Envío de documentación', r.envio)}${f('Gestoría', r.gestoria)}${f('Redondeo', r.redondeo)}${f('Total inscripción', r.gastos, true)}`)}
-      ${cuadro('Otros gastos (sin interés)', `${f('Seguro de vida', r.seguro)}${f('Administrativos', r.administrativos)}${f('Cuota social', r.cuotaSocial)}${f('IGR (sobre intereses)', r.igr)}${f('Total otros gastos', r.otros, true)}`)}
     </div>
+    <details class="sim-otros-res"><summary>Otros gastos (sin interés) <b class="mono">${esc(plata(r.otros))}</b></summary>
+      <table class="tabla sim-tabla"><tbody>${f('Seguro de vida', r.seguro)}${f('Administrativos', r.administrativos)}${f('Cuota social', r.cuotaSocial)}${f('IGR (sobre intereses)', r.igr)}${f('Total otros gastos', r.otros, true)}</tbody></table>
+    </details>
     <p class="hint m0">Cuota fija sobre saldo. Es una simulación, no una oferta.</p>`;
 }
 
