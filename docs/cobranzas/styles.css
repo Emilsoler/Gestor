@@ -647,3 +647,6 @@ body.con-chat .toast{bottom:calc(var(--abajo) + 84px)}  /* que el aviso no tape 
 .sim-otros-res summary b{color:var(--fg);font-weight:600}
 .sim-otros-res .tabla{margin-top:6px;max-width:460px}
 .sim-cuadros{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+
+/* Estado de Deuda y Refinanciación: en el celular, solo el saldo de cada concepto. */
+@media (max-width:720px){.rf-aux{display:none}}

@@ -494,6 +494,26 @@ quitar las dos cosas. 0015 borró el certificado y el permiso guardados y le cer
 persona. Lo que ARCA había respondido se sacó de las consultas guardadas y del historial de cambios. No
 sumar nada de ARCA sin que la persona lo pida.
 
+### Estado de Deuda y Refinanciación (pestaña de "Créditos", al lado de "Vehículo")
+
+Se elige un deudor de la app y se ve lo que debe a una fecha y cómo quedaría refinanciado; es la planilla de
+Excel del estudio (`CALCULO_INTERESES`) con las cuentas de la app. **No guarda nada** (como Vehículo y
+Simulación): es para hablar con el deudor. Las cuentas y el HTML del resultado están en
+`docs/cobranzas/refinanciacion.js` (`estadoRefi`, `htmlRefi`); la pantalla y los eventos, en `app.js`
+(`vistaRefi`, `actualizarRefi`, `accionRefi`, estado en `S.cred.refi`).
+
+- **Deuda**: la liquidación del deudor (`liquidar`: interés simple por cuota, honorarios `hon_pct` %, gastos
+  cargados, pagos ya imputados) + los gastos y honorarios de juicio que se escriban ahí (tasa de justicia,
+  martillero, abogado; para los que no estén cargados en la ficha) + si se tilda, las cuotas a vencer menos
+  los intereses a vencer. Menos la entrega inicial queda el **saldo a financiar**.
+- **Plan**: `armarPlan` (cuota fija sobre saldo, en pesos enteros). La tasa de financiación arranca en la de los
+  créditos prendarios (`TASA_MENSUAL` de `vehiculos.js`, la de la pestaña Simulación) y se puede cambiar; el
+  interés moratorio y los honorarios son los del deudor (se cambian en su ficha, no acá).
+- **"Armar este plan en la ficha"** abre la pestaña Plan del deudor con monto, entrega, cuotas, frecuencia,
+  primer vencimiento y tasa ya cargados, para mandar la propuesta por WhatsApp o guardarlo. Si el deudor ya
+  tiene un plan vigente, solo ofrece abrir la ficha.
+- Pruebas: `node --test dev/tests/refinanciacion.test.mjs` (no necesita el stack; el caso es el de la planilla).
+
 **Cambiar la app**: `docs/cobranzas/` (`app.js` interfaz, `datos.js` la base, `calculo.js` cuentas,
 `textos.js` fechas, importes y mensajes, `creditos.js` lo que se muestra de una consulta al BCRA (por CUIT y por cheque),
 `styles.css`). Si se toca una cuenta, también

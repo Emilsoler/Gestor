@@ -9,6 +9,7 @@ import {
   avisoCuit, soloDigitos, fichaConsulta, filaConsulta, textoConsulta, deudoresDelCuit,
   avisoCheque, numeroCheque, bancosRecientes, opcionesBancos, bancoEnLista, fichaCheque, textoCheque, filaCheque,
 } from './creditos.js';
+import { nuevaRefi, estadoRefi, htmlRefi } from './refinanciacion.js';
 import { modeloSimple, filaModelo, fichaVehiculo, preciosPorAnio, htmlSimulador, htmlSimulacion, estadoSimulador, GASTOS_DEFECTO } from './vehiculos.js';
 import {
   liquidar, resumen, armarPlan, estadoPlan, planVigente, sumarMeses, totalPago, TRAMOS, tramoDe, CADAS, nombrePropio, detalleCuotas, ES_FECHA,
@@ -21,7 +22,7 @@ import { importe, enCelda, idNuevo, r2 } from '../liquidacion.js';
 import { xlsx } from '../excel.js';
 import { abrirChat } from './chat.js';
 
-const VERSION = '1.7.0';
+const VERSION = '1.8.0';
 const CLAVE_MIN = 10;
 const TIPOS_GESTION = ['Llamada', 'WhatsApp', 'Visita', 'Email', 'Carta documento', 'Promesa de pago', 'Nota'];
 const MEDIOS = ['Efectivo', 'Transferencia', 'Depósito', 'Cheque', 'Débito', 'Otro'];
@@ -32,7 +33,7 @@ const CHIPS = [['activos', 'Activos'], ['mora', 'En mora'], ['plan', 'Con plan']
 const VISTAS = { inicio: 'Inicio', deudores: 'Deudores', planes: 'Planes', creditos: 'Aprobación de créditos' };
 const AYUDA_CUIT = 'La situación en cada banco o financiera, los últimos 24 meses y los cheques rechazados.';
 const AYUDA_CHEQUE = 'Si el cheque fue denunciado como extraviado, robado o adulterado.';
-const MODOS_CREDITO = [['cuit', 'Deudas por CUIT'], ['cheque', 'Cheques denunciados'], ['vehiculo', 'Vehículo'], ['simulacion', 'Simulación']];
+const MODOS_CREDITO = [['cuit', 'Deudas por CUIT'], ['cheque', 'Cheques denunciados'], ['vehiculo', 'Vehículo'], ['refi', 'Estado de Deuda y Refinanciación'], ['simulacion', 'Simulación']];
 const JUICIOS = '../'; // el gestor de juicios, en la misma base
 
 const nuevaSim = () => ({ valor: '', capital: '', capitalManual: false, cuotas: '24', tasa: '7', g: { ...GASTOS_DEFECTO } });
@@ -52,10 +53,12 @@ const S = {
     veh: { q: '', marca: '', marcas: null, marcasCargando: false, marcasError: '', buscando: false, error: '', lista: null, sel: null, precios: null, cero: null, cargando: false, errorPrecios: '', anio: '',
       // Simulador de crédito: valor elegido ('' = el año más nuevo), capital (propuesto salvo que se escriba), cuotas y gestoría.
       sim: nuevaSim() },
+    // Estado de Deuda y Refinanciación: el deudor elegido y lo que se escribe para armar el plan.
+    refi: nuevaRefi(),
   },
 };
 try { S.vista = VISTAS[localStorage.getItem('cb.vista')] ? localStorage.getItem('cb.vista') : 'inicio'; } catch { /* sin almacenamiento */ }
-try { const m = localStorage.getItem('cb.credModo'); if (m === 'cheque' || m === 'vehiculo' || m === 'simulacion') S.cred.modo = m; } catch { /* sin almacenamiento */ }
+try { const m = localStorage.getItem('cb.credModo'); if (m === 'cheque' || m === 'vehiculo' || m === 'refi' || m === 'simulacion') S.cred.modo = m; } catch { /* sin almacenamiento */ }
 try { S.maxi = localStorage.getItem('cb.maxi') === '1'; } catch { /* sin almacenamiento */ }
 
 // ───────────────────────── Utilidades ─────────────────────────
@@ -441,7 +444,7 @@ function vistaPlanes(todos) {
 
 function vistaCreditos() {
   const modos = `<nav class="tabs cr-modos" role="tablist" aria-label="Qué consultar">${MODOS_CREDITO.map(([k, l]) => `<button role="tab" data-cr-modo="${k}" aria-selected="${S.cred.modo === k}">${esc(l)}</button>`).join('')}</nav>`;
-  return `<div class="creditos">${modos}${S.cred.modo === 'cheque' ? vistaCheques() : S.cred.modo === 'vehiculo' ? vistaVehiculo() : S.cred.modo === 'simulacion' ? vistaSimulacion() : vistaCuit()}</div>`;
+  return `<div class="creditos">${modos}${S.cred.modo === 'cheque' ? vistaCheques() : S.cred.modo === 'vehiculo' ? vistaVehiculo() : S.cred.modo === 'refi' ? vistaRefi() : S.cred.modo === 'simulacion' ? vistaSimulacion() : vistaCuit()}</div>`;
 }
 
 function cambiarModo(m) {
@@ -596,6 +599,86 @@ function vistaVehiculo() {
   return `${form}${resultado}${historial}`;
 }
 
+
+// ───────────────────────── Estado de Deuda y Refinanciación ─────────────────────────
+// Se elige un deudor de la app y se ve lo que debe a una fecha (con las cuentas de su liquidación) y cómo
+// quedaría refinanciado. No se guarda nada: si el plan sirve, "Armar este plan en la ficha" lo lleva a la
+// pestaña Plan del deudor con los mismos datos, para mandarlo por WhatsApp o guardarlo.
+
+function vistaRefi() {
+  const R = S.cred.refi, d = R.id ? deudor(R.id) : null;
+  subtitulo('Estado de deuda y refinanciación');
+  if (!d) {
+    if (R.id) R.id = '';
+    const q = R.q.trim().toLowerCase();
+    const xs = D.deudores.map((x) => ({ d: x, r: res(x) })).filter((x) => x.r.activo && busca(x.d, q)).sort((a, b) => b.r.saldo - a.r.saldo);
+    return `<section class="card cr-simulador cr-sim-vista" id="crRefi">
+      <div class="card-cab"><h3>Estado de deuda y refinanciación</h3>${xs.length ? `<span class="hint">${xs.length > 25 ? 'los 25 con más deuda' : cuantos(xs.length, 'deudor', 'deudores')}</span>` : ''}</div>
+      <p class="hint m0">Elegí un deudor para ver lo que debe a hoy y armar un plan de refinanciación.</p>
+      <input type="search" class="cr-filtro" ${atar('cred.refi.q')} placeholder="Buscar por nombre, DNI, socio o dominio" aria-label="Buscar un deudor" autocomplete="off">
+      ${xs.length ? `<div class="cr-lista">${xs.slice(0, 25).map(({ d: x, r }) => `<button type="button" class="cr-fila" data-refi="${esc(x.id)}">
+        <span class="mono">${esc(x.socio || '')}</span>
+        <span class="cr-fila-t"><b>${esc(nombre(x))}</b><span class="sub">${esc(r.texto)}</span></span>
+        <span class="cr-fila-f mono">${esc(plata(r.saldo))}</span></button>`).join('')}</div>` : `<p class="hint m0">${D.deudores.length ? 'No hay deudores que coincidan.' : 'Todavía no hay deudores cargados.'}</p>`}
+    </section>`;
+  }
+  const r = res(d);
+  const campo = (k, t, extra = '') => `<label class="f">${t}<input ${atar('cred.refi.' + k)} inputmode="decimal" autocomplete="off"${extra}></label>`;
+  const plata$ = (k, t) => campo(k, t, ' data-importe');
+  return `<section class="card cr-simulador cr-sim-vista" id="crRefi">
+    <div class="card-cab"><div class="cr-quien"><h3>${esc(nombre(d))}</h3><span class="hint">${esc(r.texto)} · interés ${esc(String(d.tasa))}% mensual · honorarios ${esc(String(d.hon_pct))}%</span></div>
+      <button class="btn small" type="button" data-a="rf-cambiar">Cambiar deudor</button></div>
+    <div class="sim-form">
+      <label class="f">Fecha de cálculo<input type="date" id="rf_fecha" ${atar('cred.refi.fecha')}></label>
+      ${plata$('justicia', 'Tasa de justicia ($)')}${plata$('martillero', 'Honorarios martillero ($)')}${plata$('abogado', 'Honorarios abogado ($)')}
+      ${plata$('iVencer', '(−) Intereses a vencer ($)')}
+      ${plata$('entrega', '(−) Entrega inicial ($)')}
+    </div>
+    <label class="chk"><input type="checkbox" data-k="cred.refi.aVencer" ${S.cred.refi.aVencer ? 'checked' : ''}> Incluir las cuotas a vencer (menos los intereses a vencer)</label>
+    <p class="hint m0">Los gastos y honorarios de arriba se suman a los que ya estén cargados en la ficha del deudor (pestaña Liquidación). Los pagos que ya hizo se descuentan solos.</p>
+    <h4>Plan de refinanciación</h4>
+    <div class="sim-form">
+      <label class="f">Cantidad de cuotas<input id="rf_cuotas" ${atar('cred.refi.cuotas')} inputmode="numeric" maxlength="3" autocomplete="off"></label>
+      <label class="f">Tasa de financiación (% mensual)<input id="rf_tasa" ${atar('cred.refi.tasa')} inputmode="decimal" autocomplete="off"></label>
+      <label class="f">Frecuencia<select data-k="cred.refi.cada">${opciones(Object.entries(CADAS), S.cred.refi.cada)}</select></label>
+      <label class="f">Vence la 1ª cuota<input type="date" id="rf_primer" data-k="cred.refi.primerVto" value="${esc(estadoRefi(d, S.cred.refi, hoy()).primerVto)}"></label>
+    </div>
+    <p class="hint m0">La tasa es la de los créditos prendarios (la de la pestaña Simulación); se puede cambiar.</p>
+    <div id="refiResultado" aria-live="polite">${htmlRefi(estadoRefi(d, S.cred.refi, hoy()))}</div>
+    <div class="actions" id="refiAcciones">${accionesRefi(r)}</div>
+  </section>`;
+}
+function accionesRefi(r) {
+  return r.plan
+    ? `<span class="hint">Ya tiene un plan vigente: se ve en su ficha.</span><button class="btn" type="button" data-a="rf-ficha">Abrir la ficha</button>`
+    : `<button class="btn primary" type="button" data-a="rf-plan">Armar este plan en la ficha</button><button class="btn" type="button" data-a="rf-ficha">Abrir la ficha</button>`;
+}
+
+/** Redibuja solo el resultado al escribir, para no perder el foco. */
+function actualizarRefi(k) {
+  const R = S.cred.refi, d = R.id ? deudor(R.id) : null; if (!d) return;
+  const e = estadoRefi(d, R, hoy());
+  if (k === 'cred.refi.fecha' && !ES_FECHA.test(R.primerVto || '')) { const p = $('#rf_primer'); if (p) p.value = e.primerVto; }
+  const c = $('#refiResultado'); if (c) c.innerHTML = htmlRefi(e);
+}
+function elegirRefi(id) {
+  if (!deudor(id)) return;
+  Object.assign(S.cred.refi, nuevaRefi(), { id, fecha: hoy() });
+  render();
+}
+function accionRefi(act) {
+  const R = S.cred.refi, d = R.id ? deudor(R.id) : null;
+  if (act === 'rf-cambiar') { Object.assign(R, nuevaRefi(), { q: '' }); render(); return; }
+  if (!d) return;
+  if (act === 'rf-ficha') { abrirDeudor(d.id); return; }
+  if (act === 'rf-plan') {
+    const e = estadoRefi(d, R, hoy());
+    abrirDeudor(d.id, 'plan', 'plan');
+    if (!S.f?.plan) return; // ya tiene un plan vigente: la ficha lo muestra
+    Object.assign(S.f.plan, { monto: enCelda(e.deuda), anticipo: e.entrega ? enCelda(e.entrega) : '', n: String(e.n), cada: e.cada, primerVto: e.primerVto, tasa: String(R.tasa).trim() || '0' });
+    renderFicha(false, true);
+  }
+}
 
 /** La pestaña "Simulación": usa el vehículo elegido en la pestaña Vehículo (su valor de referencia). */
 function vistaSimulacion() {
@@ -1748,6 +1831,7 @@ document.addEventListener('click', async (e) => {
   const cq = t.closest('[data-consulta]'); if (cq) { await abrirConsulta(cq.dataset.consulta); return; }
   const cm = t.closest('[data-cr-modo]'); if (cm) { cambiarModo(cm.dataset.crModo); return; }
   const veh = t.closest('[data-vehiculo]'); if (veh) { await elegirVehiculo(veh.dataset.vehiculo); return; }
+  const rf = t.closest('[data-refi]'); if (rf) { elegirRefi(rf.dataset.refi); return; }
   const chq = t.closest('[data-cheque]'); if (chq) { abrirCheque(chq.dataset.cheque); return; }
   const a = t.closest('[data-a]'); if (!a) return;
   const act = a.dataset.a;
@@ -1756,6 +1840,7 @@ document.addEventListener('click', async (e) => {
     if (act === 'cr-copiar') { accionCredito(act, a); return; } // sin esperas: el portapapeles lo pide así
     await unaVez(a, (b) => accionCredito(act, b)); return;
   }
+  if (act.startsWith('rf-') && !S.panel && !S.abierto) { accionRefi(act); return; }
   if (act.startsWith('ve-') && !S.panel && !S.abierto) { await unaVez(a, () => accionVehiculo(act)); return; }
   if (act.startsWith('ch-') && !S.panel && !S.abierto) {
     if (act === 'ch-copiar') { accionCheque(act, a); return; } // ídem
@@ -1781,6 +1866,8 @@ document.addEventListener('input', (e) => {
   const k = el.dataset?.k; if (!k) return;
   poner(k, el.type === 'checkbox' ? el.checked : el.value);
   if (k.startsWith('cred.veh.sim.')) { actualizarSimulador(k); return; }
+  if (k === 'cred.refi.q') { render(); return; }
+  if (k.startsWith('cred.refi.')) { actualizarRefi(k); return; }
   if (k === 'cred.cuit') { actualizarCuit(); return; }
   if (k === 'cred.numero' || k === 'cred.entidad') { actualizarCheque(); return; }
   if (k === 'cred.filtro' || k === 'cred.chFiltro') { render(); return; }
@@ -1801,6 +1888,7 @@ document.addEventListener('change', (e) => {
   if (!k) return;
   poner(k, el.type === 'checkbox' ? el.checked : el.value);
   if (k.startsWith('cred.veh.sim.')) { actualizarSimulador(k); return; }
+  if (k.startsWith('cred.refi.') && k !== 'cred.refi.q') { actualizarRefi(k); return; }
   if (k === 'cred.veh.marca') { S.cred.veh.q = ''; if (el.value) buscarVehiculos({ marca: el.value }); return; }
   if (k === 'cred.entidad') { actualizarCheque(); return; } // por si el navegador no avisa con "input"
   if (k === 'f.msg.modelo') { const d = deudor(S.abierto); S.f.msg.propuesta = S.f.msg.propuesta && el.value === 'plan'; S.f.msg.texto = S.f.msg.base = generar(d, S.f.msg); renderFicha(); return; }
