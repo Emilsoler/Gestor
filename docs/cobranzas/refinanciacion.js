@@ -24,9 +24,9 @@ export const nuevaRefi = (tasaMora = '5') => ({
   fuente: 'mano', // 'mano': datos cargados a mano · 'deudor': los de un deudor de la app (`id`)
   id: '', q: '', fecha: '',
   // A mano: el crédito (la cuota, cuántas son y cuándo vence la 1ª), desde cuándo está en mora (`moraTipo`:
-  // 'cuota' = N° de cuota o 'fecha'; las anteriores se toman como pagadas), otras cuotas ya pagadas, el interés
+  // 'cuota' = N° de cuota o 'fecha'; las anteriores se toman como pagadas), el interés
   // y los honorarios, y los pagos parciales ({ fecha, monto, imp: 'capital' | 'intereses' | 'honorarios' }).
-  cuota: '', cantCuotas: '', vto1: '', moraTipo: 'cuota', mora: '', pagadas: '', tasaMora: String(tasaMora), hon: '0', pagos: [],
+  cuota: '', cantCuotas: '', vto1: '', moraTipo: 'cuota', mora: '', tasaMora: String(tasaMora), hon: '0', pagos: [],
   justicia: '', martillero: '', abogado: '', otros: '', // gastos y honorarios de juicio (los de un deudor ya cargados en su ficha se suman aparte)
   plan: false, // el plan de refinanciación no se arma solo: se abre con un botón
   aVencer: false, iVencer: '', entrega: '',
@@ -34,16 +34,15 @@ export const nuevaRefi = (tasaMora = '5') => ({
 });
 
 // ───────────────────────── Casos guardados ─────────────────────────
-// Un caso es el formulario tal cual (sin las cuentas, que se rehacen al abrirlo). Al guardar, la fecha de
-// cálculo queda escrita: un caso es una foto de la negociación de ese día, y se cambia desde su campo.
+// Un caso es el formulario tal cual, sin las cuentas: al abrirlo se rehacen a la fecha de hoy.
 
-const TEXTOS = ['id', 'fecha', 'cuota', 'cantCuotas', 'vto1', 'mora', 'pagadas', 'tasaMora', 'hon', 'justicia', 'martillero', 'abogado', 'otros', 'iVencer', 'entrega', 'cuotas', 'tasa', 'primerVto'];
+const TEXTOS = ['id', 'cuota', 'cantCuotas', 'vto1', 'mora', 'tasaMora', 'hon', 'justicia', 'martillero', 'abogado', 'otros', 'iVencer', 'entrega', 'cuotas', 'tasa', 'primerVto'];
 const IMPUTACIONES = ['capital', 'intereses', 'honorarios'];
 
-/** Lo que se guarda de un caso: el formulario sin el buscador, con la fecha de cálculo explícita. */
-export function datosCaso(R, hoy) {
-  const { q, ...resto } = structuredClone(R);
-  return { ...resto, fecha: R.fecha || hoy };
+/** Lo que se guarda de un caso: el formulario sin el buscador y sin la fecha de cálculo (siempre es hoy). */
+export function datosCaso(R) {
+  const { q, fecha, ...resto } = structuredClone(R);
+  return resto;
 }
 
 /** Arma el formulario desde lo guardado. Lo que falte o venga raro queda como en un formulario nuevo. */
@@ -65,22 +64,9 @@ export function restaurarCaso(datos, tasaMora = '5') {
 
 const FRECUENCIA = { mes: 'mensuales', quincena: 'cada 15 días', semana: 'semanales' };
 
-/** "5-24, 30" o "1 a 4 y 7" → { 5…24, 30 }: los números de cuota que ya se pagaron. */
-export function cuotasPagadas(texto) {
-  const out = new Set();
-  const t = String(texto ?? '');
-  for (const m of t.matchAll(/(\d+)\s*(?:-|–|a)\s*(\d+)|(\d+)/g)) {
-    if (m[3] != null) { out.add(+m[3]); continue; }
-    const a = +m[1], b = +m[2];
-    for (let k = Math.min(a, b); k <= Math.max(a, b) && k <= 1000; k++) out.add(k);
-  }
-  return out;
-}
-
-/** Un deudor armado con lo escrito a mano: las cuotas que faltan pagar (las pagadas no se cargan) y los pagos parciales. */
+/** Un deudor armado con lo escrito a mano: las cuotas que faltan pagar (las anteriores a la mora no se cargan) y los pagos parciales. */
 export function deudorManual(R) {
   const cuota = Math.max(0, importe(R.cuota)), cant = Math.max(0, Math.min(CUOTAS_MAX, parseInt(R.cantCuotas, 10) || 0));
-  const pagadas = cuotasPagadas(R.pagadas);
   // En mora desde una cuota o una fecha: las anteriores se toman como pagadas. Vacío: desde la cuota 1.
   const moraN = R.moraTipo !== 'fecha' ? parseInt(R.mora, 10) || 0 : 0;
   const moraFecha = R.moraTipo === 'fecha' && ES_FECHA.test(R.mora || '') ? R.mora : '';
@@ -88,7 +74,7 @@ export function deudorManual(R) {
   if (cuota > 0 && ES_FECHA.test(R.vto1 || '')) {
     for (let k = 0; k < cant; k++) {
       const vto = sumarMeses(R.vto1, k);
-      if (pagadas.has(k + 1) || k + 1 < moraN || (moraFecha && vto < moraFecha)) continue;
+      if (k + 1 < moraN || (moraFecha && vto < moraFecha)) continue;
       cuotas.push({ id: 'c' + (k + 1), n: k + 1, de: cant, vto, importe: cuota });
     }
   }

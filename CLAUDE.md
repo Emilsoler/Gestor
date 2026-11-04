@@ -508,9 +508,9 @@ solo (como en Vehículo y Simulación), pero se puede **guardar como caso** (ver
 (`vistaRefi`, `actualizarRefi`, `accionRefi`, estado en `S.cred.refi`).
 
 - **Dos fuentes de datos** (`R.fuente`): **"Cargar a mano"** (la de arranque, sin deudor) y **"De un deudor"**.
-  A mano se cargan: fecha de cálculo, el crédito (vencimiento de la cuota 1, monto y cantidad de cuotas), **desde
+  A mano se cargan: el crédito (vencimiento de la cuota 1, monto y cantidad de cuotas), **desde
   cuándo está en mora** (`moraTipo`: un N° de cuota o una fecha; las cuotas anteriores se toman como pagadas, y vacío
-  es desde la cuota 1), otras cuotas ya pagadas (`7, 9-10`; no entran), interés moratorio, honorarios y los
+  es desde la cuota 1), interés moratorio, honorarios y los
   **pagos parciales** (fecha, monto y a qué rubro se imputa). `deudorManual` arma con eso un deudor
   y la cuenta es la misma que con uno real (`liquidar`). Con un deudor, la deuda sale de su liquidación
   (cuotas, pagos, gastos cargados, su interés y sus honorarios, que se cambian en su ficha).
@@ -535,8 +535,8 @@ solo (como en Vehículo y Simulación), pero se puede **guardar como caso** (ver
   "Guardar cambios", "Guardar como caso nuevo", "Cerrar caso" y "Eliminar" (con confirmación), y la lista para abrir
   otro. Una fila por caso: `nombre`, `deudor` (id del deudor de origen o null; sin clave foránea) y `datos`, el formulario
   tal cual (`nuevaRefi`; `datosCaso` y `restaurarCaso` de `refinanciacion.js` lo guardan y lo leen, tolerando lo que falte o
-  venga raro). **No guarda cuentas**: al abrir un caso se recalcula con la lógica de hoy. La fecha de cálculo queda escrita al
-  guardar (el caso es una foto de ese día); se cambia desde su campo. Mismas barreras, `rev` (si otro dispositivo lo cambió, avisa
+  venga raro). **No guarda cuentas**: al abrir un caso se recalcula con la lógica de hoy y a la fecha de hoy (la persona pidió
+  sacar el campo "Fecha de cálculo", y también "Otras cuotas ya pagadas": lo que traigan casos viejos se ignora). Mismas barreras, `rev` (si otro dispositivo lo cambió, avisa
   en vez de pisar), historial y `gestor.deshacer`. Tabla opcional en `datos.js` (`D.casos`): si la base no la tiene, la pestaña
   sigue andando y avisa "Falta activar el guardado de casos". Para leerlos:
   `select nombre, deudor, actualizado, actualizado_por from public.casos_refi order by actualizado desc;`

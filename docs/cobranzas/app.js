@@ -640,8 +640,7 @@ function vistaRefi() {
   if (d) {
     const r = res(d);
     datos = `<div class="cr-cab"><div class="cr-quien"><h3>${esc(nombre(d))}</h3><span class="hint">${esc(r.texto)} · interés ${esc(String(d.tasa))}% mensual · honorarios ${esc(String(d.hon_pct))}% (se cambian en su ficha)</span></div>
-      <button class="btn small" type="button" data-a="rf-cambiar">Cambiar deudor</button></div>
-    <div class="sim-form">${fechaCampo('fecha', 'Fecha de cálculo', R.fecha || hoy())}</div>`;
+      <button class="btn small" type="button" data-a="rf-cambiar">Cambiar deudor</button></div>`;
   } else {
     const pagos = R.pagos.map((p, i) => `<div class="sim-form rf-pago">
       <label class="f">Fecha del pago<input type="date" data-k="${k('pagos.' + i + '.fecha')}" value="${esc(p.fecha)}"></label>
@@ -649,7 +648,6 @@ function vistaRefi() {
       <label class="f">Se imputa a<select data-k="${k('pagos.' + i + '.imp')}">${opciones(IMPUTA, p.imp)}</select></label>
       <button class="btn small" type="button" data-a="rf-pago-menos" data-i="${i}" aria-label="Quitar este pago">Quitar</button></div>`).join('');
     datos = `<div class="sim-form">
-      ${fechaCampo('fecha', 'Fecha de cálculo', R.fecha || hoy())}
       ${fechaCampo('vto1', 'Vence la cuota 1 del crédito', R.vto1)}
       ${dinero('cuota', 'Monto de la cuota ($)')}
       ${campo('cantCuotas', 'Cantidad de cuotas del crédito', ' maxlength="3"', 'numeric')}
@@ -658,7 +656,6 @@ function vistaRefi() {
     <div class="sim-form">
       <label class="f">En mora desde<select data-k="${k('moraTipo')}">${opciones([['cuota', 'la cuota N°'], ['fecha', 'la fecha']], R.moraTipo)}</select></label>
       ${R.moraTipo === 'fecha' ? fechaCampo('mora', 'Fecha desde la que está en mora', R.mora) : campo('mora', 'N° de cuota en la que empezó la mora', ' maxlength="3" placeholder="ej.: 5"', 'numeric')}
-      ${campo('pagadas', 'Otras cuotas ya pagadas (opcional)', ' placeholder="ej.: 7, 9-10"', 'text')}
       ${campo('tasaMora', 'Interés moratorio (% mensual)')}
       ${campo('hon', 'Honorarios (%)')}
     </div>
@@ -725,7 +722,6 @@ function accionesRefi(d) {
 /** Redibuja solo el resultado al escribir, para no perder el foco. */
 function actualizarRefi(k) {
   const R = S.cred.refi, e = refiEstado();
-  if (k === 'cred.refi.fecha' && !ES_FECHA.test(R.primerVto || '')) { const p = $('#rf_primerVto'); if (p) p.value = e.primerVto; }
   const c = $('#refiEstado'); if (c) c.innerHTML = htmlEstadoRefi(e);
   const p = $('#refiPlan'); if (p) p.innerHTML = htmlPlanRefi(e);
 }
@@ -741,7 +737,7 @@ async function accionCaso(act) {
   if (act === 'rf-caso-cerrar') { S.cred.caso = { id: '', nombre: '', confirmar: false }; render(); return; }
   const nombre = C.nombre.trim();
   if (act !== 'rf-caso-borrar' && !nombre) { toast('Escribí un nombre para el caso'); $('#rf_nombreCaso')?.focus(); return; }
-  const R = S.cred.refi, datos = datosCaso(R, hoy());
+  const R = S.cred.refi, datos = datosCaso(R);
   try {
     if (act === 'rf-caso-nuevo') {
       const f = await crearCasoRefi(nombre, R.fuente === 'deudor' ? R.id : '', datos);
