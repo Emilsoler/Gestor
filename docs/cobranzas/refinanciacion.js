@@ -18,7 +18,7 @@ import { TASA_MENSUAL, CUOTAS_MAX } from './vehiculos.js';
 
 /**
  * Lo que se escribe en la pantalla (textos, como los escribe la persona). `tasaMora` es el interés
- * moratorio mensual de arranque (el de los ajustes de la app); los honorarios arrancan en 5 %, como la planilla.
+ * moratorio mensual de arranque (el de los ajustes de la app); los honorarios arrancan en 0 % (se completan solo si corresponden).
  */
 export const nuevaRefi = (tasaMora = '5') => ({
   fuente: 'mano', // 'mano': datos cargados a mano · 'deudor': los de un deudor de la app (`id`)
@@ -26,7 +26,7 @@ export const nuevaRefi = (tasaMora = '5') => ({
   // A mano: el crédito (la cuota, cuántas son y cuándo vence la 1ª), desde cuándo está en mora (`moraTipo`:
   // 'cuota' = N° de cuota o 'fecha'; las anteriores se toman como pagadas), otras cuotas ya pagadas, el interés
   // y los honorarios, y los pagos parciales ({ fecha, monto, imp: 'capital' | 'intereses' | 'honorarios' }).
-  cuota: '', cantCuotas: '', vto1: '', moraTipo: 'cuota', mora: '', pagadas: '', tasaMora: String(tasaMora), hon: '5', pagos: [],
+  cuota: '', cantCuotas: '', vto1: '', moraTipo: 'cuota', mora: '', pagadas: '', tasaMora: String(tasaMora), hon: '0', pagos: [],
   justicia: '', martillero: '', abogado: '', otros: '', // gastos y honorarios de juicio (los de un deudor ya cargados en su ficha se suman aparte)
   plan: false, // el plan de refinanciación no se arma solo: se abre con un botón
   aVencer: false, iVencer: '', entrega: '',

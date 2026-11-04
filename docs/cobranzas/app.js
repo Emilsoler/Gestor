@@ -22,7 +22,7 @@ import { importe, enCelda, idNuevo, r2 } from '../liquidacion.js';
 import { xlsx } from '../excel.js';
 import { abrirChat } from './chat.js';
 
-const VERSION = '1.9.1';
+const VERSION = '1.9.2';
 const CLAVE_MIN = 10;
 const TIPOS_GESTION = ['Llamada', 'WhatsApp', 'Visita', 'Email', 'Carta documento', 'Promesa de pago', 'Nota'];
 const MEDIOS = ['Efectivo', 'Transferencia', 'Depósito', 'Cheque', 'Débito', 'Otro'];
@@ -56,6 +56,7 @@ const S = {
     // Estado de Deuda y Refinanciación: el deudor elegido y lo que se escribe para armar el plan.
     refi: nuevaRefi(String(ajustes().tasa)),
     caso: { id: '', nombre: '', confirmar: false }, // el caso guardado que está abierto (si hay) y el nombre con que se guarda
+    gastosAbierto: false, // «Gastos y honorarios de juicio» empieza plegado; si se despliega, queda así al redibujar
   },
 };
 try { S.vista = VISTAS[localStorage.getItem('cb.vista')] ? localStorage.getItem('cb.vista') : 'inicio'; } catch { /* sin almacenamiento */ }
@@ -669,9 +670,9 @@ function vistaRefi() {
   return `<section class="card cr-simulador cr-sim-vista" id="crRefi">
     <div class="card-cab"><h3>Estado de deuda y refinanciación</h3></div>${bloqueCasos(true)}${fuente}
     ${datos}
-    <h4>Gastos y honorarios de juicio</h4>
+    <details class="rf-gastos" data-gastos${S.cred.gastosAbierto ? ' open' : ''}><summary>Gastos y honorarios de juicio${['justicia', 'martillero', 'abogado', 'otros'].some((c) => String(R[c] || '').trim()) ? ' <b>· con importes cargados</b>' : ''}</summary>
     <div class="sim-form">${dinero('justicia', 'Tasa de justicia ($)')}${dinero('martillero', 'Honorarios martillero ($)')}${dinero('abogado', 'Honorarios abogado ($)')}${dinero('otros', 'Otros gastos ($)')}</div>
-    ${d ? '<p class="hint m0">Se suman a los que ya estén cargados en la ficha del deudor (pestaña Liquidación). Los pagos que ya hizo se descuentan solos.</p>' : ''}
+    ${d ? '<p class="hint m0">Se suman a los que ya estén cargados en la ficha del deudor (pestaña Liquidación). Los pagos que ya hizo se descuentan solos.</p>' : ''}</details>
     <div id="refiEstado" aria-live="polite">${htmlEstadoRefi(e)}</div>
     ${R.plan ? `<h4>Plan de refinanciación</h4>
     <label class="chk"><input type="checkbox" data-k="${k('aVencer')}" ${R.aVencer ? 'checked' : ''}> Incluir las cuotas a vencer (menos los intereses a vencer)</label>
@@ -687,6 +688,7 @@ function vistaRefi() {
     <div class="actions" id="refiAcciones">${accionesRefi(d)}</div>
   </section>`;
 }
+document.addEventListener('toggle', (e) => { if (e.target.matches?.('details[data-gastos]')) S.cred.gastosAbierto = e.target.open; }, true);
 /** Casos guardados: nombre y botones para guardar el que está en pantalla, y la lista para abrir otro. */
 function bloqueCasos(guardar) {
   if (!D.casos) return `<p class="hint m0">Falta activar el guardado de casos: la base todavía no tiene dónde guardarlos. Pedile a Claude que lo active.</p>`;
