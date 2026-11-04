@@ -147,3 +147,42 @@ test('a mano sin datos no inventa una deuda y pide completar', () => {
   assert.equal(deudorManual({ ...nuevaRefi(), cuota: '1000', cantCuotas: '3' }).cuotas.length, 0, 'sin primer vencimiento no hay cuotas');
   assert.equal(deudorManual({ ...nuevaRefi(), cuota: '1000', cantCuotas: '999', vto1: '2026-01-31' }).cuotas.length, 120);
 });
+
+// ───────────────────────── Casos guardados ─────────────────────────
+import { datosCaso, restaurarCaso } from '../../docs/cobranzas/refinanciacion.js';
+
+test('datosCaso: sin buscador y con la fecha de cálculo escrita', () => {
+  const R = nuevaRefi('5'); R.q = 'perez'; R.cuota = '100.000';
+  const d = datosCaso(R, '2026-11-04');
+  assert.equal('q' in d, false);
+  assert.equal(d.fecha, '2026-11-04');
+  assert.equal(d.cuota, '100.000');
+  R.fecha = '2026-10-01';
+  assert.equal(datosCaso(R, '2026-11-04').fecha, '2026-10-01');
+  assert.equal(R.q, 'perez', 'no toca el original');
+});
+
+test('restaurarCaso: ida y vuelta da el mismo formulario (menos el buscador)', () => {
+  const R = nuevaRefi('5');
+  Object.assign(R, { cuota: '50.000', cantCuotas: '24', vto1: '2026-03-10', pagadas: '1-4', hon: '8', aVencer: true, cada: 'quincena', entrega: '200.000',
+    pagos: [{ fecha: '2026-05-01', monto: '30.000', imp: 'intereses' }] });
+  const vuelta = restaurarCaso(JSON.parse(JSON.stringify(datosCaso(R, '2026-11-04'))), '5');
+  assert.deepEqual(vuelta, { ...R, fecha: '2026-11-04' });
+  const a = estadoRefi(null, { ...R, fecha: '2026-11-04' }, '2026-11-04'), b = estadoRefi(null, vuelta, '2026-11-04');
+  assert.equal(b.deuda, a.deuda);
+  assert.deepEqual(b.plan.cuotas, a.plan.cuotas);
+});
+
+test('restaurarCaso: datos vacíos, rotos o de otra forma no rompen nada', () => {
+  assert.deepEqual(restaurarCaso({}, '5'), nuevaRefi('5'));
+  assert.deepEqual(restaurarCaso(null, '5'), nuevaRefi('5'));
+  assert.deepEqual(restaurarCaso([1, 2], '7'), nuevaRefi('7'));
+  const r = restaurarCaso({ fuente: 'deudor', aVencer: 'si', cada: 'siglo', cuota: { x: 1 }, pagos: [null, 3, { imp: 'otro', monto: 5 }], inventado: 1 }, '5');
+  assert.equal(r.fuente, 'mano', 'un deudor sin id vuelve a mano');
+  assert.equal(r.aVencer, false);
+  assert.equal(r.cada, 'mes');
+  assert.equal(r.cuota, '');
+  assert.deepEqual(r.pagos, [{ fecha: '', monto: '5', imp: 'capital' }]);
+  assert.equal('inventado' in r, false);
+  assert.equal(restaurarCaso({ fuente: 'deudor', id: 'abc' }, '5').fuente, 'deudor');
+});

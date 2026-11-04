@@ -3,13 +3,13 @@
 import {
   D, iniciar, reconectar, entrar, salir, cambiarClave, alCambiar, mensaje, ajustes, ESTADOS,
   crearDeudor, cambiarDeudor, borrarDeudor, crearModelo, guardarModelo, borrarModelo, guardarAjustes,
-  consultarInfoAuto, consultarBCRA, detalleConsulta, detalleGuardado, borrarConsulta, consultarCheque, entidadesCheques, borrarConsultaCheque,
+  consultarInfoAuto, consultarBCRA, detalleConsulta, detalleGuardado, borrarConsulta, consultarCheque, entidadesCheques, borrarConsultaCheque, crearCasoRefi, actualizarCasoRefi, borrarCasoRefi,
 } from './datos.js';
 import {
   avisoCuit, soloDigitos, fichaConsulta, filaConsulta, textoConsulta, deudoresDelCuit,
   avisoCheque, numeroCheque, bancosRecientes, opcionesBancos, bancoEnLista, fichaCheque, textoCheque, filaCheque,
 } from './creditos.js';
-import { nuevaRefi, estadoRefi, htmlRefi } from './refinanciacion.js';
+import { nuevaRefi, estadoRefi, htmlRefi, datosCaso, restaurarCaso } from './refinanciacion.js';
 import { modeloSimple, filaModelo, fichaVehiculo, preciosPorAnio, htmlSimulador, htmlSimulacion, estadoSimulador, GASTOS_DEFECTO } from './vehiculos.js';
 import {
   liquidar, resumen, armarPlan, estadoPlan, planVigente, sumarMeses, totalPago, TRAMOS, tramoDe, CADAS, nombrePropio, detalleCuotas, ES_FECHA,
@@ -22,7 +22,7 @@ import { importe, enCelda, idNuevo, r2 } from '../liquidacion.js';
 import { xlsx } from '../excel.js';
 import { abrirChat } from './chat.js';
 
-const VERSION = '1.8.1';
+const VERSION = '1.9.0';
 const CLAVE_MIN = 10;
 const TIPOS_GESTION = ['Llamada', 'WhatsApp', 'Visita', 'Email', 'Carta documento', 'Promesa de pago', 'Nota'];
 const MEDIOS = ['Efectivo', 'Transferencia', 'Depósito', 'Cheque', 'Débito', 'Otro'];
@@ -55,6 +55,7 @@ const S = {
       sim: nuevaSim() },
     // Estado de Deuda y Refinanciación: el deudor elegido y lo que se escribe para armar el plan.
     refi: nuevaRefi(String(ajustes().tasa)),
+    caso: { id: '', nombre: '', confirmar: false }, // el caso guardado que está abierto (si hay) y el nombre con que se guarda
   },
 };
 try { S.vista = VISTAS[localStorage.getItem('cb.vista')] ? localStorage.getItem('cb.vista') : 'inicio'; } catch { /* sin almacenamiento */ }
@@ -620,7 +621,7 @@ function vistaRefi() {
     const q = R.q.trim().toLowerCase();
     const xs = D.deudores.map((x) => ({ d: x, r: res(x) })).filter((x) => x.r.activo && busca(x.d, q)).sort((a, b) => b.r.saldo - a.r.saldo);
     return `<section class="card cr-simulador cr-sim-vista" id="crRefi">
-      <div class="card-cab"><h3>Estado de deuda y refinanciación</h3></div>${fuente}
+      <div class="card-cab"><h3>Estado de deuda y refinanciación</h3></div>${bloqueCasos(false)}${fuente}
       <p class="hint m0">Elegí un deudor: la deuda sale de su liquidación (cuotas, pagos y gastos cargados).</p>
       <input type="search" class="cr-filtro" ${atar('cred.refi.q')} placeholder="Buscar por nombre, DNI, socio o dominio" aria-label="Buscar un deudor" autocomplete="off">
       ${xs.length ? `<div class="cr-lista">${xs.slice(0, 25).map(({ d: x, r }) => `<button type="button" class="cr-fila" data-refi="${esc(x.id)}">
@@ -660,7 +661,7 @@ function vistaRefi() {
     ${pagos}<div><button class="btn small" type="button" data-a="rf-pago-mas">+ Agregar pago parcial</button></div>`;
   }
   return `<section class="card cr-simulador cr-sim-vista" id="crRefi">
-    <div class="card-cab"><h3>Estado de deuda y refinanciación</h3></div>${fuente}
+    <div class="card-cab"><h3>Estado de deuda y refinanciación</h3></div>${bloqueCasos(true)}${fuente}
     ${datos}
     <h4>Gastos y honorarios de juicio</h4>
     <div class="sim-form">${dinero('justicia', 'Tasa de justicia ($)')}${dinero('martillero', 'Honorarios martillero ($)')}${dinero('abogado', 'Honorarios abogado ($)')}${dinero('otros', 'Otros gastos ($)')}</div>
@@ -679,6 +680,29 @@ function vistaRefi() {
     <div class="actions" id="refiAcciones">${accionesRefi(d)}</div>
   </section>`;
 }
+/** Casos guardados: nombre y botones para guardar el que está en pantalla, y la lista para abrir otro. */
+function bloqueCasos(guardar) {
+  if (!D.casos) return `<p class="hint m0">Falta activar el guardado de casos: la base todavía no tiene dónde guardarlos. Pedile a Claude que lo active.</p>`;
+  const C = S.cred.caso, abierto = D.casos_refi.find((x) => x.id === C.id);
+  const lista = D.casos_refi.length ? `<details class="rf-casos"${abierto || D.casos_refi.length > 6 ? '' : ' open'}><summary>Casos guardados <b class="mono">${D.casos_refi.length}</b></summary>
+    <div class="cr-lista">${D.casos_refi.map((x) => `<button type="button" class="cr-fila${x.id === C.id ? ' elegida' : ''}" data-caso="${esc(x.id)}">
+      <span class="mono">${x.deudor ? 'Deudor' : 'A mano'}</span>
+      <span class="cr-fila-t"><b>${esc(x.nombre)}</b><span class="sub">${esc(subCaso(x))}</span></span></button>`).join('')}</div></details>` : '<p class="hint m0">Todavía no guardaste casos. Cargá los datos y tocá “Guardar caso” para volver a ellos desde la PC o el celular.</p>';
+  if (!guardar) return `<div class="rf-caso">${lista}</div>`;
+  const acciones = abierto
+    ? (C.confirmar
+      ? `<span class="hint">¿Eliminar “${esc(abierto.nombre)}”? No se puede deshacer desde la app.</span><button class="btn danger small" type="button" data-a="rf-caso-borrar">Sí, eliminar</button><button class="btn small" type="button" data-a="rf-caso-no">No</button>`
+      : `<button class="btn primary small" type="button" data-a="rf-caso-guardar">Guardar cambios</button><button class="btn small" type="button" data-a="rf-caso-nuevo">Guardar como caso nuevo</button><button class="btn small" type="button" data-a="rf-caso-cerrar">Cerrar caso</button><button class="btn small" type="button" data-a="rf-caso-confirmar">Eliminar</button>`)
+    : `<button class="btn primary small" type="button" data-a="rf-caso-nuevo">Guardar caso</button>`;
+  return `<div class="rf-caso">
+    <label class="f">${abierto ? 'Caso abierto' : 'Nombre del caso'}<input id="rf_nombreCaso" ${atar('cred.caso.nombre')} maxlength="200" placeholder="ej.: Pérez – prenda Cronos" autocomplete="off"></label>
+    <div class="actions">${acciones}</div>${lista}</div>`;
+}
+const subCaso = (x) => {
+  const t = x.actualizado ? new Date(x.actualizado) : null;
+  return t && !isNaN(t) ? 'guardado ' + cuando(t) : '';
+};
+
 function accionesRefi(d) {
   if (!d) return `<button class="btn" type="button" data-a="rf-limpiar">Borrar todo y empezar de nuevo</button>`;
   return planVigente(d)
@@ -692,13 +716,41 @@ function actualizarRefi(k) {
   if (k === 'cred.refi.fecha' && !ES_FECHA.test(R.primerVto || '')) { const p = $('#rf_primerVto'); if (p) p.value = e.primerVto; }
   const c = $('#refiResultado'); if (c) c.innerHTML = htmlRefi(e);
 }
+function abrirCaso(id) {
+  const x = D.casos_refi.find((c) => c.id === id); if (!x) return;
+  S.cred.refi = restaurarCaso(x.datos, String(ajustes().tasa));
+  S.cred.caso = { id: x.id, nombre: x.nombre, confirmar: false };
+  render();
+}
+async function accionCaso(act) {
+  const C = S.cred.caso, abierto = D.casos_refi.find((x) => x.id === C.id);
+  if (act === 'rf-caso-confirmar' || act === 'rf-caso-no') { C.confirmar = act === 'rf-caso-confirmar'; render(); return; }
+  if (act === 'rf-caso-cerrar') { S.cred.caso = { id: '', nombre: '', confirmar: false }; render(); return; }
+  const nombre = C.nombre.trim();
+  if (act !== 'rf-caso-borrar' && !nombre) { toast('Escribí un nombre para el caso'); $('#rf_nombreCaso')?.focus(); return; }
+  const R = S.cred.refi, datos = datosCaso(R, hoy());
+  try {
+    if (act === 'rf-caso-nuevo') {
+      const f = await crearCasoRefi(nombre, R.fuente === 'deudor' ? R.id : '', datos);
+      S.cred.caso = { id: f.id, nombre: f.nombre, confirmar: false }; toast('Caso guardado');
+    } else if (act === 'rf-caso-guardar' && abierto) {
+      const r = await actualizarCasoRefi(abierto.id, abierto.rev, { nombre, deudor: R.fuente === 'deudor' && R.id ? R.id : null, datos });
+      if (r.conflicto) { toast(r.actual ? 'Este caso cambió desde otro lugar. Abrilo de nuevo para ver la última versión.' : 'Este caso fue eliminado desde otro lugar.'); if (!r.actual) S.cred.caso = { id: '', nombre: '', confirmar: false }; }
+      else { S.cred.caso.nombre = r.fila.nombre; toast('Cambios guardados'); }
+    } else if (act === 'rf-caso-borrar' && abierto) {
+      await borrarCasoRefi(abierto.id); S.cred.caso = { id: '', nombre: '', confirmar: false }; toast('Caso eliminado');
+    }
+  } catch (e) { toast(mensaje(e, 'no se guardó')); }
+  render();
+}
 function elegirRefi(id) { if (!deudor(id)) return; S.cred.refi.id = id; render(); }
 function accionRefi(act, a) {
   const R = S.cred.refi, d = refiDeudor();
+  if (act.startsWith('rf-caso-')) { unaVez(a, () => accionCaso(act)); return; }
   if (act === 'rf-fuente') { R.fuente = a.dataset.fuente === 'deudor' ? 'deudor' : 'mano'; render(); return; }
   if (act === 'rf-pago-mas') { R.pagos.push({ fecha: '', monto: '', imp: 'capital' }); render(); return; }
   if (act === 'rf-pago-menos') { R.pagos.splice(+a.dataset.i, 1); render(); return; }
-  if (act === 'rf-limpiar') { S.cred.refi = nuevaRefi(String(ajustes().tasa)); render(); return; }
+  if (act === 'rf-limpiar') { S.cred.refi = nuevaRefi(String(ajustes().tasa)); S.cred.caso = { id: '', nombre: '', confirmar: false }; render(); return; }
   if (act === 'rf-cambiar') { R.id = ''; R.q = ''; render(); return; }
   if (!d) return;
   if (act === 'rf-ficha') { abrirDeudor(d.id); return; }
@@ -1863,6 +1915,7 @@ document.addEventListener('click', async (e) => {
   const cm = t.closest('[data-cr-modo]'); if (cm) { cambiarModo(cm.dataset.crModo); return; }
   const veh = t.closest('[data-vehiculo]'); if (veh) { await elegirVehiculo(veh.dataset.vehiculo); return; }
   const rf = t.closest('[data-refi]'); if (rf) { elegirRefi(rf.dataset.refi); return; }
+  const cs = t.closest('[data-caso]'); if (cs) { abrirCaso(cs.dataset.caso); return; }
   const chq = t.closest('[data-cheque]'); if (chq) { abrirCheque(chq.dataset.cheque); return; }
   const a = t.closest('[data-a]'); if (!a) return;
   const act = a.dataset.a;

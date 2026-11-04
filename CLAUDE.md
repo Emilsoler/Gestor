@@ -496,8 +496,8 @@ sumar nada de ARCA sin que la persona lo pida.
 
 ### Estado de Deuda y Refinanciación (última pestaña de "Créditos", después de "Simulación")
 
-Es la planilla de Excel del estudio (`CALCULO_INTERESES`) con las cuentas de la app. **No guarda nada** (como
-Vehículo y Simulación): es para hablar con el deudor. Las cuentas y el HTML del resultado están en
+Es la planilla de Excel del estudio (`CALCULO_INTERESES`) con las cuentas de la app. Lo escrito no se guarda
+solo (como en Vehículo y Simulación), pero se puede **guardar como caso** (ver "Casos guardados", más abajo). Las cuentas y el HTML del resultado están en
 `docs/cobranzas/refinanciacion.js` (`estadoRefi`, `htmlRefi`); la pantalla y los eventos, en `app.js`
 (`vistaRefi`, `actualizarRefi`, `accionRefi`, estado en `S.cred.refi`).
 
@@ -520,6 +520,17 @@ Vehículo y Simulación): es para hablar con el deudor. Las cuentas y el HTML de
   deudor ya tiene un plan vigente, solo ofrece abrir la ficha.
 - Lo escrito vive en `S.cred.refi` (no se guarda en el dispositivo). Pruebas:
   `node --test dev/tests/refinanciacion.test.mjs` (no necesita el stack; el caso es el de la planilla).
+
+- **Casos guardados** (migración 0020, `public.casos_refi`): arriba de la pestaña, "Guardar caso" (con nombre),
+  "Guardar cambios", "Guardar como caso nuevo", "Cerrar caso" y "Eliminar" (con confirmación), y la lista para abrir
+  otro. Una fila por caso: `nombre`, `deudor` (id del deudor de origen o null; sin clave foránea) y `datos`, el formulario
+  tal cual (`nuevaRefi`; `datosCaso` y `restaurarCaso` de `refinanciacion.js` lo guardan y lo leen, tolerando lo que falte o
+  venga raro). **No guarda cuentas**: al abrir un caso se recalcula con la lógica de hoy. La fecha de cálculo queda escrita al
+  guardar (el caso es una foto de ese día); se cambia desde su campo. Mismas barreras, `rev` (si otro dispositivo lo cambió, avisa
+  en vez de pisar), historial y `gestor.deshacer`. Tabla opcional en `datos.js` (`D.casos`): si la base no la tiene, la pestaña
+  sigue andando y avisa "Falta activar el guardado de casos". Para leerlos:
+  `select nombre, deudor, actualizado, actualizado_por from public.casos_refi order by actualizado desc;`
+  Publicar: migración 0020 y después subir la app.
 
 **Cambiar la app**: `docs/cobranzas/` (`app.js` interfaz, `datos.js` la base, `calculo.js` cuentas,
 `textos.js` fechas, importes y mensajes, `creditos.js` lo que se muestra de una consulta al BCRA (por CUIT y por cheque),

@@ -656,3 +656,10 @@ body.con-chat .toast{bottom:calc(var(--abajo) + 84px)}  /* que el aviso no tape 
 .rf-cuotas summary{cursor:pointer;display:flex;justify-content:space-between;gap:10px;font-size:12.5px;font-weight:500;color:var(--soft)}
 .rf-cuotas summary b{color:var(--fg);font-weight:600}
 .rf-cuotas .tabla{margin-top:6px}
+
+/* Casos guardados de Estado de Deuda y Refinanciación. */
+.rf-caso{display:grid;gap:8px;padding-bottom:10px;border-bottom:1px solid var(--line-soft)}
+.rf-caso .actions{align-items:center}
+.rf-casos summary{cursor:pointer;display:flex;justify-content:space-between;gap:10px;font-size:12.5px;font-weight:500;color:var(--soft)}
+.rf-casos summary b{color:var(--fg);font-weight:600}
+.rf-casos .cr-lista{max-height:260px;margin-top:4px}

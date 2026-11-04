@@ -31,6 +31,34 @@ export const nuevaRefi = (tasaMora = '5') => ({
   cuotas: '12', tasa: String(TASA_MENSUAL), cada: 'mes', primerVto: '',
 });
 
+// ───────────────────────── Casos guardados ─────────────────────────
+// Un caso es el formulario tal cual (sin las cuentas, que se rehacen al abrirlo). Al guardar, la fecha de
+// cálculo queda escrita: un caso es una foto de la negociación de ese día, y se cambia desde su campo.
+
+const TEXTOS = ['id', 'fecha', 'cuota', 'cantCuotas', 'vto1', 'pagadas', 'tasaMora', 'hon', 'justicia', 'martillero', 'abogado', 'otros', 'iVencer', 'entrega', 'cuotas', 'tasa', 'primerVto'];
+const IMPUTACIONES = ['capital', 'intereses', 'honorarios'];
+
+/** Lo que se guarda de un caso: el formulario sin el buscador, con la fecha de cálculo explícita. */
+export function datosCaso(R, hoy) {
+  const { q, ...resto } = structuredClone(R);
+  return { ...resto, fecha: R.fecha || hoy };
+}
+
+/** Arma el formulario desde lo guardado. Lo que falte o venga raro queda como en un formulario nuevo. */
+export function restaurarCaso(datos, tasaMora = '5') {
+  const base = nuevaRefi(tasaMora), d = datos && typeof datos === 'object' && !Array.isArray(datos) ? datos : {};
+  for (const k of TEXTOS) if (typeof d[k] === 'string' || typeof d[k] === 'number') base[k] = String(d[k]);
+  base.fuente = d.fuente === 'deudor' && base.id ? 'deudor' : 'mano';
+  base.aVencer = d.aVencer === true;
+  base.cada = Object.hasOwn(CADAS, d.cada) ? d.cada : base.cada;
+  base.pagos = (Array.isArray(d.pagos) ? d.pagos : []).filter((p) => p && typeof p === 'object').slice(0, 100).map((p) => ({
+    fecha: typeof p.fecha === 'string' ? p.fecha : '',
+    monto: typeof p.monto === 'string' || typeof p.monto === 'number' ? String(p.monto) : '',
+    imp: IMPUTACIONES.includes(p.imp) ? p.imp : 'capital',
+  }));
+  return base;
+}
+
 const FRECUENCIA = { mes: 'mensuales', quincena: 'cada 15 días', semana: 'semanales' };
 
 /** "5-24, 30" o "1 a 4 y 7" → { 5…24, 30 }: los números de cuota que ya se pagaron. */

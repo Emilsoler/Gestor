@@ -31,13 +31,13 @@ const SONDEO_LENTO = 5 * 60_000; // con tiempo real, por si se perdió algún av
 const CACHE = 'cb.cache';
 const CHAT = 'cb.chat'; // la conversación con Claude, en este dispositivo
 const FORMA = 2; // sube cuando cambia la forma de lo que se guarda en el dispositivo
-const TABLAS = ['deudores', 'modelos_mensaje', 'ajustes_cobranzas', 'consultas_bcra', 'consultas_cheques'];
+const TABLAS = ['deudores', 'modelos_mensaje', 'ajustes_cobranzas', 'consultas_bcra', 'consultas_cheques', 'casos_refi'];
 // Las consultas al BCRA se leen sin `resultado` (lo que respondió el BCRA, que puede ser largo): el
 // detalle se pide al abrir una. Las de cheques son cortas y vienen enteras.
 const COLUMNAS = { consultas_bcra: 'id,cuit,denominacion,momento,consultado_por,periodo,semaforo,peor_situacion,entidades,deuda_total,cheques,cheques_impagos,motivos,rev' };
 // Tablas que la base puede no tener todavía (migración sin aplicar): el resto de la app sigue andando, y
 // esta marca de D dice si está.
-const OPCIONALES = new Map([['consultas_bcra', 'creditos'], ['consultas_cheques', 'denunciados']]);
+const OPCIONALES = new Map([['consultas_bcra', 'creditos'], ['consultas_cheques', 'denunciados'], ['casos_refi', 'casos']]);
 const faltaTabla = (e) => e?.code === 'PGRST205' || e?.code === '42P01' || e?.status === 404;
 const DETALLES = new Map(); // id de consulta → resultado
 
@@ -52,8 +52,10 @@ export const D = {
   ajustes_cobranzas: [],
   consultas_bcra: [], // sin `resultado` (ver detalleConsulta)
   consultas_cheques: [],
+  casos_refi: [], // casos guardados de Estado de Deuda y Refinanciación
   creditos: true, // la base tiene la tabla de consultas al BCRA
   denunciados: true, // la base tiene la de consultas de cheques denunciados
+  casos: true, // la base tiene la de casos guardados de refinanciación
   cargado: false, // hay algo para mostrar (de la base o de la copia local)
   leido: null, // Date de la última lectura buena
   deCache: false, // lo que se ve es la copia del dispositivo
@@ -129,6 +131,7 @@ const DE = {
   modelos_mensaje: (f) => ({ ...f }),
   ajustes_cobranzas: (f) => ({ ...f, tasa: +f.tasa, contado_pct: +f.contado_pct }),
   consultas_bcra: ({ resultado, ...f }) => ({ ...f, deuda_total: +f.deuda_total || 0, motivos: lista(f.motivos) }),
+  casos_refi: (f) => ({ ...f, nombre: String(f.nombre ?? ''), deudor: f.deudor || '', datos: f.datos && typeof f.datos === 'object' && !Array.isArray(f.datos) ? f.datos : {} }),
   consultas_cheques: (f) => ({ ...f, numero: String(f.numero ?? ''), resultado: f.resultado && typeof f.resultado === 'object' ? f.resultado : {} }),
 };
 export const ESTADOS = ['En gestión', 'En juicio', 'Cancelado', 'Incobrable', 'Archivado'];
@@ -148,6 +151,7 @@ const ORDEN = {
   ajustes_cobranzas: (a, b) => a.id - b.id,
   consultas_bcra: (a, b) => String(b.momento).localeCompare(String(a.momento)) || a.id.localeCompare(b.id), // la más nueva primero
   consultas_cheques: (a, b) => String(b.momento).localeCompare(String(a.momento)) || a.id.localeCompare(b.id),
+  casos_refi: (a, b) => String(b.actualizado).localeCompare(String(a.actualizado)) || a.id.localeCompare(b.id), // el último tocado primero
 };
 const firma = (filas) => JSON.stringify([...filas].sort((a, b) => String(a.id).localeCompare(String(b.id))));
 
@@ -171,7 +175,7 @@ function guardarCache() {
     localStorage.setItem(CACHE, JSON.stringify({
       forma: FORMA, uid: D.usuario.id, email: D.usuario.email, ts: (D.leido || new Date()).getTime(),
       deudores: D.deudores, modelos_mensaje: D.modelos_mensaje, ajustes_cobranzas: D.ajustes_cobranzas, consultas_bcra: D.consultas_bcra,
-      consultas_cheques: D.consultas_cheques,
+      consultas_cheques: D.consultas_cheques, casos_refi: D.casos_refi,
     }));
   } catch { /* sin espacio o modo privado: la app sigue andando sin copia local */ }
 }
@@ -523,6 +527,16 @@ export async function entidadesCheques() {
 }
 const bancosValidos = (x) => lista(x).filter((e) => Number.isInteger(e?.codigo) && typeof e?.nombre === 'string');
 export const borrarConsultaCheque = (id) => eliminar('consultas_cheques', id);
+
+// ───────────────────────── Casos de Estado de Deuda y Refinanciación ─────────────────────────
+// `datos` es el formulario tal cual (nuevaRefi); las cuentas se rehacen al abrir el caso.
+
+/** Guarda un caso nuevo. `deudor` es el id del deudor de origen o ''. */
+export const crearCasoRefi = (nombre, deudor, datos) =>
+  agregar('casos_refi', { nombre: nombre.trim(), deudor: deudor || null, datos });
+/** Pisa un caso existente con lo que hay en pantalla (y, si viene, le cambia el nombre). */
+export const actualizarCasoRefi = (id, rev, campos) => modificar('casos_refi', id, rev, campos);
+export const borrarCasoRefi = (id) => eliminar('casos_refi', id);
 
 /** Lo que respondió el BCRA en una consulta (se lee una vez y queda en memoria). */
 export async function detalleConsulta(id) {
