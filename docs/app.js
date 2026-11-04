@@ -332,7 +332,7 @@ function renderAgenda(items) {
     return `<article class="fila agitem" data-id="${esc(c.expte)}" tabindex="0" role="button" aria-label="Abrir la ficha de ${esc(titulo(c))}">
     <div class="fila-top"><span class="next">${esc(texto)}</span>${sac ? `<span class="pill ${clase}">SAC · ${esc(estado)}</span>` : ''}</div>
     <div class="agcausa"><b>${esc(titulo(c))}</b> <span class="mono">${esc(c.expte)}${c.nom ? ' · ' + esc(c.nom) + '°' : ''}${c.oficina ? ' ' + esc(c.oficina) : ''}</span></div>
-    <div class="fila-ult">${fecha ? `<span class="due ${tarde ? 'late' : fecha === hoy ? 'soon' : ''}">${sac ? 'Para el' : 'Vence el'} ${fmt(fecha)}</span>` : '<span class="hint">Sin fecha</span>'}${sac ? '' : `<button class="btn small donebtn" data-done="${esc(c.expte)}">✓ Realizada</button>`}</div>
+    <div class="fila-ult">${fecha ? `<span class="due ${tarde ? 'late' : fecha === hoy ? 'soon' : ''}">${sac ? 'Para el' : 'Vence el'} ${fmt(fecha)}</span>` : '<span class="hint">Sin fecha</span>'}${sac ? '' : `<button class="btn small donebtn" data-done="${esc(c.expte)}">¿Realizada?</button>`}</div>
   </article>`;
   };
   return `<div class="agenda">` + [...grupos].map(([g, xs]) => `<section class="agdia ${g === 'Vencidas' ? 'tarde' : ''}"><h3><span>${esc(g)}</span><span>${xs.length}</span></h3><div class="filas">${xs.map(fila).join('')}</div></section>`).join('') + `</div>`;
@@ -400,8 +400,9 @@ async function quickDone(id) {
   const o = D.causas.find((c) => c.expte === id); if (!o) return;
   const c = copia(o); if (!applyDone(c)) return;
   try {
-    const r = await actualizarCausa(id, o.rev, { historial: c.historial, ultima: c.ultima, fecha: c.fecha, proxima: '', vence: '' });
-    toast(r.conflicto ? 'La causa cambió recién. Revisala y probá de nuevo' : 'Acción realizada: quedó en los movimientos');
+    // Al darla por realizada, el expediente pasó a despacho: la ubicación cambia sola.
+    const r = await actualizarCausa(id, o.rev, { historial: c.historial, ultima: c.ultima, fecha: c.fecha, proxima: '', vence: '', ubicacion: 'A despacho' });
+    toast(r.conflicto ? 'La causa cambió recién. Revisala y probá de nuevo' : 'Acción realizada: quedó en los movimientos y la causa pasó a A despacho');
   } catch (e) { toast(mensaje(e)); }
 }
 
