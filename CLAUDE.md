@@ -494,25 +494,32 @@ quitar las dos cosas. 0015 borró el certificado y el permiso guardados y le cer
 persona. Lo que ARCA había respondido se sacó de las consultas guardadas y del historial de cambios. No
 sumar nada de ARCA sin que la persona lo pida.
 
-### Estado de Deuda y Refinanciación (pestaña de "Créditos", al lado de "Vehículo")
+### Estado de Deuda y Refinanciación (última pestaña de "Créditos", después de "Simulación")
 
-Se elige un deudor de la app y se ve lo que debe a una fecha y cómo quedaría refinanciado; es la planilla de
-Excel del estudio (`CALCULO_INTERESES`) con las cuentas de la app. **No guarda nada** (como Vehículo y
-Simulación): es para hablar con el deudor. Las cuentas y el HTML del resultado están en
+Es la planilla de Excel del estudio (`CALCULO_INTERESES`) con las cuentas de la app. **No guarda nada** (como
+Vehículo y Simulación): es para hablar con el deudor. Las cuentas y el HTML del resultado están en
 `docs/cobranzas/refinanciacion.js` (`estadoRefi`, `htmlRefi`); la pantalla y los eventos, en `app.js`
 (`vistaRefi`, `actualizarRefi`, `accionRefi`, estado en `S.cred.refi`).
 
-- **Deuda**: la liquidación del deudor (`liquidar`: interés simple por cuota, honorarios `hon_pct` %, gastos
-  cargados, pagos ya imputados) + los gastos y honorarios de juicio que se escriban ahí (tasa de justicia,
-  martillero, abogado; para los que no estén cargados en la ficha) + si se tilda, las cuotas a vencer menos
-  los intereses a vencer. Menos la entrega inicial queda el **saldo a financiar**.
+- **Dos fuentes de datos** (`R.fuente`): **"Cargar a mano"** (la de arranque, sin deudor) y **"De un deudor"**.
+  A mano se cargan: fecha de cálculo, vencimiento de la 1ª cuota (mora desde), monto y cantidad de cuotas,
+  cuáles ya se pagaron (`5-24`, `1, 2, 3`; las pagadas no entran), interés moratorio, honorarios y los
+  **pagos parciales** (fecha, monto y a qué rubro se imputa). `deudorManual` arma con eso un deudor
+  y la cuenta es la misma que con uno real (`liquidar`). Con un deudor, la deuda sale de su liquidación
+  (cuotas, pagos, gastos cargados, su interés y sus honorarios, que se cambian en su ficha).
+- **Deuda**: la liquidación (`liquidar`: interés simple por cuota desde su vencimiento, honorarios `hon_pct` %
+  sobre capital + intereses, pagos ya imputados) + los gastos y honorarios de juicio que se escriban (tasa de
+  justicia, martillero, abogado, otros; con un deudor, se suman a los de su ficha) + si se tilda, las cuotas a
+  vencer menos los intereses a vencer. Menos la entrega inicial queda el **saldo a financiar**. Un pago parcial
+  baja la deuda y corta el interés desde su fecha (no se suma, como hacía la planilla).
 - **Plan**: `armarPlan` (cuota fija sobre saldo, en pesos enteros). La tasa de financiación arranca en la de los
-  créditos prendarios (`TASA_MENSUAL` de `vehiculos.js`, la de la pestaña Simulación) y se puede cambiar; el
-  interés moratorio y los honorarios son los del deudor (se cambian en su ficha, no acá).
-- **"Armar este plan en la ficha"** abre la pestaña Plan del deudor con monto, entrega, cuotas, frecuencia,
-  primer vencimiento y tasa ya cargados, para mandar la propuesta por WhatsApp o guardarlo. Si el deudor ya
-  tiene un plan vigente, solo ofrece abrir la ficha.
-- Pruebas: `node --test dev/tests/refinanciacion.test.mjs` (no necesita el stack; el caso es el de la planilla).
+  créditos prendarios (`TASA_MENSUAL` de `vehiculos.js`, la de la pestaña Simulación) y se puede cambiar. Los
+  honorarios arrancan en 5 % y el interés moratorio en el de los ajustes de la app.
+- **"Armar este plan en la ficha"** (solo con un deudor) abre la pestaña Plan con monto, entrega, cuotas,
+  frecuencia, primer vencimiento y tasa ya cargados, para mandar la propuesta por WhatsApp o guardarlo. Si el
+  deudor ya tiene un plan vigente, solo ofrece abrir la ficha.
+- Lo escrito vive en `S.cred.refi` (no se guarda en el dispositivo). Pruebas:
+  `node --test dev/tests/refinanciacion.test.mjs` (no necesita el stack; el caso es el de la planilla).
 
 **Cambiar la app**: `docs/cobranzas/` (`app.js` interfaz, `datos.js` la base, `calculo.js` cuentas,
 `textos.js` fechas, importes y mensajes, `creditos.js` lo que se muestra de una consulta al BCRA (por CUIT y por cheque),

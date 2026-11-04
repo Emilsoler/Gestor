@@ -2,8 +2,10 @@
 // quedaría refinanciado. Arma las cuentas y el HTML del resultado (todo dato pasa por esc); no toca
 // la pantalla ni la red, y no guarda nada: es una simulación para hablar con el deudor.
 //
-// Es la planilla de Excel del estudio ("CALCULO_INTERESES"), con las mismas cuentas que ya usa la app:
-//   · la deuda vencida sale de la liquidación del deudor (calculo.js: interés simple por cuota desde su
+// Es la planilla de Excel del estudio ("CALCULO_INTERESES"), con las mismas cuentas que ya usa la app.
+// Los datos se pueden cargar a mano (cuota, cantidad, 1er vencimiento, cuotas pagadas, tasa, honorarios,
+// pagos parciales…) o tomar de un deudor de la app; en los dos casos la cuenta es la misma:
+//   · la deuda vencida sale de la liquidación (calculo.js: interés simple por cuota desde su
 //     vencimiento, honorarios sobre capital + intereses, gastos cargados y pagos ya imputados);
 //   · a eso se le suman los gastos y honorarios de juicio que todavía no estén cargados, y —si se
 //     quiere— las cuotas a vencer menos los intereses a vencer;
@@ -14,25 +16,58 @@ import { esc, plata, fmt } from './textos.js';
 import { importe, r2 } from '../liquidacion.js';
 import { TASA_MENSUAL, CUOTAS_MAX } from './vehiculos.js';
 
-/** Lo que se escribe en la pantalla (textos, como los escribe la persona). */
-export const nuevaRefi = () => ({
+/**
+ * Lo que se escribe en la pantalla (textos, como los escribe la persona). `tasaMora` es el interés
+ * moratorio mensual de arranque (el de los ajustes de la app); los honorarios arrancan en 5 %, como la planilla.
+ */
+export const nuevaRefi = (tasaMora = '5') => ({
+  fuente: 'mano', // 'mano': datos cargados a mano · 'deudor': los de un deudor de la app (`id`)
   id: '', q: '', fecha: '',
-  justicia: '', martillero: '', abogado: '', // gastos y honorarios de juicio que no están cargados en la ficha
+  // A mano: la cuota, cuántas son, cuándo vence la primera (desde ahí está en mora), cuáles ya se pagaron,
+  // el interés y los honorarios, y los pagos parciales ({ fecha, monto, imp: 'capital' | 'intereses' | 'honorarios' }).
+  cuota: '', cantCuotas: '', vto1: '', pagadas: '', tasaMora: String(tasaMora), hon: '5', pagos: [],
+  justicia: '', martillero: '', abogado: '', otros: '', // gastos y honorarios de juicio (los de un deudor ya cargados en su ficha se suman aparte)
   aVencer: false, iVencer: '', entrega: '',
   cuotas: '12', tasa: String(TASA_MENSUAL), cada: 'mes', primerVto: '',
 });
 
 const FRECUENCIA = { mes: 'mensuales', quincena: 'cada 15 días', semana: 'semanales' };
 
+/** "5-24, 30" o "1 a 4 y 7" → { 5…24, 30 }: los números de cuota que ya se pagaron. */
+export function cuotasPagadas(texto) {
+  const out = new Set();
+  const t = String(texto ?? '');
+  for (const m of t.matchAll(/(\d+)\s*(?:-|–|a)\s*(\d+)|(\d+)/g)) {
+    if (m[3] != null) { out.add(+m[3]); continue; }
+    const a = +m[1], b = +m[2];
+    for (let k = Math.min(a, b); k <= Math.max(a, b) && k <= 1000; k++) out.add(k);
+  }
+  return out;
+}
+
+/** Un deudor armado con lo escrito a mano: las cuotas que faltan pagar (las pagadas no se cargan) y los pagos parciales. */
+export function deudorManual(R) {
+  const cuota = Math.max(0, importe(R.cuota)), cant = Math.max(0, Math.min(CUOTAS_MAX, parseInt(R.cantCuotas, 10) || 0));
+  const pagadas = cuotasPagadas(R.pagadas);
+  const cuotas = [];
+  if (cuota > 0 && ES_FECHA.test(R.vto1 || '')) {
+    for (let k = 0; k < cant; k++) if (!pagadas.has(k + 1)) cuotas.push({ id: 'c' + (k + 1), n: k + 1, de: cant, vto: sumarMeses(R.vto1, k), importe: cuota });
+  }
+  const pagos = (R.pagos || []).map((p, i) => ({ id: 'p' + i, fecha: p.fecha, monto: Math.max(0, importe(p.monto)), imp: ['intereses', 'honorarios'].includes(p.imp) ? p.imp : 'capital' }))
+    .filter((p) => ES_FECHA.test(p.fecha || '') && p.monto > 0).map((p) => ({ id: p.id, fecha: p.fecha, imp: { [p.imp]: p.monto } }));
+  return { tasa: Math.max(0, importe(R.tasaMora)), hon_pct: Math.max(0, importe(R.hon)), cuotas, pagos, gastos: [], planes: [] };
+}
+
 /**
  * Las cuentas de un deudor `d` según lo escrito en `R`, a la fecha `dia` (hoy) si no se eligió otra.
- * Devuelve todo lo que la pantalla muestra, o null si no hay deudor.
+ * Sin deudor (`d` null) usa lo escrito a mano. Devuelve todo lo que la pantalla muestra.
  */
 export function estadoRefi(d, R, dia) {
-  if (!d) return null;
+  const manual = !d;
+  if (manual) d = deudorManual(R);
   const fecha = ES_FECHA.test(R.fecha || '') ? R.fecha : dia;
   const liq = liquidar(d, fecha);
-  const extras = [['Tasa de justicia', R.justicia], ['Honorarios del martillero', R.martillero], ['Honorarios del abogado', R.abogado]]
+  const extras = [['Tasa de justicia', R.justicia], ['Honorarios del martillero', R.martillero], ['Honorarios del abogado', R.abogado], ['Otros gastos', R.otros]]
     .map(([concepto, v]) => ({ concepto, monto: Math.max(0, importe(v)) })).filter((x) => x.monto > 0);
   const aVencer = R.aVencer ? liq.capital_a_vencer : 0;
   const iVencer = R.aVencer ? Math.max(0, importe(R.iVencer)) : 0;
@@ -43,7 +78,7 @@ export function estadoRefi(d, R, dia) {
   const cada = CADAS[R.cada] ? R.cada : 'mes';
   const primerVto = ES_FECHA.test(R.primerVto || '') ? R.primerVto : sumarMeses(fecha, 1);
   const plan = armarPlan({ deuda, anticipo: entrega, n, tasa, primerVto, cada });
-  return { fecha, liq, extras, aVencer, iVencer, deuda, entrega, n, tasa, cada, primerVto, plan, sobra: entrega > deuda };
+  return { manual, pagosCargados: !!d.pagos?.length, fecha, liq, extras, aVencer, iVencer, deuda, entrega, n, tasa, cada, primerVto, plan, sobra: entrega > deuda };
 }
 
 // Devengado y pagado se ven en la computadora; en el celular queda el saldo (las columnas `rf-aux` se ocultan).
@@ -60,11 +95,17 @@ export function htmlRefi(e) {
   const vencidas = liq.vencidas
     ? `${liq.vencidas === 1 ? '1 cuota vencida' : liq.vencidas + ' cuotas vencidas'}: ${esc(detalleCuotas(liq))}. Mayor atraso: ${liq.dias_mora} ${liq.dias_mora === 1 ? 'día' : 'días'}.`
     : 'No tiene cuotas vencidas a esta fecha.';
+  // Como la planilla: una fila por cuota que falta pagar, con sus días de mora y su interés.
+  const pend = liq.cuotas.filter((c) => c.saldo > 0);
+  const porCuota = pend.length ? `<details class="rf-cuotas"${pend.length <= 12 ? ' open' : ''}><summary>Cuotas que faltan pagar <b class="mono">${pend.length}</b></summary>
+    <div class="scrollx"><table class="tabla sim-tabla"><thead><tr><th>N°</th><th>Vence</th><th class="num">Saldo</th><th class="num rf-aux">Días de mora</th><th class="num">Interés</th></tr></thead>
+    <tbody>${pend.map((c) => `<tr><td class="mono">${c.n ?? ''}</td><td class="mono">${esc(fmt(c.vto))}</td><td class="num mono">${esc(plata(c.saldo))}</td><td class="num mono rf-aux">${c.dias || ''}</td><td class="num mono">${c.interes ? esc(plata(c.interes)) : '—'}</td></tr>`).join('')}</tbody></table></div></details>` : '';
   const estado = `<div class="sim-cuadro"><h4>1 · Estado de deuda al ${esc(fmt(e.fecha))}</h4>
     <p class="hint m0">${vencidas}</p>
     <div class="scrollx"><table class="tabla sim-tabla"><thead><tr><th>Concepto</th><th class="num rf-aux">Devengado</th><th class="num rf-aux">Pagado</th><th class="num">Saldo</th></tr></thead>
-      <tbody>${filas || '<tr><td colspan="2" class="hint">Sin importes.</td></tr>'}${fila('Deuda a refinanciar', '', 0, e.deuda, 'fuerte')}</tbody></table></div></div>`;
+      <tbody>${filas || '<tr><td colspan="2" class="hint">Sin importes.</td></tr>'}${fila('Deuda a refinanciar', '', 0, e.deuda, 'fuerte')}</tbody></table></div>${porCuota}</div>`;
 
+  if (e.manual && !liq.cuotas.length && !e.extras.length && !(e.pagosCargados)) return `<p class="hint m0">Completá la cuota, cuántas son y cuándo vence la primera (o algún gasto) para ver la deuda y armar el plan.</p>`;
   if (!(e.deuda > 0)) return `${estado}<p class="hint m0">No hay deuda para refinanciar a esta fecha.</p>`;
   const entrega = e.entrega ? `<div><dt>(−) Entrega inicial</dt><dd>${esc(plata(e.entrega))}</dd></div>` : '';
   const cuotas = plan.cuotas;

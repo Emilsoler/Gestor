@@ -3,7 +3,7 @@
 // cuota de $ 1.127.150, 3 % mensual de interés, 5 % de honorarios, cuotas 1 a 4 impagas desde el 10/10/2025.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { nuevaRefi, estadoRefi, htmlRefi } from '../../docs/cobranzas/refinanciacion.js';
+import { nuevaRefi, estadoRefi, htmlRefi, cuotasPagadas, deudorManual } from '../../docs/cobranzas/refinanciacion.js';
 import { liquidar } from '../../docs/cobranzas/calculo.js';
 import { TASA_MENSUAL } from '../../docs/cobranzas/vehiculos.js';
 
@@ -80,7 +80,7 @@ test('sin deuda o con una entrega que la cubre no hay nada para financiar', () =
   assert.equal(cubre.plan.financiado, 0);
   assert.ok(cubre.sobra);
   assert.match(htmlRefi(cubre), /no queda nada para financiar/);
-  assert.equal(estadoRefi(null, nuevaRefi(), HOY), null);
+  assert.ok(estadoRefi(null, nuevaRefi(), HOY).manual, 'sin deudor, lo cargado a mano');
 });
 
 test('lo cargado por la persona se escapa antes de mostrarse', () => {
@@ -93,4 +93,57 @@ test('lo cargado por la persona se escapa antes de mostrarse', () => {
 test('el resultado muestra el estado, la cuota y el cronograma', () => {
   const html = htmlRefi(estadoRefi(deudor(), { ...nuevaRefi(), entrega: '100.000', cuotas: '6', primerVto: '2026-12-10' }, HOY));
   for (const t of ['Estado de deuda al 04/11/26', 'Intereses moratorios (3% mensual)', 'Honorarios (5%)', 'Deuda a refinanciar', '(−) Entrega inicial', 'Saldo a financiar', '6 cuotas mensuales de', '10/12/26', '10/05/27']) assert.ok(html.includes(t), t);
+});
+
+// ── Cargado a mano, como la planilla: 24 cuotas de $ 1.127.150 desde el 10/10/2025, las 5 a 24 pagadas ──
+const PLANILLA = { ...nuevaRefi('3'), cuota: '1.127.150', cantCuotas: '24', vto1: '2025-10-10', pagadas: '5-24', hon: '5' };
+
+test('las cuotas pagadas se escriben como rangos y lista', () => {
+  assert.deepEqual([...cuotasPagadas('5-24, 30')].length, 21);
+  assert.deepEqual([...cuotasPagadas('1 a 4 y 7')], [1, 2, 3, 4, 7]);
+  assert.deepEqual([...cuotasPagadas('')], []);
+  assert.deepEqual([...cuotasPagadas('4-2')], [2, 3, 4]);
+});
+
+test('a mano da lo mismo que la planilla de Excel y que el mismo caso cargado como deudor', () => {
+  const e = estadoRefi(null, PLANILLA, HOY);
+  assert.equal(e.manual, true);
+  assert.equal(e.liq.cuotas.length, 4); // las pagadas no cuentan
+  cerca(e.deuda, 6_362_536.32);
+  cerca(e.deuda, estadoRefi(deudor({ cuotas: deudor().cuotas.slice(0, 4) }), nuevaRefi(), HOY).deuda);
+});
+
+test('a mano: un pago parcial baja la deuda desde su fecha y se puede imputar a otro rubro', () => {
+  const sin = estadoRefi(null, PLANILLA, HOY).deuda;
+  const con = estadoRefi(null, { ...PLANILLA, pagos: [{ fecha: '2026-08-10', monto: '250.000', imp: 'capital' }] }, HOY);
+  assert.ok(con.deuda < sin - 250_000, 'baja más que el pago: deja de correr el interés');
+  const aInt = estadoRefi(null, { ...PLANILLA, pagos: [{ fecha: '2026-08-10', monto: '250.000', imp: 'intereses' }] }, HOY);
+  cerca(aInt.deuda, sin - 250_000);
+  const incompleto = estadoRefi(null, { ...PLANILLA, pagos: [{ fecha: '', monto: '250.000', imp: 'capital' }] }, HOY);
+  cerca(incompleto.deuda, sin); // un pago sin fecha no cuenta todavía
+});
+
+test('a mano: las cuotas que no vencieron son "a vencer" y solo entran si se las incluye', () => {
+  const R = { ...PLANILLA, pagadas: '1-4' }; // quedan impagas la 5 a la 24: hoy vencieron la 5 a la 13
+  const e = estadoRefi(null, R, HOY);
+  assert.equal(e.liq.vencidas, 9);
+  cerca(e.liq.capital_a_vencer, 11 * 1_127_150);
+  cerca(estadoRefi(null, { ...R, aVencer: true }, HOY).deuda, e.deuda + 11 * 1_127_150);
+});
+
+test('a mano: gastos, entrega y plan salen como con un deudor', () => {
+  const R = { ...PLANILLA, justicia: '400.000', martillero: '1.200.000', abogado: '2.500.000', otros: '10.000', entrega: '100.000', cuotas: '12', primerVto: '2026-12-10' };
+  const e = estadoRefi(null, R, HOY);
+  cerca(e.deuda, 6_362_536.32 + 400_000 + 1_200_000 + 2_500_000 + 10_000);
+  cerca(e.plan.financiado, e.deuda - 100_000);
+  assert.match(htmlRefi(e), /Otros gastos/);
+  assert.match(htmlRefi(e), /Cuotas que faltan pagar/);
+});
+
+test('a mano sin datos no inventa una deuda y pide completar', () => {
+  const e = estadoRefi(null, nuevaRefi(), HOY);
+  assert.equal(e.deuda, 0);
+  assert.match(htmlRefi(e), /Completá la cuota/);
+  assert.equal(deudorManual({ ...nuevaRefi(), cuota: '1000', cantCuotas: '3' }).cuotas.length, 0, 'sin primer vencimiento no hay cuotas');
+  assert.equal(deudorManual({ ...nuevaRefi(), cuota: '1000', cantCuotas: '999', vto1: '2026-01-31' }).cuotas.length, 120);
 });
