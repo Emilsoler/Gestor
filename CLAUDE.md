@@ -524,7 +524,7 @@ solo (como en Vehículo y Simulación), pero se puede **guardar como caso** (ver
   plan. Sin el plan abierto esos tres importes no cuentan (`estadoRefi` los ignora y `e.conPlan` es false).
 - **Plan**: `armarPlan` (cuota fija sobre saldo, en pesos enteros). La tasa de financiación arranca en la de los
   créditos prendarios (`TASA_MENSUAL` de `vehiculos.js`, la de la pestaña Simulación) y se puede cambiar. Los
-  honorarios arrancan en 5 % y el interés moratorio en el de los ajustes de la app.
+  honorarios arrancan en 0 % (se completan si corresponden) y el interés moratorio en el de los ajustes de la app.
 - **"Armar este plan en la ficha"** (solo con un deudor) abre la pestaña Plan con monto, entrega, cuotas,
   frecuencia, primer vencimiento y tasa ya cargados, para mandar la propuesta por WhatsApp o guardarlo. Si el
   deudor ya tiene un plan vigente, solo ofrece abrir la ficha.
