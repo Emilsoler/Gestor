@@ -108,7 +108,13 @@ Después de escribir, leer la fila y contar qué quedó. La app abierta lo muest
   rubro van después de las que ese rubro ya tiene. El acuerdo se ve en la
   ficha de su causa ("Acuerdo de pago") y en la vista Acuerdos, donde cada uno es una fila con el nombre
   de la causa que se despliega al tocarla. A los 5 días de vencida una cuota pendiente, la app pregunta si
-  se pagó. Para cargar o cambiar uno por SQL, `insert`/`update` directo con `set_config('gestor.autor',
+  se pagó. **Avisos de vencimiento**: desde 3 días antes (`AVISO_DIAS`) y hasta que vencen los 5 de gracia, la cuota
+  cuenta como «por vencer» (`cuotasPorVencer`): un solo aviso en cualquier vista («Hay N cuotas de acuerdos por
+  vencer», con «Ver cuotas»), la insignia de Acuerdos (en coral si alguna vence hoy o ya venció), el bloque «Cuotas por
+  vencer» arriba de la vista Acuerdos (con «Pagó» y «Ver acuerdo») y una marca en la fila de cada acuerdo. Son avisos
+  dentro de la app: no hay notificaciones al celular con la app cerrada. **Buscador**: la vista Acuerdos tiene el buscador
+  del listado (sin los filtros) y filtra por deudor, demandado/actor y carátula de la causa, expediente y notas, sin
+  distinguir tildes. Para cargar o cambiar uno por SQL, `insert`/`update` directo con `set_config('gestor.autor',
   'Claude', true)`, cuidando esa forma; la `situacion` de la causa (`Acuerdo`) se cambia aparte.
 - **Última acción**: es el movimiento de fecha más reciente (a igual fecha, el anotado después).
   Las funciones ya lo calculan; con SQL directo sobre `historial` hay que actualizar también
@@ -116,7 +122,7 @@ Después de escribir, leer la fila y contar qué quedó. La app abierta lo muest
 - **Plantillas**: `select id, titulo, cuerpo from public.plantillas`. Los campos `{{caratula}}`,
   `{{expediente}}`, `{{actor}}`, `{{demandado}}`, `{{tipo}}`, `{{nominacion}}` y `{{oficina}}`
   se completan con la causa; la carátula es `actor c/ demandado – tipo` (sin demandado,
-  `actor – tipo`). Las de id `oficio-…` son modelos de oficio y `solicita-embargo-haberes` /
+  `actor – tipo`). En el panel Plantillas cada una es una fila con su título, plegada: al tocarla se despliega el texto para leerlo y editarlo (el texto plegado sigue en la página, así que lo escrito sin guardar no se pierde). Las de id `oficio-…` son modelos de oficio y `solicita-embargo-haberes` /
   `solicita-secuestro-automotor` sus escritos: ver "Acciones cautelares".
 - **Escritos para el SAC** (`public.agenda`): ver "Chat con Claude y escritos para el SAC".
   Para la tarea que los presenta:

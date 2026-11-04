@@ -356,10 +356,27 @@ test('plantillas: se completan con los datos de la causa; alta, edición y baja'
   assert.equal(await page.inputValue('#tp_cue'), 'En autos AMB c/ BETA BRUNO – PRENDARIO, expediente 1002 de la 2° nominación.');
   await page.keyboard.press('Escape'); await cerrado(page);
   await page.click('#btnTpl'); await page.waitForSelector('.panel');
+  // Se abren plegadas: solo el título de cada una; al tocarlo se despliega el texto y se puede editar
+  assert.equal(await page.locator('.panel .tplitem').count(), 2, 'la plantilla y el formulario de una nueva');
+  assert.equal(await page.locator('.panel textarea:visible').count(), 0, 'plegadas, no se ve ningún texto');
+  assert.equal(await page.locator('.panel .tplitem .acfila').first().getAttribute('aria-expanded'), 'false');
+  assert.equal(await page.locator('.panel .tplitem .acfila b').first().textContent(), 'Solicita aprobación');
+  await page.click('[data-tp=ver][data-id="aprobacion"]');
+  assert.match(await page.inputValue('#pc_aprobacion'), /^En autos \{\{caratula\}\}/, 'desplegada, muestra el texto para leerlo y editarlo');
+  assert.equal(await page.locator('#pc_aprobacion').isVisible(), true);
+  await page.fill('#pc_aprobacion', 'Texto a medio editar');
+  await page.click('[data-tp=ver][data-id="aprobacion"]');
+  assert.equal(await page.locator('#pc_aprobacion').isVisible(), false, 'se vuelve a plegar');
+  await page.click('[data-tp=ver][data-id="aprobacion"]');
+  assert.equal(await page.inputValue('#pc_aprobacion'), 'Texto a medio editar', 'plegar no pierde lo escrito sin guardar');
+  await page.click('[data-tp=ver][data-id="aprobacion"]');
+  await page.click('[data-tp=ver][data-id=""]');
   await page.fill('#pt_new', 'Pide embargo'); await page.fill('#pc_new', 'Solicito embargo contra {{demandado}}.');
   await page.click('[data-tp=save][data-id=""]'); await toast(page, 'Plantilla creada');
   const id = sql(`select id from public.plantillas where titulo='Pide embargo'`);
-  await page.waitForSelector(`#pt_${id}`);
+  await page.waitForSelector(`#pt_${id}`, { state: 'attached' });
+  assert.equal(await page.locator(`#pt_${id}`).isVisible(), false, 'la creada aparece plegada, con su título');
+  await page.click(`[data-tp=ver][data-id="${id}"]`);
   await page.fill(`#pc_${id}`, 'Solicito embargo sobre los haberes de {{demandado}}.');
   await page.click(`[data-tp=save][data-id="${id}"]`); await toast(page, 'Plantilla guardada');
   assert.match(sql(`select cuerpo from public.plantillas where id='${id}'`), /haberes/);
@@ -412,7 +429,7 @@ test('acuerdos: tres rubros con sus cuotas; en la vista, solo el nombre de la ca
   await page.waitForSelector('#avisos .aviso');
   assert.match(await page.textContent('#avisos'), /¿Pagó ZETA ZOE su cuota del acuerdo\?/);
   assert.match(await page.textContent('#avisos'), /Capital, intereses y gastos · cuota 1 de 3/);
-  assert.equal(await page.textContent('#nAcuerdos'), '1 cuota por confirmar', 'la insignia de Acuerdos cuenta las cuotas por confirmar');
+  assert.equal(await page.textContent('#nAcuerdos'), '1 cuota para revisar', 'la insignia de Acuerdos cuenta las cuotas por confirmar');
   await page.click('#avisos [data-v=pagada]'); await toast(page, 'Cuota marcada como pagada');
   await page.waitForFunction(() => !document.querySelector('#avisos .aviso'));
   assert.equal(await page.isHidden('#nAcuerdos'), true);
@@ -518,6 +535,52 @@ test('acuerdos cargados antes de los rubros: sus cuotas son de capital y, al toc
   await fila.locator(`[data-ac=delyes][data-id="${id}"]`).click(); await toast(page, 'Acuerdo eliminado');
   assert.equal(sql(`select count(*) from public.acuerdos where id='${id}'`), '0');
   await page.click('#vLista');
+});
+
+test('acuerdos: se busca por demandado y las cuotas que vencen pronto avisan', async () => {
+  const cuotas = (...ds) => JSON.stringify(ds.map((vence) => ({ rubro: 'capital', vence, monto: 90000, estado: 'pendiente', pago: '' })));
+  sql(`insert into public.acuerdos (deudor, notas, cuotas) values ('KAPPA KARINA', 'paga en efectivo', '${cuotas(dia(0), dia(2))}')`);
+  sql(`insert into public.acuerdos (deudor, cuotas) values ('LAMBDA LUIS', '${cuotas(dia(40))}')`);
+  // En cualquier vista, un solo aviso junto con la insignia de Acuerdos; la de hoy la pone en coral
+  await page.click('#vLista');
+  await page.waitForSelector('#avisos [data-ac=vervenc]', { timeout: 12000 });
+  assert.match(await page.textContent('#avisos'), /Hay 2 cuotas de acuerdos por vencer/);
+  assert.match(await page.textContent('#avisos'), /1 vence hoy · 1 vence en los próximos 3 días/);
+  assert.equal(await page.textContent('#nAcuerdos'), '2 cuotas para revisar');
+  assert.match(await page.getAttribute('#nAcuerdos', 'class'), /urg/, 'vence hoy: la insignia va en coral');
+  await page.click('#avisos [data-ac=vervenc]');
+  assert.equal(await page.textContent('#tVista'), 'Acuerdos');
+  assert.equal(await page.locator('#avisos [data-ac=vervenc]').count(), 0, 'en Acuerdos el detalle ya está a la vista');
+  const venc = page.locator('.proximos .venc');
+  assert.equal(await venc.count(), 2);
+  assert.match(await venc.nth(0).textContent(), /KAPPA KARINA.*vence hoy/s);
+  assert.match(await venc.nth(1).textContent(), /KAPPA KARINA.*vence en 2 días/s);
+
+  // Buscar por demandado, por deudor o por expediente (sin importar mayúsculas ni tildes)
+  const n0 = await page.locator('.acitem').count();
+  assert.equal(await page.locator('#q').isVisible(), true, 'en Acuerdos hay buscador');
+  assert.equal(await page.locator('#fEstado').isVisible(), false, 'pero no los filtros del listado');
+  await page.fill('#q', 'beta bruno'); // el demandado de la causa 1002, a cuyo acuerdo se cargó como "ZETA ZOE"
+  assert.equal(await page.locator('.acitem').count(), 1);
+  assert.equal(await page.locator('.acitem .acnom b').textContent(), 'BETA BRUNO');
+  assert.match(await page.textContent('#sub'), /1 de \d+ acuerdos/);
+  assert.equal(await page.locator('.proximos').count(), 0, 'lo que vence pronto también sigue la búsqueda');
+  await page.fill('#q', 'ZETA'); assert.equal(await page.locator('.acitem').count(), 1, 'por el nombre del deudor');
+  await page.fill('#q', '1002'); assert.equal(await page.locator('.acitem').count(), 1, 'por el expediente');
+  await page.fill('#q', 'kappá'); assert.equal(await page.locator('.acitem').count(), 1, 'sin importar tildes');
+  assert.equal(await venc.count(), 2);
+  await page.fill('#q', 'zzzz');
+  assert.match(await page.textContent('#main'), /Ningún acuerdo coincide con la búsqueda/);
+  await page.fill('#q', '');
+  assert.equal(await page.locator('.acitem').count(), n0, 'sin búsqueda vuelven todos');
+
+  // "Pagó" desde la lista de lo que vence
+  await venc.nth(0).locator('[data-v=pagada]').click(); await toast(page, 'Cuota marcada como pagada');
+  await page.waitForFunction(() => document.querySelectorAll('.proximos .venc').length === 1);
+  assert.equal(await page.textContent('#nAcuerdos'), '1 cuota para revisar');
+  sql(`delete from public.acuerdos where deudor in ('KAPPA KARINA', 'LAMBDA LUIS')`);
+  await page.click('#vLista');
+  await page.waitForFunction(() => !document.querySelector('#avisos [data-ac=vervenc]'), null, { timeout: 12000 });
 });
 
 test('acuerdos en el celular: la lista plegada y el desarrollo entran en la pantalla, sin deslizar de costado', async () => {

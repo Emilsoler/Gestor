@@ -9,7 +9,7 @@ import {
 import { idNuevo, nuevaLiquidacion, cobradoRubro, totalPago, liqNormal, liqCalc, importe, pesos, enCelda, planillaExcel } from './liquidacion.js';
 import { MODELOS, ACCIONES, CAMPOS_OFICIO, esModeloOficio, rellenar, htmlOficio, pdfOficio, enLetras, cifra, ordinal, datosDeCausa, partirDomicilio, dniOficio, nombreArchivo } from './oficio.js';
 
-const VERSION = '1.12.0';
+const VERSION = '1.13.0';
 
 // Cuatro datos de cada causa, con valores fijos: los mismos que acepta la base (supabase/migrations/0007).
 const UBICACIONES = ['Casillero', 'A despacho'];
@@ -24,6 +24,7 @@ const PLAN_VACIO = () => ({ n: '', monto: '', fecha: '', cada: 'mes' });
 const NA_VACIO = (deudor = '') => ({ deudor, expte: '', notas: '', planes: Object.fromEntries(RUBROS_ACU.map(([r]) => [r, PLAN_VACIO()])) });
 const STALE = 30; // días sin movimiento para marcar una causa
 const GRACIA = 5; // días después del vencimiento de una cuota antes de preguntar si se pagó
+const AVISO_DIAS = 3; // días antes del vencimiento de una cuota en que el gestor empieza a avisar
 const CLAVE_MIN = 10;
 // La tarea de Claude que presenta en el SAC. No tiene horario: corre cuando la persona toca
 // "Ejecutar ahora" en esta página. Las tareas de este tipo no se pueden arrancar desde otra app
@@ -38,7 +39,7 @@ const S = {
   open: null, isNew: false, confirmDel: false, choque: null, // ficha abierta
   planilla: false, liqSucia: false, // la planilla de liquidación está a la vista / tiene cambios sin guardar
   cau: null, // la acción cautelar que se está armando desde la ficha (ver "Acción cautelar")
-  tpl: false, tpSel: '', tplDel: '', clave: false, // otros paneles
+  tpl: false, tpSel: '', tplDel: '', tplVer: {}, clave: false, // otros paneles (tplVer: las plantillas desplegadas)
   // Acuerdos: el formulario de uno nuevo en la vista (na) y en la ficha (naf, null si está cerrado),
   // el acuerdo desplegado en la vista, los formularios abiertos de "cargar cuotas" de un rubro y el
   // acuerdo que se está por eliminar.
@@ -263,7 +264,9 @@ function renderFilters() {
   // las cuotas de acuerdos que esperan confirmación. Sin búsqueda: cuentan todo, no lo filtrado.
   const hoy = iso(today()), urgentes = itemsAgenda('').filter((x) => x.fecha && x.fecha <= hoy), cuotas = cuotasPorPreguntar().length;
   insignia('#nAgenda', urgentes.length, urgentes.some((x) => x.fecha < hoy) ? 'urg' : '', urgentes.length === 1 ? 'para hoy o vencida' : 'para hoy o vencidas');
-  insignia('#nAcuerdos', cuotas, 'pend', cuotas === 1 ? 'cuota por confirmar' : 'cuotas por confirmar');
+  // Acuerdos: las cuotas por confirmar y las que vencen pronto (en coral si alguna vence hoy o ya venció).
+  const vencen = cuotasPorVencer(), alertas = cuotas + vencen.length;
+  insignia('#nAcuerdos', alertas, vencen.some((x) => x.n >= 0) ? 'urg' : 'pend', alertas === 1 ? 'cuota para revisar' : 'cuotas para revisar');
 }
 function insignia(sel, n, clase, texto) {
   const b = $(sel);
@@ -365,13 +368,16 @@ function dibujar() {
   $('#btnCuenta').textContent = inicial;
   const main = $('#main'), isAc = S.view === 'acuerdos', isAg = S.view === 'agenda';
   ['#stats', '#chips', '#btnFiltros', '#filtros', '#fabNew'].forEach((k) => { $(k).hidden = isAc || isAg; });
-  $('#toolbar').hidden = isAc; // en Acuerdos no hay qué buscar ni filtrar
+  // En Acuerdos solo se busca (por demandado, deudor o expediente): los filtros son del listado.
+  $('#q').placeholder = isAc ? 'Buscar acuerdo por demandado, deudor o expediente…' : 'Buscar por demandado, actor, expediente o acción…';
   $('#tVista').textContent = { agenda: 'Agenda', acuerdos: 'Acuerdos' }[S.view] || 'Causas'; // título en la computadora, con la barra lateral
   if (!D.cargado) {
     main.innerHTML = `<div class="empty"><b>Cargando tus causas…</b>Acá vas a ver el listado de juicios con su estado, última acción y próxima acción.</div>`;
     subtitulo('Cargando causas…');
   } else if (isAc) {
-    main.innerHTML = renderAcuerdos(); subtitulo(`${D.acuerdos.length} ${D.acuerdos.length === 1 ? 'acuerdo' : 'acuerdos'} de pago`);
+    const hallados = acuerdosFiltrados(), buscando = !!S.q.trim();
+    main.innerHTML = renderAcuerdos(hallados, buscando);
+    subtitulo(buscando ? `${hallados.length} de ${D.acuerdos.length} acuerdos` : `${D.acuerdos.length} ${D.acuerdos.length === 1 ? 'acuerdo' : 'acuerdos'} de pago`);
   } else if (isAg) {
     const items = itemsAgenda();
     subtitulo(`${items.length} ${items.length === 1 ? 'acción pendiente' : 'acciones pendientes'}`);
@@ -1204,8 +1210,25 @@ function insertarEnRubro(cuotas, r, nuevas) {
 }
 
 function cuotasPorPreguntar() { const r = []; D.acuerdos.forEach((a) => (a.cuotas || []).forEach((q, i) => { const n = days(q.vence); if ((q.estado || 'pendiente') === 'pendiente' && n !== null && n >= GRACIA) r.push({ a, q, i }); })); return r.sort((x, y) => x.q.vence.localeCompare(y.q.vence)); }
+/** Cuotas pendientes que vencen en los próximos AVISO_DIAS días, hoy, o vencieron hace menos de GRACIA días (después de eso, el gestor pregunta si se pagó). */
+function cuotasPorVencer() {
+  const r = [];
+  D.acuerdos.forEach((a) => (a.cuotas || []).forEach((q, i) => {
+    const n = days(q.vence);
+    if ((q.estado || 'pendiente') === 'pendiente' && n !== null && n >= -AVISO_DIAS && n < GRACIA) r.push({ a, q, i, n });
+  }));
+  return r.sort((x, y) => x.q.vence.localeCompare(y.q.vence) || tituloAcuerdo(x.a).localeCompare(tituloAcuerdo(y.a)));
+}
+/** Un solo aviso para todas las cuotas que vencen pronto, visible en cualquier vista; el detalle está en Acuerdos. */
+function avisoVencimientos() {
+  const xs = cuotasPorVencer(); if (!xs.length || S.view === 'acuerdos') return ''; // en Acuerdos ya están a la vista, arriba
+  const hoy = xs.filter((x) => x.n === 0).length, tarde = xs.filter((x) => x.n > 0).length, pronto = xs.length - hoy - tarde;
+  const partes = [tarde && `${tarde} ${tarde === 1 ? 'venció hace poco' : 'vencieron hace poco'}`, hoy && `${hoy} ${hoy === 1 ? 'vence hoy' : 'vencen hoy'}`, pronto && `${pronto} ${pronto === 1 ? 'vence' : 'vencen'} en los próximos ${AVISO_DIAS} días`].filter(Boolean);
+  return `<div class="aviso${tarde ? ' urgente' : ''}"><div><b>${xs.length === 1 ? 'Hay una cuota de un acuerdo por vencer' : `Hay ${xs.length} cuotas de acuerdos por vencer`}</b><small>${partes.join(' · ')}</small></div>
+   <div class="actions"><button class="btn small primary" data-ac="vervenc">Ver cuotas</button></div></div>`;
+}
 function renderAvisos() {
-  $('#avisos').innerHTML = cuotasPorPreguntar().map(({ a, q, i }) => {
+  $('#avisos').innerHTML = avisoVencimientos() + cuotasPorPreguntar().map(({ a, q, i }) => {
     const k = nroCuota(a, i);
     return `<div class="aviso"><div><b>¿Pagó ${esc(a.deudor)} su cuota del acuerdo?</b><small>${esc(nombreRubro(rubroDe(q)))} · cuota ${k.n} de ${k.de} · vencía el ${fmt(q.vence)} · ${pesos(q.monto)}</small></div>
    <div class="actions"><button class="btn small primary" data-ac="pay" data-id="${esc(a.id)}" data-i="${i}" data-v="pagada">Sí, pagó</button><button class="btn small danger" data-ac="pay" data-id="${esc(a.id)}" data-i="${i}" data-v="impaga">No pagó</button></div></div>`;
@@ -1260,7 +1283,9 @@ function pillCuota(q) {
   const e = q.estado || 'pendiente';
   if (e === 'pagada') return `<span class="pill s-sentencia">Pagada${q.pago ? ' ' + fmt(q.pago) : ''}</span>`;
   if (e === 'impaga') return '<span class="pill s-subasta">No pagó</span>';
-  return days(q.vence) > 0 ? '<span class="pill s-notificando">Vencida sin confirmar</span>' : '<span class="pill">Pendiente</span>';
+  const n = days(q.vence);
+  if (n !== null && n > 0) return `<span class="pill s-notificando">${n < GRACIA ? cuandoVence(n)[0].toUpperCase() + cuandoVence(n).slice(1) : 'Vencida sin confirmar'}</span>`;
+  return n !== null && n >= -AVISO_DIAS ? `<span class="pill s-despacho">${cuandoVence(n)[0].toUpperCase() + cuandoVence(n).slice(1)}</span>` : '<span class="pill">Pendiente</span>';
 }
 /**
  * Una cuota, en un renglón: vencimiento y monto se corrigen ahí mismo y los botones la marcan o la
@@ -1303,19 +1328,62 @@ function acuerdoHtml(a, donde) {
   </div>`;
 }
 
-// Vista Acuerdos: una fila por acuerdo, con el nombre de la causa; al tocarla se despliega.
-function renderAcuerdos() {
+/** Lo que se busca en un acuerdo: el deudor, la causa (carátula, actor, demandado, expediente) y las notas. */
+const sinTildes = (t) => String(t).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // "Suárez" se encuentra escribiendo "suarez"
+function textoAcuerdo(a) {
+  const c = causaDe(a);
+  return sinTildes([a.deudor, a.expte, a.notas, tituloAcuerdo(a), c && c.actor, c && c.demandado].join(' '));
+}
+function acuerdosFiltrados() {
+  const q = sinTildes(S.q.trim());
   const lista = [...D.acuerdos].sort((x, y) => tituloAcuerdo(x).localeCompare(tituloAcuerdo(y)) || x.id.localeCompare(y.id));
+  return q ? lista.filter((a) => textoAcuerdo(a).includes(q)) : lista;
+}
+
+/** Cuánto falta (o pasó) para una cuota: "vence hoy", "vence mañana", "vence en 3 días", "venció hace 2 días". */
+function cuandoVence(n) {
+  if (n === 0) return 'vence hoy';
+  if (n === -1) return 'vence mañana';
+  if (n < 0) return `vence en ${-n} días`;
+  return n === 1 ? 'venció ayer' : `venció hace ${n} días`;
+}
+
+// Vista Acuerdos: arriba, lo que vence pronto; después una fila por acuerdo, con el nombre de la causa;
+// al tocarla se despliega.
+function renderAcuerdos(lista = acuerdosFiltrados(), buscando = false) {
   const porConfirmar = cuotasPorPreguntar();
   const nuevo = S.naAbierto ? `<div class="sec">${formAcuerdoHtml('v')}</div>` : '<div><button class="btn primary" data-ac="nuevo">+ Nuevo acuerdo</button></div>';
   const vacio = '<div class="empty"><b>Todavía no cargaste ningún acuerdo</b>Se carga desde la ficha de la causa, en “Acuerdo de pago”, o acá con “+ Nuevo acuerdo”.</div>';
-  return `<div class="acgrid">${nuevo}${lista.map((a) => filaAcuerdo(a, porConfirmar.filter((x) => x.a.id === a.id).length)).join('') || (S.naAbierto ? '' : vacio)}</div>`;
+  const sinHallar = `<div class="empty"><b>Ningún acuerdo coincide con la búsqueda</b>Probá con el apellido del demandado o con el número de expediente.</div>`;
+  const filas = lista.map((a) => filaAcuerdo(a, porConfirmar.filter((x) => x.a.id === a.id).length)).join('')
+    || (S.naAbierto ? '' : buscando ? sinHallar : vacio);
+  return `<div class="acgrid">${nuevo}${proximosVencimientosHtml(lista)}${filas}</div>`;
+}
+
+/** Las cuotas que vencen en los próximos días (o vencieron hace poco) de los acuerdos que se ven, en orden de fecha. */
+function proximosVencimientosHtml(lista) {
+  const ids = new Set(lista.map((a) => a.id));
+  const xs = cuotasPorVencer().filter((x) => ids.has(x.a.id));
+  if (!xs.length) return '';
+  const fila = ({ a, q, i, n }) => {
+    const k = nroCuota(a, i), tarde = n > 0;
+    return `<div class="venc${tarde ? ' tarde' : n === 0 ? ' hoy' : ''}">
+     <div class="venc-txt"><b>${esc(tituloAcuerdo(a))}</b><small>${esc(nombreRubro(rubroDe(q)))} · cuota ${k.n} de ${k.de} · ${pesos(q.monto)} · <span class="venc-cuando">${cuandoVence(n)}</span> (${fmt(q.vence)})</small></div>
+     <div class="actions"><button class="btn small donebtn m0" data-ac="pay" data-id="${esc(a.id)}" data-i="${i}" data-v="pagada">Pagó</button><button class="btn small" data-ac="ver" data-id="${esc(a.id)}">Ver acuerdo</button></div></div>`;
+  };
+  return `<section class="sec proximos" aria-label="Cuotas por vencer"><h4>Cuotas por vencer <span class="hint">próximos ${AVISO_DIAS} días y recién vencidas</span></h4>${xs.map(fila).join('')}</section>`;
 }
 function filaAcuerdo(a, porConfirmar) {
   const abierto = S.acVer === a.id, k = esc(a.id), t = cuentaCuotas(a.cuotas || []);
   const sub = `${a.expte ? 'Expte. ' + esc(a.expte) : 'Sin causa vinculada'} · ${t.pagadas} de ${t.n} cuotas pagadas`;
-  const alerta = porConfirmar ? `<span class="pill s-notificando">${porConfirmar} por confirmar</span>`
-    : t.impagas ? `<span class="pill s-subasta">${t.impagas} ${t.impagas === 1 ? 'impaga' : 'impagas'}</span>` : '';
+  const vencen = cuotasPorVencer().filter((x) => x.a.id === a.id), tarde = vencen.some((x) => x.n > 0);
+  // Hasta tres marcas a la vez: lo que hay que confirmar, lo que vence pronto y las cuotas que no se pagaron.
+  const marcas = [
+    porConfirmar && `<span class="pill s-notificando">${porConfirmar} por confirmar</span>`,
+    vencen.length && `<span class="pill ${tarde ? 's-notificando' : 's-despacho'}">${vencen.length === 1 ? cuandoVence(vencen[0].n) : `${vencen.length} cuotas por vencer`}</span>`,
+    t.impagas && `<span class="pill s-subasta">${t.impagas} ${t.impagas === 1 ? 'impaga' : 'impagas'}</span>`,
+  ].filter(Boolean);
+  const alerta = marcas.length ? `<span class="acpills">${marcas.join('')}</span>` : '';
   return `<div class="sec acitem${abierto ? ' abierto' : ''}" data-acuerdo="${k}">
    <button class="acfila" data-ac="ver" data-id="${k}" aria-expanded="${abierto}"><span class="acnom"><b>${esc(tituloAcuerdo(a))}</b><span class="hint">${sub}</span></span>${alerta}<span class="chev" aria-hidden="true"></span></button>
    ${abierto ? acuerdoHtml(a, 'v') : ''}
@@ -1352,6 +1420,7 @@ async function acAct(b) {
   guardarFormsAcu();
   // Lo que solo cambia lo que se ve
   if (k === 'nuevo') { soltar('na.'); S.naAbierto = !S.naAbierto; if (!S.naAbierto) S.na = NA_VACIO(); redibujarAcuerdos(); if (S.naAbierto) $('#na_deudor')?.focus(); return; }
+  if (k === 'vervenc') { S.view = 'acuerdos'; try { localStorage.setItem('gj.view', 'acuerdos'); } catch { /* sin almacenamiento */ } render(); window.scrollTo(0, 0); return; }
   if (k === 'ver') { S.acVer = S.acVer === id ? '' : id; redibujarAcuerdos(); return; }
   if (k === 'abrir') { const a = D.acuerdos.find((x) => x.id === id); if (a && causaDe(a)) openCausa(a.expte); return; }
   if (k === 'cargarf') { if (!S.open) return; S.naf = NA_VACIO(S.open.demandado || S.open.actor || ''); refrescarAcuerdoFicha(); $('#naf_deudor')?.focus(); return; }
@@ -1438,11 +1507,18 @@ function renderTpl(entra = false) {
   // Las cuatro de las acciones cautelares se pueden corregir; si algo se rompe, vuelven al texto original.
   const original = (x) => (MODELOS[x.id] && (x.titulo !== MODELOS[x.id].titulo || x.cuerpo !== MODELOS[x.id].cuerpo)
     ? `<button class="btn small" data-tp="original" data-id="${esc(x.id)}">Volver al texto original</button>` : '');
-  const item = (x) => `<div class="sec"><h4>${x.id ? (esModeloOficio(x.id) ? 'Modelo de oficio' : 'Plantilla') : 'Nueva plantilla'}</h4>
-    <label class="f">Título<input id="pt_${esc(x.id || 'new')}" value="${esc(x.titulo || '')}" placeholder="Ej.: Solicita aprobación de liquidación y designa martillero"></label>
-    <label class="f">Cuerpo<textarea id="pc_${esc(x.id || 'new')}" rows="${x.id ? (esModeloOficio(x.id) ? 16 : 10) : 6}" placeholder="Texto del escrito…">${esc(x.cuerpo || '')}</textarea></label>
+  // Cada plantilla es una fila con su título; el texto queda plegado y se despliega al tocarla, para leerlo y
+  // editarlo. El cuerpo plegado sigue en la página (con `hidden`): lo escrito sin guardar no se pierde al plegar.
+  const item = (x) => {
+    const k = esc(x.id || 'new'), abierto = !!S.tplVer[x.id || 'new'], nueva = !x.id;
+    return `<div class="sec acitem tplitem${abierto ? ' abierto' : ''}" data-tplitem="${k}">
+    <button class="acfila" data-tp="ver" data-id="${esc(x.id || '')}" aria-expanded="${abierto}" aria-controls="tpc_${k}"><span class="acnom"><b>${nueva ? '+ Nueva plantilla' : esc(x.titulo || '(sin título)')}</b>${esModeloOficio(x.id) ? '<span class="hint">Modelo de oficio</span>' : ''}</span><span class="chev" aria-hidden="true"></span></button>
+    <div class="acdet tplcuerpo" id="tpc_${k}" ${abierto ? '' : 'hidden'}>
+    <label class="f">Título<input id="pt_${k}" value="${esc(x.titulo || '')}" placeholder="Ej.: Solicita aprobación de liquidación y designa martillero"></label>
+    <label class="f">Cuerpo<textarea id="pc_${k}" rows="${x.id ? (esModeloOficio(x.id) ? 16 : 10) : 6}" placeholder="Texto del escrito…">${esc(x.cuerpo || '')}</textarea></label>
     <div class="actions"><button class="btn small primary" data-tp="save" data-id="${esc(x.id || '')}">${x.id ? 'Guardar cambios' : 'Crear plantilla'}</button>${x.id ? original(x) : ''}
-    ${x.id ? (S.tplDel === x.id ? `<button class="btn small danger" data-tp="delyes" data-id="${esc(x.id)}">Sí, eliminar</button><button class="btn small" data-tp="delno">Cancelar</button>` : `<button class="btn small danger" data-tp="del" data-id="${esc(x.id)}">Eliminar</button>`) : ''}</div></div>`;
+    ${x.id ? (S.tplDel === x.id ? `<button class="btn small danger" data-tp="delyes" data-id="${esc(x.id)}">Sí, eliminar</button><button class="btn small" data-tp="delno">Cancelar</button>` : `<button class="btn small danger" data-tp="del" data-id="${esc(x.id)}">Eliminar</button>`) : ''}</div></div></div>`;
+  };
   const escritos = D.plantillas.filter((x) => !esModeloOficio(x.id)), oficios = D.plantillas.filter((x) => esModeloOficio(x.id));
   d.innerHTML = `<div class="scrim" data-act="close"></div><aside class="panel${entra ? ' entra' : ''}" role="dialog" aria-modal="true" aria-label="Plantillas de escritos">
    <div class="phead"><div><div class="hint">Biblioteca</div><h2>Plantillas de escritos</h2></div><button class="btn small" data-act="close">Cerrar</button></div>
@@ -1464,6 +1540,14 @@ function refrescarTpl() {
 async function tplAct(b) {
   const a = b.dataset.tp, id = b.dataset.id || '';
   if (a === 'copy') { const el = document.getElementById(b.dataset.src); try { await navigator.clipboard.writeText(el.value); toast('Copiado'); } catch (e) { el.focus(); el.select(); toast('Seleccionado: copialo con Ctrl+C'); } return; }
+  if (a === 'ver') {
+    // Solo se pliega o despliega ese texto: sin redibujar, para no perder lo que se esté escribiendo en otras.
+    const k = id || 'new', abre = !S.tplVer[k], fila = b.closest('.tplitem');
+    S.tplVer[k] = abre; if (!abre) delete S.tplVer[k];
+    fila.classList.toggle('abierto', abre); b.setAttribute('aria-expanded', abre); fila.querySelector('.tplcuerpo').hidden = !abre;
+    if (abre) fila.querySelector('input')?.focus({ preventScroll: true });
+    return;
+  }
   if (a === 'del') { S.tplDel = id; renderTpl(); return; }
   if (a === 'delno') { S.tplDel = ''; renderTpl(); return; }
   try {
@@ -1870,7 +1954,7 @@ async function menuAct(b) {
   if (a === 'salir') { await salir(); mostrar('ingreso'); toast('Sesión cerrada'); }
 }
 
-function abrirPlantillas() { S.open = null; S.clave = false; S.tpl = true; renderTpl(true); }
+function abrirPlantillas() { S.open = null; S.clave = false; S.tpl = true; S.tplVer = {}; renderTpl(true); } // siempre se abre con los textos plegados
 
 function exportar() {
   const cols = ['Actor', 'Demandado', 'Tipo', 'Expediente', 'Nominación', 'Oficina', 'Ubicación', 'Estado', 'Etiqueta Cautelar', 'Situación', 'Última acción', 'Fecha última acción', 'Próxima acción', 'Vence', 'Notas', 'Capital reclamado', 'Intereses', 'Total reclamado'];
