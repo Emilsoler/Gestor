@@ -387,12 +387,40 @@ function dibujar() {
   }
 }
 
+// Verbos que no siguen la regla en pretérito (nosotros): lo que termina así cambia entero.
+const IRREG_NOS = [['hacer', 'hicimos'], ['poner', 'pusimos'], ['tener', 'tuvimos'], ['decir', 'dijimos'], ['traer', 'trajimos'], ['venir', 'vinimos'], ['ducir', 'dujimos'], ['poder', 'pudimos'], ['querer', 'quisimos'], ['saber', 'supimos']];
+const IRREG_NOS_EXACTO = { estar: 'estuvimos', andar: 'anduvimos', dar: 'dimos', ir: 'fuimos', ser: 'fuimos', ver: 'vimos', prever: 'previmos', oír: 'oímos', reír: 'reímos' };
+/** «llamar» → «llamamos», «hacer» → «hicimos». Devuelve '' si la palabra no es un infinitivo. */
+function infinitivoANosotros(w) {
+  const l = w.toLowerCase();
+  if (IRREG_NOS_EXACTO[l]) return IRREG_NOS_EXACTO[l];
+  if (!/^[a-záéíóúüñ]{2,}(ar|er|ir)$/.test(l)) return '';
+  for (const [fin, nos] of IRREG_NOS) if (l.endsWith(fin)) return l.slice(0, -fin.length) + nos;
+  if (/eer$/.test(l)) return l.slice(0, -3) + 'eímos';          // leer → leímos
+  if (l.endsWith('ar')) return l.slice(0, -2) + 'amos';          // llamar → llamamos
+  return l.slice(0, -2) + 'imos';                                // vender → vendimos, pedir → pedimos
+}
+/** Pasa a «nosotros, pasado» el verbo en infinitivo con que empieza la acción (y los que sigan unidos con «y», «e» o coma):
+ *  «Llamar y notificar a Franco» → «Llamamos y notificamos a Franco». Si no empieza con infinitivo, queda igual. */
+export function accionHecha(texto) {
+  const t = String(texto || '').trim();
+  const m = t.match(/^([A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+)/); if (!m) return t;
+  const primero = infinitivoANosotros(m[1]); if (!primero) return t;
+  let sale = m[1][0] === m[1][0].toUpperCase() ? primero[0].toUpperCase() + primero.slice(1) : primero, resto = t.slice(m[1].length);
+  for (;;) { // verbos que siguen unidos: «llamar y notificar», «pedir, solicitar y librar»
+    const u = resto.match(/^(\s*,\s*|\s+[ye]\s+)([A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+)/); if (!u) break;
+    const x = infinitivoANosotros(u[2]); if (!x) break;
+    sale += u[1] + x; resto = resto.slice(u[0].length);
+  }
+  return sale + resto;
+}
+
 function applyDone(c) {
   const t = (c.proxima || '').trim(); if (!t) return false;
   // Queda con la fecha en que vencía; si todavía no venció (se hizo antes), con la de hoy: un
   // movimiento con fecha futura taparía la causa en "sin movimiento" y en "última acción".
   const hoy = iso(today()), fecha = c.vence && c.vence < hoy ? c.vence : hoy;
-  c.historial = [...(c.historial || []), { fecha, texto: t, hecha: true }];
+  c.historial = [...(c.historial || []), { fecha, texto: accionHecha(t), hecha: true }];
   Object.assign(c, ultimaDe(c.historial)); c.proxima = ''; c.vence = ''; return true;
 }
 
