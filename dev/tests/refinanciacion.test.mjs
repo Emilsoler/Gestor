@@ -3,10 +3,12 @@
 // cuota de $ 1.127.150, 3 % mensual de interés, 5 % de honorarios, cuotas 1 a 4 impagas desde el 10/10/2025.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { nuevaRefi, estadoRefi, htmlRefi, cuotasPagadas, deudorManual } from '../../docs/cobranzas/refinanciacion.js';
+import { nuevaRefi as formNuevo, estadoRefi, htmlRefi, htmlEstadoRefi, htmlPlanRefi, cuotasPagadas, deudorManual } from '../../docs/cobranzas/refinanciacion.js';
 import { liquidar } from '../../docs/cobranzas/calculo.js';
 import { TASA_MENSUAL } from '../../docs/cobranzas/vehiculos.js';
 
+// Casi todas las pruebas son de las cuentas del plan: parten con el plan abierto (formNuevo es el formulario de verdad).
+const nuevaRefi = (t) => ({ ...formNuevo(t), plan: true });
 const cerca = (a, b, tol = 0.05) => assert.ok(Math.abs(a - b) <= tol, `${a} ≠ ${b}`);
 const HOY = '2026-11-04';
 const deudor = (extra = {}) => ({
@@ -152,7 +154,7 @@ test('a mano sin datos no inventa una deuda y pide completar', () => {
 import { datosCaso, restaurarCaso } from '../../docs/cobranzas/refinanciacion.js';
 
 test('datosCaso: sin buscador y con la fecha de cálculo escrita', () => {
-  const R = nuevaRefi('5'); R.q = 'perez'; R.cuota = '100.000';
+  const R = formNuevo('5'); R.q = 'perez'; R.cuota = '100.000';
   const d = datosCaso(R, '2026-11-04');
   assert.equal('q' in d, false);
   assert.equal(d.fecha, '2026-11-04');
@@ -163,7 +165,7 @@ test('datosCaso: sin buscador y con la fecha de cálculo escrita', () => {
 });
 
 test('restaurarCaso: ida y vuelta da el mismo formulario (menos el buscador)', () => {
-  const R = nuevaRefi('5');
+  const R = formNuevo('5');
   Object.assign(R, { cuota: '50.000', cantCuotas: '24', vto1: '2026-03-10', pagadas: '1-4', hon: '8', aVencer: true, cada: 'quincena', entrega: '200.000',
     pagos: [{ fecha: '2026-05-01', monto: '30.000', imp: 'intereses' }] });
   const vuelta = restaurarCaso(JSON.parse(JSON.stringify(datosCaso(R, '2026-11-04'))), '5');
@@ -174,9 +176,9 @@ test('restaurarCaso: ida y vuelta da el mismo formulario (menos el buscador)', (
 });
 
 test('restaurarCaso: datos vacíos, rotos o de otra forma no rompen nada', () => {
-  assert.deepEqual(restaurarCaso({}, '5'), nuevaRefi('5'));
-  assert.deepEqual(restaurarCaso(null, '5'), nuevaRefi('5'));
-  assert.deepEqual(restaurarCaso([1, 2], '7'), nuevaRefi('7'));
+  assert.deepEqual(restaurarCaso({}, '5'), formNuevo('5'));
+  assert.deepEqual(restaurarCaso(null, '5'), formNuevo('5'));
+  assert.deepEqual(restaurarCaso([1, 2], '7'), formNuevo('7'));
   const r = restaurarCaso({ fuente: 'deudor', aVencer: 'si', cada: 'siglo', cuota: { x: 1 }, pagos: [null, 3, { imp: 'otro', monto: 5 }], inventado: 1 }, '5');
   assert.equal(r.fuente, 'mano', 'un deudor sin id vuelve a mano');
   assert.equal(r.aVencer, false);
@@ -185,4 +187,56 @@ test('restaurarCaso: datos vacíos, rotos o de otra forma no rompen nada', () =>
   assert.deepEqual(r.pagos, [{ fecha: '', monto: '5', imp: 'capital' }]);
   assert.equal('inventado' in r, false);
   assert.equal(restaurarCaso({ fuente: 'deudor', id: 'abc' }, '5').fuente, 'deudor');
+});
+
+// ───────────────────────── Mora y plan abierto con un botón ─────────────────────────
+// El crédito: 24 cuotas de $ 1.127.150, la 1ª el 10/10/2025. HOY = 04/11/2026: vencieron la 1 a la 13.
+const CREDITO = { ...formNuevo('3'), cuota: '1.127.150', cantCuotas: '24', vto1: '2025-10-10', hon: '5' };
+const numeros = (R) => deudorManual(R).cuotas.map((c) => c.n);
+
+test('mora desde un N° de cuota: las anteriores se toman como pagadas', () => {
+  assert.equal(numeros(CREDITO).length, 24, 'sin dato de mora, cuenta desde la cuota 1');
+  assert.deepEqual(numeros({ ...CREDITO, moraTipo: 'cuota', mora: '22' }), [22, 23, 24]);
+  assert.deepEqual(numeros({ ...CREDITO, mora: '1' }).length, 24);
+  assert.equal(numeros({ ...CREDITO, mora: '30' }).length, 0, 'más allá de la última: nada que cobrar');
+  assert.deepEqual(numeros({ ...CREDITO, mora: '22', pagadas: '23' }), [22, 24], 'las otras pagadas se descuentan igual');
+});
+
+test('mora desde una fecha: cuentan las cuotas que vencen en esa fecha o después', () => {
+  const R = { ...CREDITO, moraTipo: 'fecha', mora: '2026-03-10' };
+  assert.deepEqual(numeros(R).slice(0, 2), [6, 7], 'la cuota 6 vence el 10/03/2026');
+  assert.equal(numeros({ ...R, mora: '2026-03-11' })[0], 7);
+  assert.equal(numeros({ ...R, mora: 'cualquier cosa' }).length, 24, 'una fecha inválida no filtra');
+  assert.equal(numeros({ ...CREDITO, moraTipo: 'fecha', mora: '5' }).length, 24, 'el N° de cuota no se usa como fecha');
+});
+
+test('mora por cuota o por fecha dan la misma deuda si apuntan al mismo punto', () => {
+  const a = estadoRefi(null, { ...CREDITO, mora: '5' }, HOY), b = estadoRefi(null, { ...CREDITO, moraTipo: 'fecha', mora: '2026-02-10' }, HOY);
+  assert.equal(a.deuda, b.deuda);
+  assert.equal(a.liq.vencidas, 9, 'vencidas la 5 a la 13');
+});
+
+test('el plan de refinanciación no se arma solo', () => {
+  const cerrado = { ...CREDITO, mora: '5', aVencer: true, iVencer: '50.000', entrega: '100.000' }; // plan: false
+  const e = estadoRefi(null, cerrado, HOY);
+  assert.equal(e.conPlan, false);
+  assert.equal(e.aVencer, 0, 'las cuotas a vencer son del plan');
+  assert.equal(e.iVencer, 0);
+  assert.equal(e.entrega, 0);
+  assert.equal(e.deuda, estadoRefi(null, { ...CREDITO, mora: '5' }, HOY).deuda);
+  assert.match(htmlEstadoRefi(e), /Total adeudado/);
+  assert.doesNotMatch(htmlRefi(e), /Refinanciación|Deuda a refinanciar|cuotas mensuales/);
+  const abierto = estadoRefi(null, { ...cerrado, plan: true }, HOY);
+  assert.ok(abierto.deuda > e.deuda, 'abierto, suma las cuotas a vencer');
+  assert.match(htmlRefi(abierto), /Refinanciación/);
+  assert.match(htmlEstadoRefi(abierto), /Deuda a refinanciar/);
+  assert.match(htmlPlanRefi(abierto), /cuotas mensuales de/);
+});
+
+test('un caso guardado conserva la mora y si el plan estaba abierto', () => {
+  const R = { ...CREDITO, moraTipo: 'fecha', mora: '2026-03-10', plan: true };
+  const v = restaurarCaso(JSON.parse(JSON.stringify(datosCaso(R, HOY))), '3');
+  assert.equal(v.moraTipo, 'fecha'); assert.equal(v.mora, '2026-03-10'); assert.equal(v.plan, true);
+  assert.equal(restaurarCaso({ moraTipo: 'otra', plan: 'si' }, '3').moraTipo, 'cuota');
+  assert.equal(restaurarCaso({ plan: 'si' }, '3').plan, false);
 });

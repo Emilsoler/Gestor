@@ -508,8 +508,9 @@ solo (como en Vehículo y Simulación), pero se puede **guardar como caso** (ver
 (`vistaRefi`, `actualizarRefi`, `accionRefi`, estado en `S.cred.refi`).
 
 - **Dos fuentes de datos** (`R.fuente`): **"Cargar a mano"** (la de arranque, sin deudor) y **"De un deudor"**.
-  A mano se cargan: fecha de cálculo, vencimiento de la 1ª cuota (mora desde), monto y cantidad de cuotas,
-  cuáles ya se pagaron (`5-24`, `1, 2, 3`; las pagadas no entran), interés moratorio, honorarios y los
+  A mano se cargan: fecha de cálculo, el crédito (vencimiento de la cuota 1, monto y cantidad de cuotas), **desde
+  cuándo está en mora** (`moraTipo`: un N° de cuota o una fecha; las cuotas anteriores se toman como pagadas, y vacío
+  es desde la cuota 1), otras cuotas ya pagadas (`7, 9-10`; no entran), interés moratorio, honorarios y los
   **pagos parciales** (fecha, monto y a qué rubro se imputa). `deudorManual` arma con eso un deudor
   y la cuenta es la misma que con uno real (`liquidar`). Con un deudor, la deuda sale de su liquidación
   (cuotas, pagos, gastos cargados, su interés y sus honorarios, que se cambian en su ficha).
@@ -518,6 +519,9 @@ solo (como en Vehículo y Simulación), pero se puede **guardar como caso** (ver
   justicia, martillero, abogado, otros; con un deudor, se suman a los de su ficha) + si se tilda, las cuotas a
   vencer menos los intereses a vencer. Menos la entrega inicial queda el **saldo a financiar**. Un pago parcial
   baja la deuda y corta el interés desde su fecha (no se suma, como hacía la planilla).
+- **El plan no se despliega solo**: la pantalla muestra el estado de deuda ("Total adeudado") y el botón "Armar plan
+  de refinanciación" (`R.plan`) abre el resto: cuotas a vencer, intereses a vencer, entrega inicial y los datos del
+  plan. Sin el plan abierto esos tres importes no cuentan (`estadoRefi` los ignora y `e.conPlan` es false).
 - **Plan**: `armarPlan` (cuota fija sobre saldo, en pesos enteros). La tasa de financiación arranca en la de los
   créditos prendarios (`TASA_MENSUAL` de `vehiculos.js`, la de la pestaña Simulación) y se puede cambiar. Los
   honorarios arrancan en 5 % y el interés moratorio en el de los ajustes de la app.

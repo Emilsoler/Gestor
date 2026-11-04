@@ -9,7 +9,7 @@ import {
   avisoCuit, soloDigitos, fichaConsulta, filaConsulta, textoConsulta, deudoresDelCuit,
   avisoCheque, numeroCheque, bancosRecientes, opcionesBancos, bancoEnLista, fichaCheque, textoCheque, filaCheque,
 } from './creditos.js';
-import { nuevaRefi, estadoRefi, htmlRefi, datosCaso, restaurarCaso } from './refinanciacion.js';
+import { nuevaRefi, estadoRefi, htmlEstadoRefi, htmlPlanRefi, datosCaso, restaurarCaso } from './refinanciacion.js';
 import { modeloSimple, filaModelo, fichaVehiculo, preciosPorAnio, htmlSimulador, htmlSimulacion, estadoSimulador, GASTOS_DEFECTO } from './vehiculos.js';
 import {
   liquidar, resumen, armarPlan, estadoPlan, planVigente, sumarMeses, totalPago, TRAMOS, tramoDe, CADAS, nombrePropio, detalleCuotas, ES_FECHA,
@@ -22,7 +22,7 @@ import { importe, enCelda, idNuevo, r2 } from '../liquidacion.js';
 import { xlsx } from '../excel.js';
 import { abrirChat } from './chat.js';
 
-const VERSION = '1.9.0';
+const VERSION = '1.9.1';
 const CLAVE_MIN = 10;
 const TIPOS_GESTION = ['Llamada', 'WhatsApp', 'Visita', 'Email', 'Carta documento', 'Promesa de pago', 'Nota'];
 const MEDIOS = ['Efectivo', 'Transferencia', 'Depósito', 'Cheque', 'Débito', 'Otro'];
@@ -649,13 +649,19 @@ function vistaRefi() {
       <button class="btn small" type="button" data-a="rf-pago-menos" data-i="${i}" aria-label="Quitar este pago">Quitar</button></div>`).join('');
     datos = `<div class="sim-form">
       ${fechaCampo('fecha', 'Fecha de cálculo', R.fecha || hoy())}
-      ${fechaCampo('vto1', 'Vence la 1ª cuota (mora desde)', R.vto1)}
+      ${fechaCampo('vto1', 'Vence la cuota 1 del crédito', R.vto1)}
       ${dinero('cuota', 'Monto de la cuota ($)')}
       ${campo('cantCuotas', 'Cantidad de cuotas del crédito', ' maxlength="3"', 'numeric')}
-      ${campo('pagadas', 'Cuotas pagadas (ej.: 5-24)', ' placeholder="ej.: 5-24 o 1, 2, 3"', 'text')}
+    </div>
+    <h4>Mora</h4>
+    <div class="sim-form">
+      <label class="f">En mora desde<select data-k="${k('moraTipo')}">${opciones([['cuota', 'la cuota N°'], ['fecha', 'la fecha']], R.moraTipo)}</select></label>
+      ${R.moraTipo === 'fecha' ? fechaCampo('mora', 'Fecha desde la que está en mora', R.mora) : campo('mora', 'N° de cuota en la que empezó la mora', ' maxlength="3" placeholder="ej.: 5"', 'numeric')}
+      ${campo('pagadas', 'Otras cuotas ya pagadas (opcional)', ' placeholder="ej.: 7, 9-10"', 'text')}
       ${campo('tasaMora', 'Interés moratorio (% mensual)')}
       ${campo('hon', 'Honorarios (%)')}
     </div>
+    <p class="hint m0">Las cuotas anteriores a la mora se toman como pagadas. Si lo dejás vacío, la mora cuenta desde la cuota 1.</p>
     <h4>Pagos parciales</h4>
     <p class="hint m0">Lo que ya entregó el deudor. Baja la deuda (por defecto, del capital de las cuotas más viejas) y deja de generar interés desde la fecha del pago.</p>
     ${pagos}<div><button class="btn small" type="button" data-a="rf-pago-mas">+ Agregar pago parcial</button></div>`;
@@ -666,9 +672,10 @@ function vistaRefi() {
     <h4>Gastos y honorarios de juicio</h4>
     <div class="sim-form">${dinero('justicia', 'Tasa de justicia ($)')}${dinero('martillero', 'Honorarios martillero ($)')}${dinero('abogado', 'Honorarios abogado ($)')}${dinero('otros', 'Otros gastos ($)')}</div>
     ${d ? '<p class="hint m0">Se suman a los que ya estén cargados en la ficha del deudor (pestaña Liquidación). Los pagos que ya hizo se descuentan solos.</p>' : ''}
+    <div id="refiEstado" aria-live="polite">${htmlEstadoRefi(e)}</div>
+    ${R.plan ? `<h4>Plan de refinanciación</h4>
     <label class="chk"><input type="checkbox" data-k="${k('aVencer')}" ${R.aVencer ? 'checked' : ''}> Incluir las cuotas a vencer (menos los intereses a vencer)</label>
     <div class="sim-form">${dinero('iVencer', '(−) Intereses a vencer ($)')}${dinero('entrega', '(−) Entrega inicial ($)')}</div>
-    <h4>Plan de refinanciación</h4>
     <div class="sim-form">
       ${campo('cuotas', 'Cantidad de cuotas del plan', ' maxlength="3"', 'numeric')}
       ${campo('tasa', 'Tasa de financiación (% mensual)')}
@@ -676,7 +683,7 @@ function vistaRefi() {
       ${fechaCampo('primerVto', 'Vence la 1ª cuota', e.primerVto)}
     </div>
     <p class="hint m0">La tasa de financiación es la de los créditos prendarios (la de la pestaña Simulación); se puede cambiar.</p>
-    <div id="refiResultado" aria-live="polite">${htmlRefi(e)}</div>
+    <div id="refiPlan" aria-live="polite">${htmlPlanRefi(e)}</div>` : ''}
     <div class="actions" id="refiAcciones">${accionesRefi(d)}</div>
   </section>`;
 }
@@ -704,17 +711,21 @@ const subCaso = (x) => {
 };
 
 function accionesRefi(d) {
-  if (!d) return `<button class="btn" type="button" data-a="rf-limpiar">Borrar todo y empezar de nuevo</button>`;
-  return planVigente(d)
-    ? `<span class="hint">Ya tiene un plan vigente: se ve en su ficha.</span><button class="btn" type="button" data-a="rf-ficha">Abrir la ficha</button>`
-    : `<button class="btn primary" type="button" data-a="rf-plan">Armar este plan en la ficha</button><button class="btn" type="button" data-a="rf-ficha">Abrir la ficha</button>`;
+  const R = S.cred.refi;
+  const plan = R.plan
+    ? `<button class="btn" type="button" data-a="rf-plan-ocultar">Ocultar el plan de refinanciación</button>`
+    : `<button class="btn primary" type="button" data-a="rf-plan-ver">Armar plan de refinanciación</button>`;
+  if (!d) return `${plan}<button class="btn" type="button" data-a="rf-limpiar">Borrar todo y empezar de nuevo</button>`;
+  if (planVigente(d)) return `${plan}<span class="hint">Ya tiene un plan vigente: se ve en su ficha.</span><button class="btn" type="button" data-a="rf-ficha">Abrir la ficha</button>`;
+  return `${plan}${R.plan ? '<button class="btn primary" type="button" data-a="rf-plan">Armar este plan en la ficha</button>' : ''}<button class="btn" type="button" data-a="rf-ficha">Abrir la ficha</button>`;
 }
 
 /** Redibuja solo el resultado al escribir, para no perder el foco. */
 function actualizarRefi(k) {
   const R = S.cred.refi, e = refiEstado();
   if (k === 'cred.refi.fecha' && !ES_FECHA.test(R.primerVto || '')) { const p = $('#rf_primerVto'); if (p) p.value = e.primerVto; }
-  const c = $('#refiResultado'); if (c) c.innerHTML = htmlRefi(e);
+  const c = $('#refiEstado'); if (c) c.innerHTML = htmlEstadoRefi(e);
+  const p = $('#refiPlan'); if (p) p.innerHTML = htmlPlanRefi(e);
 }
 function abrirCaso(id) {
   const x = D.casos_refi.find((c) => c.id === id); if (!x) return;
@@ -748,6 +759,7 @@ function accionRefi(act, a) {
   const R = S.cred.refi, d = refiDeudor();
   if (act.startsWith('rf-caso-')) { unaVez(a, () => accionCaso(act)); return; }
   if (act === 'rf-fuente') { R.fuente = a.dataset.fuente === 'deudor' ? 'deudor' : 'mano'; render(); return; }
+  if (act === 'rf-plan-ver' || act === 'rf-plan-ocultar') { R.plan = act === 'rf-plan-ver'; render(); return; }
   if (act === 'rf-pago-mas') { R.pagos.push({ fecha: '', monto: '', imp: 'capital' }); render(); return; }
   if (act === 'rf-pago-menos') { R.pagos.splice(+a.dataset.i, 1); render(); return; }
   if (act === 'rf-limpiar') { S.cred.refi = nuevaRefi(String(ajustes().tasa)); S.cred.caso = { id: '', nombre: '', confirmar: false }; render(); return; }
@@ -1972,6 +1984,7 @@ document.addEventListener('change', (e) => {
   if (!k) return;
   poner(k, el.type === 'checkbox' ? el.checked : el.value);
   if (k.startsWith('cred.veh.sim.')) { actualizarSimulador(k); return; }
+  if (k === 'cred.refi.moraTipo') { S.cred.refi.mora = ''; render(); return; } // la fecha y el N° de cuota son campos distintos
   if (k.startsWith('cred.refi.') && k !== 'cred.refi.q') { actualizarRefi(k); return; }
   if (k === 'cred.veh.marca') { S.cred.veh.q = ''; if (el.value) buscarVehiculos({ marca: el.value }); return; }
   if (k === 'cred.entidad') { actualizarCheque(); return; } // por si el navegador no avisa con "input"
