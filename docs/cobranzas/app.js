@@ -683,9 +683,9 @@ function vistaRefi() {
     </div>
     <div id="refiPlan" aria-live="polite">${htmlPlanRefi(e)}</div>
     <details class="rf-gastos" data-convenio${S.cred.convenioAbierto ? ' open' : ''}><summary>Datos para el convenio en Word</summary>
-    <div class="sim-form">${campo('nombre', 'Nombre del deudor' + (d ? ' (si queda vacío, el de la ficha)' : ''), ' placeholder="' + esc(d?.nombre || '') + '"', 'text')}${campo('dniDeudor', 'DNI', ' placeholder="' + esc(d?.dni || '') + '"', 'text')}${campo('calle', 'Calle y número', ' placeholder="' + esc(d?.domicilio || '') + '"', 'text')}${campo('ciudad', 'Ciudad', '', 'text')}
+    <div class="sim-form">${campo('calle', 'Calle y número', ' placeholder="' + esc(d?.domicilio || '') + '"', 'text')}${campo('ciudad', 'Ciudad', '', 'text')}
     ${fechaCampo('prestamo', 'Fecha del préstamo', R.prestamo)}${fechaCampo('firma', 'Fecha de la firma (vacío: hoy)', R.firma)}</div>
-    <p class="hint m0">Lo que falte queda entre corchetes en el Word, para completarlo a mano.</p></details>` : ''}
+    <p class="hint m0">El deudor del convenio es el nombre del caso y su DNI, que se escriben arriba. Lo que falte queda entre corchetes en el Word, para completarlo a mano.</p></details>` : ''}
     <div class="actions" id="refiAcciones">${accionesRefi(d)}</div>
   </section>`;
 }
@@ -705,7 +705,8 @@ function bloqueCasos(guardar) {
       : `<button class="btn primary small" type="button" data-a="rf-caso-guardar">Guardar cambios</button><button class="btn small" type="button" data-a="rf-caso-nuevo">Guardar como caso nuevo</button><button class="btn small" type="button" data-a="rf-caso-cerrar">Cerrar caso</button><button class="btn small" type="button" data-a="rf-caso-confirmar">Eliminar</button>`)
     : `<button class="btn primary small" type="button" data-a="rf-caso-nuevo">Guardar caso</button>`;
   return `<div class="rf-caso">
-    <label class="f">${abierto ? 'Caso abierto' : 'Nombre del caso'}<input id="rf_nombreCaso" ${atar('cred.caso.nombre')} maxlength="200" placeholder="ej.: Pérez – prenda Cronos" autocomplete="off"></label>
+    <div class="sim-form"><label class="f">${abierto ? 'Caso abierto' : 'Nombre del caso'} (es el deudor del convenio)<input id="rf_nombreCaso" ${atar('cred.caso.nombre')} maxlength="200" placeholder="ej.: Juan Pérez" autocomplete="off"></label>
+    <label class="f">DNI del deudor<input id="rf_dniDeudor" ${atar('cred.refi.dniDeudor')} maxlength="40" placeholder="${esc(refiDeudor()?.dni || '')}" inputmode="text" autocomplete="off"></label></div>
     <div class="actions">${acciones}</div>${lista}</div>`;
 }
 const subCaso = (x) => {
@@ -1691,11 +1692,14 @@ function descargarLiquidacion(d) {
   bajar([{ nombre: 'Liquidación', anchos: [30, 14, 16, 16, 16, 8, 16], filas, congelar: { fila: 7 } }], `liquidacion-${slug(d.nombre)}-${liq.fecha}.xlsx`);
 }
 
+/** El deudor del convenio y de la planilla: el nombre del caso; si no se le puso, el de la ficha del deudor elegido. */
+const nombreDeudor = (d) => (S.cred.caso.nombre || d?.nombre || '').trim();
+
 function descargarRefinanciacion() {
   const R = S.cred.refi, d = refiDeudor(), e = refiEstado();
   if (!(e.deuda > 0)) { toast('No hay deuda para refinanciar a esta fecha'); return; }
-  const quien = (R.nombre || d?.nombre || '').trim();
-  bajar(hojasRefinanciacion(e, R, d, hoy(), fmtLargo), `refinanciacion-${slug(quien) || 'deudor'}-${e.fecha}.xlsx`);
+  const quien = nombreDeudor(d);
+  bajar(hojasRefinanciacion(e, R, d, hoy(), fmtLargo, nombreDeudor(d)), `refinanciacion-${slug(quien) || 'deudor'}-${e.fecha}.xlsx`);
 }
 
 /** El convenio: el modelo Word del estudio con los datos del plan. Lo que falte queda entre corchetes. */
@@ -1705,8 +1709,8 @@ async function descargarConvenio() {
   try {
     const r = await fetch('./modelos/acuerdo-refinanciacion.docx', { cache: 'no-cache' });
     if (!r.ok) throw new Error('modelo ' + r.status);
-    const { blob, faltan } = await armarAcuerdo(new Uint8Array(await r.arrayBuffer()), datosAcuerdo(e, R, d, hoy()));
-    const quien = (R.nombre || d?.nombre || '').trim(), archivo = `convenio-refinanciacion-${slug(quien) || 'deudor'}-${hoy()}.docx`;
+    const { blob, faltan } = await armarAcuerdo(new Uint8Array(await r.arrayBuffer()), datosAcuerdo(e, R, d, hoy(), nombreDeudor(d)));
+    const quien = nombreDeudor(d), archivo = `convenio-refinanciacion-${slug(quien) || 'deudor'}-${hoy()}.docx`;
     const ok = await entregar(blob, archivo);
     if (!ok) return;
     const avisos = avisosAcuerdo(e);

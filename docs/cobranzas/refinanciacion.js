@@ -31,14 +31,14 @@ export const nuevaRefi = (tasaMora = '5') => ({
   plan: false, // el plan de refinanciación no se arma solo: se abre con un botón
   aVencer: false, iVencer: '', entrega: '',
   cuotas: '12', tasa: String(TASA_MENSUAL), cada: 'mes', primerVto: '',
-  // Para el convenio en Word (con un deudor se toman de su ficha lo que no se escriba acá).
-  nombre: '', dniDeudor: '', calle: '', ciudad: 'Bell Ville', prestamo: '', firma: '',
+  // Para el convenio en Word (el nombre del deudor es el del caso; con un deudor se toma de su ficha lo que no se escriba acá).
+  dniDeudor: '', calle: '', ciudad: 'Bell Ville', prestamo: '', firma: '',
 });
 
 // ───────────────────────── Casos guardados ─────────────────────────
 // Un caso es el formulario tal cual, sin las cuentas: al abrirlo se rehacen a la fecha de hoy.
 
-const TEXTOS = ['id', 'cuota', 'cantCuotas', 'vto1', 'moraVto', 'mora', 'tasaMora', 'hon', 'justicia', 'martillero', 'abogado', 'otros', 'iVencer', 'entrega', 'cuotas', 'tasa', 'primerVto', 'nombre', 'dniDeudor', 'calle', 'ciudad', 'prestamo', 'firma'];
+const TEXTOS = ['id', 'cuota', 'cantCuotas', 'vto1', 'moraVto', 'mora', 'tasaMora', 'hon', 'justicia', 'martillero', 'abogado', 'otros', 'iVencer', 'entrega', 'cuotas', 'tasa', 'primerVto', 'dniDeudor', 'calle', 'ciudad', 'prestamo', 'firma'];
 const IMPUTACIONES = ['capital', 'intereses', 'honorarios'];
 
 /** Lo que se guarda de un caso: el formulario sin el buscador y sin la fecha de cálculo (siempre es hoy). */

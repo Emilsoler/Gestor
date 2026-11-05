@@ -11,7 +11,7 @@ import { vto1Efectivo } from './refinanciacion.js';
 
 export const TIPO_DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
-/** Cada campo del modelo con cómo se le dice a la persona cuando falta (queda "[DNI del deudor]" en el Word, a completar a mano). */
+/** Cada campo del modelo (el nombre del deudor es el del caso) con cómo se le dice a la persona cuando falta (queda "[DNI del deudor]" en el Word, a completar a mano). */
 export const CAMPOS_ACUERDO = {
   deudor_nombre: 'nombre del deudor', deudor_dni: 'DNI del deudor', deudor_calle: 'domicilio del deudor', deudor_ciudad: 'ciudad del deudor',
   dia_firma: 'día', mes_firma: 'mes', anio_firma: 'año',
@@ -42,7 +42,7 @@ const cuotasDeuda = (e) => e.liq.cuotas.filter((c) => c.saldo > 0 && (c.incluida
  * (o null si se cargó a mano) y `hoy` la fecha de hoy ('aaaa-mm-dd').
  * `deuda_total` es la suma nominal de las cuotas impagas, como dice la cláusula 1.3 del modelo.
  */
-export function datosAcuerdo(e, R, d, hoy) {
+export function datosAcuerdo(e, R, d, hoy, nombre = '') {
   const pend = cuotasDeuda(e);
   const primera = pend[0] || null;
   const nominal = Math.round(pend.reduce((a, c) => a + Math.round(c.saldo * 100), 0)) / 100;
@@ -53,7 +53,7 @@ export function datosAcuerdo(e, R, d, hoy) {
   const prestamo = ES_FECHA.test(R.prestamo || '') ? R.prestamo : (d?.operaciones || []).map((o) => o.fecha).find((f) => ES_FECHA.test(f || '')) || '';
   const n = e.n, plan = e.plan;
   const v = {
-    deudor_nombre: (R.nombre || d?.nombre || '').trim(),
+    deudor_nombre: String(nombre || d?.nombre || '').trim(),
     deudor_dni: (R.dniDeudor || d?.dni || '').trim(),
     deudor_calle: (R.calle || d?.domicilio || '').trim(),
     deudor_ciudad: (R.ciudad || '').trim() || 'Bell Ville',
@@ -145,12 +145,11 @@ export async function armarAcuerdo(modelo, valores) {
  * Las hojas de la planilla de la refinanciación (para `xlsx` de excel.js): el resumen con el estado de deuda y el plan,
  * y una hoja con las cuotas (con fórmulas en los totales).
  */
-export function hojasRefinanciacion(e, R, d, hoy, fmtLargo) {
+export function hojasRefinanciacion(e, R, d, hoy, fmtLargo, nombre = '') {
   const plan = e.plan, liq = e.liq;
-  const nombre = (R.nombre || d?.nombre || '').trim();
-  const filas = [
+    const filas = [
     [{ v: 'Refinanciación de deuda', s: 'titulo' }],
-    [{ v: nombre || 'Deudor sin nombre', s: 'negrita' }],
+    [{ v: String(nombre || d?.nombre || '').trim() || 'Deudor sin nombre', s: 'negrita' }],
     [{ v: [R.dniDeudor || d?.dni ? `DNI ${R.dniDeudor || d.dni}` : '', d?.socio ? `Socio N° ${d.socio}` : ''].filter(Boolean).join(' · ') }],
     [{ v: 'Estado de deuda al' }, { v: e.fecha, fecha: true, s: 'fecha' }],
     [],
