@@ -135,10 +135,10 @@ test('a mano: gastos, entrega y plan salen como con un deudor', () => {
   assert.match(htmlRefi(e), /Cuotas que faltan pagar/);
 });
 
-test('a mano sin datos no inventa una deuda y pide completar', () => {
+test('a mano sin datos no inventa una deuda', () => {
   const e = estadoRefi(null, nuevaRefi(), HOY);
   assert.equal(e.deuda, 0);
-  assert.match(htmlRefi(e), /Completá la cuota/);
+  assert.equal(htmlRefi(e), '', 'sin datos no muestra nada');
   assert.equal(deudorManual({ ...nuevaRefi(), cuota: '1000', cantCuotas: '3' }).cuotas.length, 0, 'sin primer vencimiento no hay cuotas');
   assert.equal(deudorManual({ ...nuevaRefi(), cuota: '1000', cantCuotas: '999', vto1: '2026-01-31' }).cuotas.length, 120);
 });

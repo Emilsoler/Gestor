@@ -660,7 +660,6 @@ function vistaRefi() {
       ${campo('hon', 'Honorarios (%)')}
     </div>
     <p class="hint m0" id="refiVto1Hint">${textoVto1(R)}</p>
-    <p class="hint m0">Las cuotas anteriores a la mora se toman como pagadas. Si lo dejás vacío, la mora cuenta desde la cuota 1.</p>
     <h4>Pagos parciales</h4>
     <p class="hint m0">Lo que ya entregó el deudor. Baja la deuda (por defecto, del capital de las cuotas más viejas) y deja de generar interés desde la fecha del pago.</p>
     ${pagos}<div><button class="btn small" type="button" data-a="rf-pago-mas">+ Agregar pago parcial</button></div>`;
@@ -681,7 +680,6 @@ function vistaRefi() {
       <label class="f">Frecuencia<select data-k="${k('cada')}">${opciones(Object.entries(CADAS), R.cada)}</select></label>
       ${fechaCampo('primerVto', 'Vence la 1ª cuota', e.primerVto)}
     </div>
-    <p class="hint m0">La tasa de financiación es la de los créditos prendarios (la de la pestaña Simulación); se puede cambiar.</p>
     <div id="refiPlan" aria-live="polite">${htmlPlanRefi(e)}</div>` : ''}
     <div class="actions" id="refiAcciones">${accionesRefi(d)}</div>
   </section>`;
@@ -694,7 +692,7 @@ function bloqueCasos(guardar) {
   const lista = D.casos_refi.length ? `<details class="rf-casos"${abierto || D.casos_refi.length > 6 ? '' : ' open'}><summary>Casos guardados <b class="mono">${D.casos_refi.length}</b></summary>
     <div class="cr-lista">${D.casos_refi.map((x) => `<button type="button" class="cr-fila${x.id === C.id ? ' elegida' : ''}" data-caso="${esc(x.id)}">
       <span class="mono">${x.deudor ? 'Deudor' : 'A mano'}</span>
-      <span class="cr-fila-t"><b>${esc(x.nombre)}</b><span class="sub">${esc(subCaso(x))}</span></span></button>`).join('')}</div></details>` : '<p class="hint m0">Todavía no guardaste casos. Cargá los datos y tocá “Guardar caso” para volver a ellos desde la PC o el celular.</p>';
+      <span class="cr-fila-t"><b>${esc(x.nombre)}</b><span class="sub">${esc(subCaso(x))}</span></span></button>`).join('')}</div></details>` : '';
   if (!guardar) return `<div class="rf-caso">${lista}</div>`;
   const acciones = abierto
     ? (C.confirmar
@@ -724,7 +722,7 @@ function accionesRefi(d) {
 // Avisa de dónde sale el vto. de la cuota 1 cuando se calcula con la cuota en mora y su vencimiento.
 function textoVto1(R) {
   const v = vto1Efectivo(R);
-  return v && !ES_FECHA.test(R.vto1 || '') ? `La cuota 1 vencía el <b>${esc(fmtLargo(v))}</b> (calculado con la cuota en mora y su vencimiento; si lo escribís arriba, vale lo que escribas).` : 'Si no tenés el vencimiento de la cuota 1, dejalo vacío y completá la cuota en mora con su vencimiento: se calcula solo.';
+  return v && !ES_FECHA.test(R.vto1 || '') ? `La cuota 1 vencía el <b>${esc(fmtLargo(v))}</b> (calculado con la cuota en mora y su vencimiento; si lo escribís arriba, vale lo que escribas).` : '';
 }
 function actualizarRefi(k) {
   const R = S.cred.refi, e = refiEstado();

@@ -140,7 +140,7 @@ export function htmlEstadoRefi(e) {
   const porCuota = pend.length ? `<details class="rf-cuotas"${pend.length <= 12 ? ' open' : ''}><summary>Cuotas que faltan pagar <b class="mono">${pend.length}</b></summary>
     <div class="scrollx"><table class="tabla sim-tabla"><thead><tr><th>N°</th><th>Vence</th><th class="num">Saldo</th><th class="num rf-aux">Días de mora</th><th class="num">Interés</th></tr></thead>
     <tbody>${pend.map((c) => `<tr><td class="mono">${c.n ?? ''}</td><td class="mono">${esc(fmt(c.vto))}</td><td class="num mono">${esc(plata(c.saldo))}</td><td class="num mono rf-aux">${c.dias || ''}</td><td class="num mono">${c.interes ? esc(plata(c.interes)) : '—'}</td></tr>`).join('')}</tbody></table></div></details>` : '';
-  if (sinDatos(e)) return `<p class="hint m0">Completá la cuota, cuántas son y cuándo vence la primera (o algún gasto) para ver la deuda.</p>`;
+  if (sinDatos(e)) return '';
   return `<div class="sim-cuadro"><h4>Estado de deuda al ${esc(fmt(e.fecha))}</h4>
     <p class="hint m0">${vencidas}</p>
     <div class="scrollx"><table class="tabla sim-tabla"><thead><tr><th>Concepto</th><th class="num rf-aux">Devengado</th><th class="num rf-aux">Pagado</th><th class="num">Saldo</th></tr></thead>
