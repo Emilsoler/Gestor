@@ -137,9 +137,9 @@ export function htmlEstadoRefi(e) {
     : 'No tiene cuotas vencidas a esta fecha.';
   // Como la planilla: una fila por cuota que falta pagar, con sus días de mora y su interés.
   const pend = liq.cuotas.filter((c) => c.saldo > 0);
-  const porCuota = pend.length ? `<details class="rf-cuotas"${pend.length <= 12 ? ' open' : ''}><summary>Cuotas que faltan pagar <b class="mono">${pend.length}</b></summary>
-    <div class="scrollx"><table class="tabla sim-tabla"><thead><tr><th>N°</th><th>Vence</th><th class="num">Saldo</th><th class="num rf-aux">Días de mora</th><th class="num">Interés</th></tr></thead>
-    <tbody>${pend.map((c) => `<tr><td class="mono">${c.n ?? ''}</td><td class="mono">${esc(fmt(c.vto))}</td><td class="num mono">${esc(plata(c.saldo))}</td><td class="num mono rf-aux">${c.dias || ''}</td><td class="num mono">${c.interes ? esc(plata(c.interes)) : '—'}</td></tr>`).join('')}</tbody></table></div></details>` : '';
+  const porCuota = pend.length ? `<details class="rf-cuotas"${pend.length <= 12 ? ' open' : ''}><summary>Detalle de la mora y cuotas pendientes <b class="mono">${pend.length}</b></summary>
+    <div class="scrollx"><table class="tabla sim-tabla"><thead><tr><th>N°</th><th>Vence</th><th class="num">Saldo</th><th class="num rf-aux">Días de mora</th><th class="num">Interés</th><th class="num">Subtotal</th></tr></thead>
+    <tbody>${pend.map((c) => `<tr><td class="mono">${c.n ?? ''}</td><td class="mono">${esc(fmt(c.vto))}</td><td class="num mono">${esc(plata(c.saldo))}</td><td class="num mono rf-aux">${c.dias || ''}</td><td class="num mono">${c.interes ? esc(plata(c.interes)) : '—'}</td><td class="num mono"><b>${esc(plata(c.saldo + (c.interes || 0)))}</b></td></tr>`).join('')}</tbody></table></div></details>` : '';
   if (sinDatos(e)) return '';
   return `<div class="sim-cuadro"><h4>Estado de deuda al ${esc(fmt(e.fecha))}</h4>
     <p class="hint m0">${vencidas}</p>

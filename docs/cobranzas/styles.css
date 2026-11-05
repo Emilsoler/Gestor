@@ -652,10 +652,13 @@ body.con-chat .toast{bottom:calc(var(--abajo) + 84px)}  /* que el aviso no tape 
 @media (max-width:720px){.rf-aux{display:none}}
 .rf-pago{align-items:end;grid-template-columns:repeat(auto-fit,minmax(120px,1fr))}
 .rf-pago .btn{justify-self:start}
-.rf-cuotas{border-top:1px solid var(--line-soft);padding-top:6px;margin-top:8px}
-.rf-cuotas summary{cursor:pointer;display:flex;justify-content:space-between;gap:10px;font-size:12.5px;font-weight:500;color:var(--soft)}
-.rf-cuotas summary b{color:var(--fg);font-weight:600}
-.rf-cuotas .tabla{margin-top:6px}
+.rf-cuotas{margin-top:12px}
+/* El título del detalle es un botón verde, como «Armar plan de refinanciación». */
+.rf-cuotas summary{cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:center;gap:8px;padding:8px 16px;border-radius:999px;background:var(--grad);color:var(--accent-fg);font-weight:500;box-shadow:0 8px 22px rgba(10,125,88,.34)}
+.rf-cuotas summary::-webkit-details-marker{display:none}
+.rf-cuotas summary:hover{filter:brightness(1.12)}
+.rf-cuotas summary b{color:inherit;font-weight:600}
+.rf-cuotas .tabla{margin-top:10px}
 
 /* Casos guardados de Estado de Deuda y Refinanciación. */
 .rf-caso{display:grid;gap:8px;padding-bottom:10px;border-bottom:1px solid var(--line-soft)}

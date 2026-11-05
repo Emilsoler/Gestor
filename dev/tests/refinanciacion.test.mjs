@@ -132,7 +132,7 @@ test('a mano: gastos, entrega y plan salen como con un deudor', () => {
   cerca(e.deuda, 6_362_536.32 + 400_000 + 1_200_000 + 2_500_000 + 10_000);
   cerca(e.plan.financiado, e.deuda - 100_000);
   assert.match(htmlRefi(e), /Otros gastos/);
-  assert.match(htmlRefi(e), /Cuotas que faltan pagar/);
+  assert.match(htmlRefi(e), /Detalle de la mora y cuotas pendientes/);
 });
 
 test('a mano sin datos no inventa una deuda', () => {
@@ -241,4 +241,13 @@ test('sin vto. de la cuota 1: sale de la cuota en mora y su vencimiento', () => 
   assert.equal(vto1Efectivo({ ...B, moraTipo: 'fecha' }), '', 'con fecha de mora no alcanza');
   assert.equal(vto1Efectivo({ ...B, mora: '' }), '');
   assert.equal(vto1Efectivo({ ...B, mora: '3', moraVto: '2026-03-31' }), '2026-01-31');
+});
+
+test('el detalle de cuotas tiene la columna Subtotal: saldo + interés de cada cuota', () => {
+  const e = estadoRefi(null, { ...formNuevo('3'), cuota: '1000', cantCuotas: '3', vto1: '2026-06-10' }, HOY);
+  const html = htmlEstadoRefi(e);
+  assert.match(html, /<th class="num">Subtotal<\/th>/);
+  const fila = e.liq.cuotas.find((c) => c.saldo > 0);
+  const esperado = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 }).format(Math.round(fila.saldo + (fila.interes || 0)));
+  assert.ok(html.replace(/\./g, '').includes(esperado.replace(/\./g, '')), 'el subtotal aparece en la tabla');
 });
