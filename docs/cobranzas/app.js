@@ -9,7 +9,7 @@ import {
   avisoCuit, soloDigitos, fichaConsulta, filaConsulta, textoConsulta, deudoresDelCuit,
   avisoCheque, numeroCheque, bancosRecientes, opcionesBancos, bancoEnLista, fichaCheque, textoCheque, filaCheque,
 } from './creditos.js';
-import { nuevaRefi, estadoRefi, htmlEstadoRefi, htmlPlanRefi, datosCaso, restaurarCaso } from './refinanciacion.js';
+import { nuevaRefi, vto1Efectivo, estadoRefi, htmlEstadoRefi, htmlPlanRefi, datosCaso, restaurarCaso } from './refinanciacion.js';
 import { modeloSimple, filaModelo, fichaVehiculo, preciosPorAnio, htmlSimulador, htmlSimulacion, estadoSimulador, GASTOS_DEFECTO } from './vehiculos.js';
 import {
   liquidar, resumen, armarPlan, estadoPlan, planVigente, sumarMeses, totalPago, TRAMOS, tramoDe, CADAS, nombrePropio, detalleCuotas, ES_FECHA,
@@ -655,10 +655,11 @@ function vistaRefi() {
     <h4>Mora</h4>
     <div class="sim-form">
       <label class="f">En mora desde<select data-k="${k('moraTipo')}">${opciones([['cuota', 'la cuota N°'], ['fecha', 'la fecha']], R.moraTipo)}</select></label>
-      ${R.moraTipo === 'fecha' ? fechaCampo('mora', 'Fecha desde la que está en mora', R.mora) : campo('mora', 'N° de cuota en la que empezó la mora', ' maxlength="3" placeholder="ej.: 5"', 'numeric')}
+      ${R.moraTipo === 'fecha' ? fechaCampo('mora', 'Fecha desde la que está en mora', R.mora) : campo('mora', 'N° de cuota en la que empezó la mora', ' maxlength="3" placeholder="ej.: 5"', 'numeric') + fechaCampo('moraVto', 'Vence esa cuota (si no tenés el vto. de la 1ª)', R.moraVto)}
       ${campo('tasaMora', 'Interés moratorio (% mensual)')}
       ${campo('hon', 'Honorarios (%)')}
     </div>
+    <p class="hint m0" id="refiVto1Hint">${textoVto1(R)}</p>
     <p class="hint m0">Las cuotas anteriores a la mora se toman como pagadas. Si lo dejás vacío, la mora cuenta desde la cuota 1.</p>
     <h4>Pagos parciales</h4>
     <p class="hint m0">Lo que ya entregó el deudor. Baja la deuda (por defecto, del capital de las cuotas más viejas) y deja de generar interés desde la fecha del pago.</p>
@@ -720,8 +721,14 @@ function accionesRefi(d) {
 }
 
 /** Redibuja solo el resultado al escribir, para no perder el foco. */
+// Avisa de dónde sale el vto. de la cuota 1 cuando se calcula con la cuota en mora y su vencimiento.
+function textoVto1(R) {
+  const v = vto1Efectivo(R);
+  return v && !ES_FECHA.test(R.vto1 || '') ? `La cuota 1 vencía el <b>${esc(fmtLargo(v))}</b> (calculado con la cuota en mora y su vencimiento; si lo escribís arriba, vale lo que escribas).` : 'Si no tenés el vencimiento de la cuota 1, dejalo vacío y completá la cuota en mora con su vencimiento: se calcula solo.';
+}
 function actualizarRefi(k) {
   const R = S.cred.refi, e = refiEstado();
+  const h = $('#refiVto1Hint'); if (h) h.innerHTML = textoVto1(R);
   const c = $('#refiEstado'); if (c) c.innerHTML = htmlEstadoRefi(e);
   const p = $('#refiPlan'); if (p) p.innerHTML = htmlPlanRefi(e);
 }

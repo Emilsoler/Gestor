@@ -3,7 +3,7 @@
 // cuota de $ 1.127.150, 3 % mensual de interés, 5 % de honorarios, cuotas 1 a 4 impagas desde el 10/10/2025.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { nuevaRefi as formNuevo, estadoRefi, htmlRefi, htmlEstadoRefi, htmlPlanRefi, deudorManual } from '../../docs/cobranzas/refinanciacion.js';
+import { nuevaRefi as formNuevo, estadoRefi, htmlRefi, htmlEstadoRefi, htmlPlanRefi, deudorManual, vto1Efectivo } from '../../docs/cobranzas/refinanciacion.js';
 import { liquidar } from '../../docs/cobranzas/calculo.js';
 import { TASA_MENSUAL } from '../../docs/cobranzas/vehiculos.js';
 
@@ -229,4 +229,16 @@ test('un caso guardado conserva la mora y si el plan estaba abierto', () => {
   assert.equal(v.moraTipo, 'fecha'); assert.equal(v.mora, '2026-03-10'); assert.equal(v.plan, true);
   assert.equal(restaurarCaso({ moraTipo: 'otra', plan: 'si' }, '3').moraTipo, 'cuota');
   assert.equal(restaurarCaso({ plan: 'si' }, '3').plan, false);
+});
+
+test('sin vto. de la cuota 1: sale de la cuota en mora y su vencimiento', () => {
+  const B = { ...formNuevo('3'), cuota: '1000', cantCuotas: '12', moraTipo: 'cuota', mora: '5', moraVto: '2026-05-10' };
+  assert.equal(vto1Efectivo(B), '2026-01-10');
+  const c = deudorManual(B).cuotas;
+  assert.deepEqual(c.map((x) => x.n), [5, 6, 7, 8, 9, 10, 11, 12]);
+  assert.equal(c[0].vto, '2026-05-10');
+  assert.equal(vto1Efectivo({ ...B, vto1: '2026-02-10' }), '2026-02-10', 'si se escribió, vale lo escrito');
+  assert.equal(vto1Efectivo({ ...B, moraTipo: 'fecha' }), '', 'con fecha de mora no alcanza');
+  assert.equal(vto1Efectivo({ ...B, mora: '' }), '');
+  assert.equal(vto1Efectivo({ ...B, mora: '3', moraVto: '2026-03-31' }), '2026-01-31');
 });

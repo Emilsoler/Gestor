@@ -26,7 +26,7 @@ export const nuevaRefi = (tasaMora = '5') => ({
   // A mano: el crédito (la cuota, cuántas son y cuándo vence la 1ª), desde cuándo está en mora (`moraTipo`:
   // 'cuota' = N° de cuota o 'fecha'; las anteriores se toman como pagadas), el interés
   // y los honorarios, y los pagos parciales ({ fecha, monto, imp: 'capital' | 'intereses' | 'honorarios' }).
-  cuota: '', cantCuotas: '', vto1: '', moraTipo: 'cuota', mora: '', tasaMora: String(tasaMora), hon: '0', pagos: [],
+  cuota: '', cantCuotas: '', vto1: '', moraVto: '', moraTipo: 'cuota', mora: '', tasaMora: String(tasaMora), hon: '0', pagos: [],
   justicia: '', martillero: '', abogado: '', otros: '', // gastos y honorarios de juicio (los de un deudor ya cargados en su ficha se suman aparte)
   plan: false, // el plan de refinanciación no se arma solo: se abre con un botón
   aVencer: false, iVencer: '', entrega: '',
@@ -36,7 +36,7 @@ export const nuevaRefi = (tasaMora = '5') => ({
 // ───────────────────────── Casos guardados ─────────────────────────
 // Un caso es el formulario tal cual, sin las cuentas: al abrirlo se rehacen a la fecha de hoy.
 
-const TEXTOS = ['id', 'cuota', 'cantCuotas', 'vto1', 'mora', 'tasaMora', 'hon', 'justicia', 'martillero', 'abogado', 'otros', 'iVencer', 'entrega', 'cuotas', 'tasa', 'primerVto'];
+const TEXTOS = ['id', 'cuota', 'cantCuotas', 'vto1', 'moraVto', 'mora', 'tasaMora', 'hon', 'justicia', 'martillero', 'abogado', 'otros', 'iVencer', 'entrega', 'cuotas', 'tasa', 'primerVto'];
 const IMPUTACIONES = ['capital', 'intereses', 'honorarios'];
 
 /** Lo que se guarda de un caso: el formulario sin el buscador y sin la fecha de cálculo (siempre es hoy). */
@@ -64,16 +64,27 @@ export function restaurarCaso(datos, tasaMora = '5') {
 
 const FRECUENCIA = { mes: 'mensuales', quincena: 'cada 15 días', semana: 'semanales' };
 
+/**
+ * Vencimiento de la cuota 1: el que se escribió o, si falta, el que sale de la cuota en que empezó la mora y
+ * cuándo vence esa cuota (cuota 5 vence el 10/05 → la 1ª venció el 10/01). '' si no alcanza para calcularlo.
+ */
+export function vto1Efectivo(R) {
+  if (ES_FECHA.test(R.vto1 || '')) return R.vto1;
+  const n = parseInt(R.mora, 10);
+  if (R.moraTipo === 'fecha' || !(n >= 1) || n > CUOTAS_MAX || !ES_FECHA.test(R.moraVto || '')) return '';
+  return sumarMeses(R.moraVto, -(n - 1));
+}
+
 /** Un deudor armado con lo escrito a mano: las cuotas que faltan pagar (las anteriores a la mora no se cargan) y los pagos parciales. */
 export function deudorManual(R) {
   const cuota = Math.max(0, importe(R.cuota)), cant = Math.max(0, Math.min(CUOTAS_MAX, parseInt(R.cantCuotas, 10) || 0));
   // En mora desde una cuota o una fecha: las anteriores se toman como pagadas. Vacío: desde la cuota 1.
   const moraN = R.moraTipo !== 'fecha' ? parseInt(R.mora, 10) || 0 : 0;
   const moraFecha = R.moraTipo === 'fecha' && ES_FECHA.test(R.mora || '') ? R.mora : '';
-  const cuotas = [];
-  if (cuota > 0 && ES_FECHA.test(R.vto1 || '')) {
+  const cuotas = [], vto1 = vto1Efectivo(R);
+  if (cuota > 0 && vto1) {
     for (let k = 0; k < cant; k++) {
-      const vto = sumarMeses(R.vto1, k);
+      const vto = sumarMeses(vto1, k);
       if (k + 1 < moraN || (moraFecha && vto < moraFecha)) continue;
       cuotas.push({ id: 'c' + (k + 1), n: k + 1, de: cant, vto, importe: cuota });
     }
