@@ -542,6 +542,13 @@ solo (como en Vehículo y Simulación), pero se puede **guardar como caso** (ver
   `select nombre, deudor, actualizado, actualizado_por from public.casos_refi order by actualizado desc;`
   Publicar: migración 0020 y después subir la app.
 
+- **Exportar la refinanciación** (`docs/cobranzas/acuerdo.js`; botones «Descargar convenio en Word» y «Descargar en Excel», visibles con el plan abierto):
+  - **Excel**: dos hojas, «Refinanciación» (estado de deuda, entrega, saldo a financiar, cuota y total, con fórmulas) y «Cuotas» (cronograma con pagado, saldo y totales). `hojasRefinanciacion` las arma y `xlsx` de `excel.js` las escribe.
+  - **Word**: el modelo del estudio es `docs/cobranzas/modelos/acuerdo-refinanciacion.docx`, un Word común con campos `{{así}}` (la lista y cómo se nombran cuando faltan, en `CAMPOS_ACUERDO`). `armarAcuerdo` lo lee (zip + `DecompressionStream`), reemplaza los campos en `word/*.xml` y lo vuelve a empaquetar con `zip` de `excel.js`; no hay librerías ni red. Lo que falta (DNI, domicilio, fecha del préstamo…) queda como «[DNI del deudor]» para completar a mano. Con un deudor de la app toma nombre, DNI y domicilio de su ficha; los datos escritos en «Datos para el convenio» pisan a los de la ficha.
+  - **Cuentas del convenio**: la deuda reconocida es la suma nominal de las cuotas impagas (las vencidas y, si se tildó «Incluir las cuotas a vencer», las que faltan vencer), como dice la cláusula 1.3; los montos y cantidades en letras salen de `enLetras`. `avisosAcuerdo` avisa si lo que se refinancia suma intereses, honorarios o gastos que el modelo no menciona, si la última cuota difiere por redondeo o si el plan no es mensual.
+  - **Cambiar el texto legal**: reemplazar el .docx conservando los campos que se quieran completar (un campo nuevo se agrega en `datosAcuerdo` y en `CAMPOS_ACUERDO`) y subir `VERSION` en `sw.js`. Los números van entre paréntesis en el propio modelo: `veinticuatro ({{refi_cuotas}})`.
+  - El modelo trae los datos de cobro de la Mutual (CUIT, alias y CBU): el repositorio es público, así que no sumar ahí datos de personas. Pruebas: `node --test tests/acuerdo.test.mjs`.
+
 **Cambiar la app**: `docs/cobranzas/` (`app.js` interfaz, `datos.js` la base, `calculo.js` cuentas,
 `textos.js` fechas, importes y mensajes, `creditos.js` lo que se muestra de una consulta al BCRA (por CUIT y por cheque),
 `styles.css`). Si se toca una cuenta, también

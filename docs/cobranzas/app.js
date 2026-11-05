@@ -20,6 +20,7 @@ import {
 } from './textos.js';
 import { importe, enCelda, idNuevo, r2 } from '../liquidacion.js';
 import { xlsx } from '../excel.js';
+import { datosAcuerdo, avisosAcuerdo, armarAcuerdo, hojasRefinanciacion, CAMPOS_ACUERDO } from './acuerdo.js';
 import { abrirChat } from './chat.js';
 
 const VERSION = '1.9.2';
@@ -680,11 +681,15 @@ function vistaRefi() {
       <label class="f">Frecuencia<select data-k="${k('cada')}">${opciones(Object.entries(CADAS), R.cada)}</select></label>
       ${fechaCampo('primerVto', 'Vence la 1ª cuota', e.primerVto)}
     </div>
-    <div id="refiPlan" aria-live="polite">${htmlPlanRefi(e)}</div>` : ''}
+    <div id="refiPlan" aria-live="polite">${htmlPlanRefi(e)}</div>
+    <details class="rf-gastos" data-convenio${S.cred.convenioAbierto ? ' open' : ''}><summary>Datos para el convenio en Word</summary>
+    <div class="sim-form">${campo('nombre', 'Nombre del deudor' + (d ? ' (si queda vacío, el de la ficha)' : ''), ' placeholder="' + esc(d?.nombre || '') + '"', 'text')}${campo('dniDeudor', 'DNI', ' placeholder="' + esc(d?.dni || '') + '"', 'text')}${campo('calle', 'Calle y número', ' placeholder="' + esc(d?.domicilio || '') + '"', 'text')}${campo('ciudad', 'Ciudad', '', 'text')}
+    ${fechaCampo('prestamo', 'Fecha del préstamo', R.prestamo)}${fechaCampo('firma', 'Fecha de la firma (vacío: hoy)', R.firma)}</div>
+    <p class="hint m0">Lo que falte queda entre corchetes en el Word, para completarlo a mano.</p></details>` : ''}
     <div class="actions" id="refiAcciones">${accionesRefi(d)}</div>
   </section>`;
 }
-document.addEventListener('toggle', (e) => { if (e.target.matches?.('details[data-gastos]')) S.cred.gastosAbierto = e.target.open; }, true);
+document.addEventListener('toggle', (e) => { if (e.target.matches?.('details[data-gastos]')) S.cred.gastosAbierto = e.target.open; if (e.target.matches?.('details[data-convenio]')) S.cred.convenioAbierto = e.target.open; }, true);
 /** Casos guardados: nombre y botones para guardar el que está en pantalla, y la lista para abrir otro. */
 function bloqueCasos(guardar) {
   if (!D.casos) return `<p class="hint m0">Falta activar el guardado de casos: la base todavía no tiene dónde guardarlos. Pedile a Claude que lo active.</p>`;
@@ -713,9 +718,10 @@ function accionesRefi(d) {
   const plan = R.plan
     ? `<button class="btn" type="button" data-a="rf-plan-ocultar">Ocultar el plan de refinanciación</button>`
     : `<button class="btn primary" type="button" data-a="rf-plan-ver">Armar plan de refinanciación</button>`;
-  if (!d) return `${plan}<button class="btn" type="button" data-a="rf-limpiar">Borrar todo y empezar de nuevo</button>`;
-  if (planVigente(d)) return `${plan}<span class="hint">Ya tiene un plan vigente: se ve en su ficha.</span><button class="btn" type="button" data-a="rf-ficha">Abrir la ficha</button>`;
-  return `${plan}${R.plan ? '<button class="btn primary" type="button" data-a="rf-plan">Armar este plan en la ficha</button>' : ''}<button class="btn" type="button" data-a="rf-ficha">Abrir la ficha</button>`;
+  const bajar = R.plan ? '<button class="btn" type="button" data-a="rf-word">Descargar convenio en Word</button><button class="btn" type="button" data-a="rf-excel">Descargar en Excel</button>' : '';
+  if (!d) return `${plan}${bajar}<button class="btn" type="button" data-a="rf-limpiar">Borrar todo y empezar de nuevo</button>`;
+  if (planVigente(d)) return `${plan}${bajar}<span class="hint">Ya tiene un plan vigente: se ve en su ficha.</span><button class="btn" type="button" data-a="rf-ficha">Abrir la ficha</button>`;
+  return `${plan}${R.plan ? '<button class="btn primary" type="button" data-a="rf-plan">Armar este plan en la ficha</button>' : ''}${bajar}<button class="btn" type="button" data-a="rf-ficha">Abrir la ficha</button>`;
 }
 
 /** Redibuja solo el resultado al escribir, para no perder el foco. */
@@ -761,6 +767,8 @@ function elegirRefi(id) { if (!deudor(id)) return; S.cred.refi.id = id; render()
 function accionRefi(act, a) {
   const R = S.cred.refi, d = refiDeudor();
   if (act.startsWith('rf-caso-')) { unaVez(a, () => accionCaso(act)); return; }
+  if (act === 'rf-excel') { descargarRefinanciacion(); return; } // antes de cualquier espera: el menú de compartir del celular lo exige
+  if (act === 'rf-word') { unaVez(a, descargarConvenio); return; }
   if (act === 'rf-fuente') { R.fuente = a.dataset.fuente === 'deudor' ? 'deudor' : 'mano'; render(); return; }
   if (act === 'rf-plan-ver' || act === 'rf-plan-ocultar') { R.plan = act === 'rf-plan-ver'; render(); return; }
   if (act === 'rf-pago-mas') { R.pagos.push({ fecha: '', monto: '', imp: 'capital' }); render(); return; }
@@ -1681,6 +1689,29 @@ function descargarLiquidacion(d) {
   }
   filas.push([], [{ v: `Bajada de la app de cobranzas el ${fmtLargo(hoy())}. Los intereses se calculan en la app; los totales, con fórmulas.`, s: 'nota' }]);
   bajar([{ nombre: 'Liquidación', anchos: [30, 14, 16, 16, 16, 8, 16], filas, congelar: { fila: 7 } }], `liquidacion-${slug(d.nombre)}-${liq.fecha}.xlsx`);
+}
+
+function descargarRefinanciacion() {
+  const R = S.cred.refi, d = refiDeudor(), e = refiEstado();
+  if (!(e.deuda > 0)) { toast('No hay deuda para refinanciar a esta fecha'); return; }
+  const quien = (R.nombre || d?.nombre || '').trim();
+  bajar(hojasRefinanciacion(e, R, d, hoy(), fmtLargo), `refinanciacion-${slug(quien) || 'deudor'}-${e.fecha}.xlsx`);
+}
+
+/** El convenio: el modelo Word del estudio con los datos del plan. Lo que falte queda entre corchetes. */
+async function descargarConvenio() {
+  const R = S.cred.refi, d = refiDeudor(), e = refiEstado();
+  if (!(e.plan.financiado > 0)) { toast('No hay saldo para financiar: armá el plan primero'); return; }
+  try {
+    const r = await fetch('./modelos/acuerdo-refinanciacion.docx', { cache: 'no-cache' });
+    if (!r.ok) throw new Error('modelo ' + r.status);
+    const { blob, faltan } = await armarAcuerdo(new Uint8Array(await r.arrayBuffer()), datosAcuerdo(e, R, d, hoy()));
+    const quien = (R.nombre || d?.nombre || '').trim(), archivo = `convenio-refinanciacion-${slug(quien) || 'deudor'}-${hoy()}.docx`;
+    const ok = await entregar(blob, archivo);
+    if (!ok) return;
+    const avisos = avisosAcuerdo(e);
+    toast(`Convenio listo: ${archivo}` + (faltan.length ? `. Completá a mano: ${faltan.slice(0, 4).map((k) => CAMPOS_ACUERDO[k] || k).join(', ')}${faltan.length > 4 ? '…' : ''}` : '') + (avisos.length ? `. Ojo: ${avisos[0]}` : ''));
+  } catch (err) { console.error(err); toast('No se pudo armar el convenio'); }
 }
 
 function textoLiquidacion(d) {

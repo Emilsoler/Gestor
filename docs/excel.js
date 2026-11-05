@@ -161,7 +161,7 @@ const TABLA_CRC = (() => {
 })();
 function crc32(b) { let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = TABLA_CRC[(c ^ b[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
 
-function zip(archivos) {
+export function zip(archivos, tipo = TIPO_XLSX) {
   const enc = new TextEncoder(), d = new Date();
   const hora = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
   const dia = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
@@ -188,5 +188,5 @@ function zip(archivos) {
   fin.setUint32(0, 0x06054b50, true); fin.setUint16(4, 0, true); fin.setUint16(6, 0, true);
   fin.setUint16(8, archivos.length, true); fin.setUint16(10, archivos.length, true);
   fin.setUint32(12, tam, true); fin.setUint32(16, pos, true); fin.setUint16(20, 0, true);
-  return new Blob([...locales, ...central, new Uint8Array(fin.buffer)], { type: TIPO_XLSX });
+  return new Blob([...locales, ...central, new Uint8Array(fin.buffer)], { type: tipo });
 }
