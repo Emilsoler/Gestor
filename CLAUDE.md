@@ -549,6 +549,29 @@ solo (como en Vehículo y Simulación), pero se puede **guardar como caso** (ver
   - **Cambiar el texto legal**: reemplazar el .docx conservando los campos que se quieran completar (un campo nuevo se agrega en `datosAcuerdo` y en `CAMPOS_ACUERDO`) y subir `VERSION` en `sw.js`. Los números van entre paréntesis en el propio modelo: `veinticuatro ({{refi_cuotas}})`.
   - El modelo trae los datos de cobro de la Mutual (CUIT, alias y CBU): el repositorio es público, así que no sumar ahí datos de personas. Pruebas: `node --test tests/acuerdo.test.mjs`.
 
+### Demanda prendaria — "haz DP" (pestaña "Demanda prendaria" de "Créditos" y botón de la ficha)
+
+Arma la demanda ejecutiva prendaria en Word con el modelo del estudio. Los datos se escriben a mano (el formulario es
+siempre editable) o se toman de un deudor ya cargado: "Tomar los datos de un deudor" en la pestaña, o el botón
+"Demanda prendaria (DP)" de la ficha, que abre la pestaña con todo ya cargado. Lo escrito no se guarda.
+
+- **Código**: cuentas y datos en `docs/cobranzas/demanda.js` (`demandaDesdeDeudor`, `estadoDemanda`, `datosDemanda`,
+  `avisosDemanda`, `CAMPOS_DEMANDA`); pantalla en `app.js` (`vistaDemanda`, `descargarDemanda`, estado en `S.cred.dp`).
+  El Word lo arma `armarAcuerdo` (de `acuerdo.js`, con los nombres de campos de la demanda) sobre
+  `docs/cobranzas/modelos/demanda-prendaria.docx`.
+- **El modelo** lo genera `node dev/modelo-dp.mjs`: ahí está el texto de la demanda del estudio, al pie de la letra (el de
+  CALDERON Pablo Gabriel, 260824), con los datos variables como `{{campos}}`. **No modificar ni ampliar el texto** (ni
+  agregar cláusulas, citas ni párrafos): solo se reemplazan datos. Formato: Garamond 12, interlineado 1,5, justificado,
+  fondo lavanda `CCC0D9`, sangría de primera línea 2211 en los párrafos numerados, hoja carta con los márgenes de los oficios
+  (esto último es una suposición: el original no se leyó en XML; si el Word del estudio usa otra hoja o márgenes, ajustar
+  `SECT` en `dev/modelo-dp.mjs` y regenerar). Hay que subir `VERSION` en `sw.js` al cambiar el modelo.
+- **Cuentas**: lo reclamado es cuotas impagas × valor de la cuota; impagas = cantidad − (cuota en mora − 1); la fecha de la
+  mora es el vencimiento de la cuota 1 más (cuota en mora − 1) meses. Lo único que se pregunta de la mora es el N° de cuota.
+  De un deudor salen: nombre, DNI, domicilio, la prenda (operación con prenda o con vehículo: fecha, cuotas, importe,
+  vehículo) y como cuota en mora la primera vencida con saldo. **No están en la ficha** y se escriben: monto de la prenda,
+  Registro del Automotor y fecha de inscripción (y motor y chasis si la ficha no los trae).
+- Lo que falte queda como `[nombre del dato]` en el Word. Pruebas: `node --test tests/demanda.test.mjs` (sin stack).
+
 **Cambiar la app**: `docs/cobranzas/` (`app.js` interfaz, `datos.js` la base, `calculo.js` cuentas,
 `textos.js` fechas, importes y mensajes, `creditos.js` lo que se muestra de una consulta al BCRA (por CUIT y por cheque),
 `styles.css`). Si se toca una cuenta, también

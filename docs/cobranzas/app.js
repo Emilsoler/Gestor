@@ -21,6 +21,7 @@ import {
 import { importe, enCelda, idNuevo, r2 } from '../liquidacion.js';
 import { xlsx } from '../excel.js';
 import { datosAcuerdo, avisosAcuerdo, armarAcuerdo, hojasRefinanciacion, CAMPOS_ACUERDO } from './acuerdo.js';
+import { nuevaDemanda, demandaDesdeDeudor, estadoDemanda, datosDemanda, avisosDemanda, CAMPOS_DEMANDA } from './demanda.js';
 import { abrirChat } from './chat.js';
 
 const VERSION = '1.9.2';
@@ -34,7 +35,7 @@ const CHIPS = [['activos', 'Activos'], ['mora', 'En mora'], ['plan', 'Con plan']
 const VISTAS = { inicio: 'Inicio', deudores: 'Deudores', planes: 'Planes', creditos: 'Aprobación de créditos' };
 const AYUDA_CUIT = 'La situación en cada banco o financiera, los últimos 24 meses y los cheques rechazados.';
 const AYUDA_CHEQUE = 'Si el cheque fue denunciado como extraviado, robado o adulterado.';
-const MODOS_CREDITO = [['cuit', 'Deudas por CUIT'], ['cheque', 'Cheques denunciados'], ['vehiculo', 'Vehículo'], ['simulacion', 'Simulación'], ['refi', 'Estado de Deuda y Refinanciación']];
+const MODOS_CREDITO = [['cuit', 'Deudas por CUIT'], ['cheque', 'Cheques denunciados'], ['vehiculo', 'Vehículo'], ['simulacion', 'Simulación'], ['refi', 'Estado de Deuda y Refinanciación'], ['dp', 'Demanda prendaria']];
 const JUICIOS = '../'; // el gestor de juicios, en la misma base
 
 const nuevaSim = () => ({ valor: '', capital: '', capitalManual: false, cuotas: '24', tasa: '7', g: { ...GASTOS_DEFECTO } });
@@ -56,12 +57,13 @@ const S = {
       sim: nuevaSim() },
     // Estado de Deuda y Refinanciación: el deudor elegido y lo que se escribe para armar el plan.
     refi: nuevaRefi(String(ajustes().tasa)),
+    dp: nuevaDemanda(), // «Demanda prendaria» (haz DP): lo escrito para armar la demanda en Word
     caso: { id: '', nombre: '', confirmar: false }, // el caso guardado que está abierto (si hay) y el nombre con que se guarda
     gastosAbierto: false, // «Gastos y honorarios de juicio» empieza plegado; si se despliega, queda así al redibujar
   },
 };
 try { S.vista = VISTAS[localStorage.getItem('cb.vista')] ? localStorage.getItem('cb.vista') : 'inicio'; } catch { /* sin almacenamiento */ }
-try { const m = localStorage.getItem('cb.credModo'); if (m === 'cheque' || m === 'vehiculo' || m === 'refi' || m === 'simulacion') S.cred.modo = m; } catch { /* sin almacenamiento */ }
+try { const m = localStorage.getItem('cb.credModo'); if (m === 'cheque' || m === 'vehiculo' || m === 'refi' || m === 'simulacion' || m === 'dp') S.cred.modo = m; } catch { /* sin almacenamiento */ }
 try { S.maxi = localStorage.getItem('cb.maxi') === '1'; } catch { /* sin almacenamiento */ }
 
 // ───────────────────────── Utilidades ─────────────────────────
@@ -447,7 +449,7 @@ function vistaPlanes(todos) {
 
 function vistaCreditos() {
   const modos = `<nav class="tabs cr-modos" role="tablist" aria-label="Qué consultar">${MODOS_CREDITO.map(([k, l]) => `<button role="tab" data-cr-modo="${k}" aria-selected="${S.cred.modo === k}">${esc(l)}</button>`).join('')}</nav>`;
-  return `<div class="creditos">${modos}${S.cred.modo === 'cheque' ? vistaCheques() : S.cred.modo === 'vehiculo' ? vistaVehiculo() : S.cred.modo === 'refi' ? vistaRefi() : S.cred.modo === 'simulacion' ? vistaSimulacion() : vistaCuit()}</div>`;
+  return `<div class="creditos">${modos}${S.cred.modo === 'cheque' ? vistaCheques() : S.cred.modo === 'vehiculo' ? vistaVehiculo() : S.cred.modo === 'refi' ? vistaRefi() : S.cred.modo === 'dp' ? vistaDemanda() : S.cred.modo === 'simulacion' ? vistaSimulacion() : vistaCuit()}</div>`;
 }
 
 function cambiarModo(m) {
@@ -1004,6 +1006,7 @@ function tabResumen(d, r) {
       <button class="btn" data-a="ir-mensaje">Mandar WhatsApp</button>
       <button class="btn" data-tab-ir="plan">${r.plan ? 'Ver el plan' : 'Armar un plan'}</button>
       <button class="btn" data-tab-ir="gestiones">Anotar gestión</button>
+      ${!d.expte && d.estado !== 'Cancelado' ? '<button class="btn" data-a="ficha-dp" title="Arma la demanda ejecutiva prendaria en Word con los datos de este deudor">Demanda prendaria (DP)</button>' : ''}
       ${!d.expte && d.estado !== 'Cancelado' ? `<a class="btn" href="${JUICIOS}#desde-deudor=${esc(d.id)}" target="_blank" rel="noopener" title="Abre en el gestor una causa nueva con los datos de este deudor">Pasar a juicio</a>` : ''}
     </div>
   </div>
@@ -1692,6 +1695,97 @@ function descargarLiquidacion(d) {
   bajar([{ nombre: 'Liquidación', anchos: [30, 14, 16, 16, 16, 8, 16], filas, congelar: { fila: 7 } }], `liquidacion-${slug(d.nombre)}-${liq.fecha}.xlsx`);
 }
 
+// ───────────────────────── Demanda prendaria (haz DP) ─────────────────────────
+// Los datos se escriben a mano o se toman de un deudor ya cargado (y se corrigen); el resultado es la demanda en Word,
+// con el modelo del estudio. Lo escrito no se guarda: es para armar el escrito.
+const dpDeudor = () => { const F = S.cred.dp; return F.id ? deudor(F.id) || null : null; };
+
+function htmlEstadoDemanda(F) {
+  const e = estadoDemanda(F), av = avisosDemanda(F);
+  const lineas = e.valida && e.cuota > 0
+    ? `<p class="m0">Se reclaman <b>${e.impagas}</b> ${e.impagas === 1 ? 'cuota impaga' : 'cuotas impagas'} (de la ${e.mora} a la ${e.total}) de ${esc(plata(e.cuota))}: <b>${esc(plata(e.reclamado))}</b> más intereses y costas.</p>
+       <p class="hint m0">Se abonaron ${e.pagadas} ${e.pagadas === 1 ? 'cuota' : 'cuotas'}.${e.moraFecha ? ' La mora empezó el ' + esc(fmtLargo(e.moraFecha)) + '.' : ''}</p>`
+    : '<p class="hint m0">Cargá la cantidad de cuotas, el importe de la cuota y la cuota en que empezó la mora: con eso se calcula lo reclamado.</p>';
+  return lineas + av.map((a) => `<p class="aviso-chico" role="status">${esc(a)}</p>`).join('');
+}
+
+function vistaDemanda() {
+  const F = S.cred.dp, d = dpDeudor();
+  subtitulo('Demanda prendaria');
+  const k = (c) => 'cred.dp.' + c;
+  const campo = (c, t, extra = '', modo = 'text') => `<label class="f">${t}<input id="dp_${c}" ${atar(k(c))} inputmode="${modo}" autocomplete="off"${extra}></label>`;
+  const fechaCampo = (c, t) => `<label class="f">${t}<input type="date" id="dp_${c}" data-k="${k(c)}" value="${esc(F[c])}"></label>`;
+  if (S.cred.dpElegir) {
+    const q = String(F.q || '').trim().toLowerCase();
+    const xs = D.deudores.map((x) => ({ d: x, r: res(x) })).filter((x) => x.r.activo && busca(x.d, q)).sort((a, b) => b.r.saldo - a.r.saldo);
+    return `<section class="card cr-simulador cr-sim-vista" id="crDp">
+      <div class="card-cab"><h3>Demanda prendaria</h3></div>
+      <p class="hint m0">Elegí un deudor: se cargan sus datos y su prenda, y después los podés corregir.</p>
+      <input type="search" class="cr-filtro" ${atar(k('q'))} placeholder="Buscar por nombre, DNI, socio o dominio" aria-label="Buscar un deudor" autocomplete="off">
+      ${xs.length ? `<div class="cr-lista">${xs.slice(0, 25).map(({ d: x, r }) => `<button type="button" class="cr-fila" data-dp-deudor="${esc(x.id)}">
+        <span class="mono">${esc(x.socio || '')}</span>
+        <span class="cr-fila-t"><b>${esc(nombre(x))}</b><span class="sub">${esc(r.texto)}</span></span>
+        <span class="cr-fila-f mono">${esc(plata(r.saldo))}</span></button>`).join('')}</div>${xs.length > 25 ? '<p class="hint m0">Se ven los 25 con más deuda: escribí para buscar a otro.</p>' : ''}` : `<p class="hint m0">${D.deudores.length ? 'No hay deudores que coincidan.' : 'Todavía no hay deudores cargados.'}</p>`}
+      <div class="actions"><button class="btn" type="button" data-a="dp-volver">Volver al formulario</button></div>
+    </section>`;
+  }
+  return `<section class="card cr-simulador cr-sim-vista" id="crDp">
+    <div class="card-cab"><h3>Demanda prendaria</h3></div>
+    <p class="hint m0">Escribí los datos o tomalos de un deudor ya cargado. El resultado es la demanda ejecutiva prendaria en Word, con el modelo del estudio: solo se reemplazan los datos, el texto no cambia. Lo que falte queda entre corchetes para completarlo a mano.</p>
+    <div class="actions">
+      <button class="btn${d ? '' : ' primary'}" type="button" data-a="dp-elegir">${d ? 'Cambiar de deudor' : 'Tomar los datos de un deudor'}</button>
+      ${d ? `<span class="hint">Datos tomados de <b>${esc(nombre(d))}</b>.</span><button class="btn" type="button" data-a="dp-ficha">Abrir la ficha</button>` : ''}
+    </div>
+    <div class="sec"><h4>Demandado</h4><div class="sim-form">${campo('nombre', 'Nombre y apellido')}${campo('dni', 'DNI', '', 'numeric')}${campo('calle', 'Calle y número')}${campo('ciudad', 'Ciudad')}</div></div>
+    <div class="sec"><h4>Contrato de prenda</h4><div class="sim-form">${fechaCampo('prestamo', 'Fecha del contrato')}${campo('prendaMonto', 'Monto de la prenda ($)', ' data-importe', 'decimal')}${campo('registro', 'Registro del Automotor', ' placeholder="Bell Ville N°1"')}${fechaCampo('inscripcion', 'Fecha de inscripción')}</div></div>
+    <div class="sec"><h4>Bien prendado</h4><div class="sim-form">${campo('marca', 'Marca')}${campo('modelo', 'Modelo')}${campo('dominio', 'Dominio')}${campo('motor', 'N° de motor')}${campo('chasis', 'N° de chasis')}</div></div>
+    <div class="sec"><h4>Cuotas y mora</h4><div class="sim-form">${campo('cuotas', 'Cantidad de cuotas', '', 'numeric')}${campo('cuota', 'Importe de cada cuota ($)', ' data-importe', 'decimal')}${fechaCampo('vto1', 'Vencimiento de la primera cuota')}${campo('moraN', 'Mora desde la cuota N°', '', 'numeric')}</div></div>
+    <div id="dpEstado" aria-live="polite">${htmlEstadoDemanda(F)}</div>
+    <div class="actions" id="dpAcciones">
+      <button class="btn primary" type="button" data-a="dp-word">Descargar demanda en Word</button>
+      <button class="btn" type="button" data-a="dp-limpiar">Borrar todo y empezar de nuevo</button>
+    </div>
+  </section>`;
+}
+
+/** Al escribir se redibuja solo el cálculo, para no perder el foco. */
+function actualizarDemanda() { const c = $('#dpEstado'); if (c) c.innerHTML = htmlEstadoDemanda(S.cred.dp); }
+
+/** Toma los datos de un deudor ya cargado (se pueden corregir). */
+function elegirDemanda(id) {
+  const d = deudor(id); if (!d) return;
+  S.cred.dp = demandaDesdeDeudor(d, hoy()); S.cred.dpElegir = false; render();
+}
+/** Desde la ficha del deudor: abre esta pestaña con sus datos ya cargados. */
+function demandaDeLaFicha(id) {
+  const d = deudor(id); if (!d) return;
+  S.cred.dp = demandaDesdeDeudor(d, hoy()); S.cred.dpElegir = false; S.cred.modo = 'dp';
+  try { localStorage.setItem('cb.credModo', 'dp'); } catch { /* sin almacenamiento */ }
+  cerrarFicha(); verVista('creditos');
+}
+function accionDemanda(act) {
+  if (act === 'dp-elegir') { S.cred.dpElegir = true; S.cred.dp.q = ''; render(); return; }
+  if (act === 'dp-volver') { S.cred.dpElegir = false; render(); return; }
+  if (act === 'dp-limpiar') { S.cred.dp = nuevaDemanda(); S.cred.dpElegir = false; render(); return; }
+  if (act === 'dp-ficha') { const d = dpDeudor(); if (d) abrirDeudor(d.id); return; }
+  if (act === 'dp-word') descargarDemanda();
+}
+
+/** La demanda: el modelo Word del estudio con los datos. Lo que falte queda entre corchetes. */
+async function descargarDemanda() {
+  const F = S.cred.dp;
+  if (!(estadoDemanda(F).reclamado > 0) && !String(F.nombre || '').trim()) { toast('Escribí al menos el nombre del demandado'); return; }
+  try {
+    const r = await fetch('./modelos/demanda-prendaria.docx', { cache: 'no-cache' });
+    if (!r.ok) throw new Error('modelo ' + r.status);
+    const { blob, faltan } = await armarAcuerdo(new Uint8Array(await r.arrayBuffer()), datosDemanda(F), CAMPOS_DEMANDA);
+    const archivo = `${hoy().slice(2).replace(/-/g, '')} - Demanda Ejecutiva Prendaria - ${String(F.nombre || '').trim() || 'demandado'}.docx`;
+    if (!(await entregar(blob, archivo))) return;
+    const dd = datosDemanda(F);
+    toast(`Demanda lista: ${archivo}` + (faltan.length ? `. Completá a mano: ${faltan.slice(0, 4).map((c) => CAMPOS_DEMANDA[c] || c).join(', ')}${faltan.length > 4 ? '…' : ''}` : '') + (dd.monto ? '' : '. Falta calcular lo reclamado'));
+  } catch (err) { console.error(err); toast('No se pudo armar la demanda'); }
+}
+
 /** El deudor del convenio y de la planilla: el nombre del caso; si no se le puso, el de la ficha del deudor elegido. */
 const nombreDeudor = (d) => (S.cred.caso.nombre || d?.nombre || '').trim();
 
@@ -1965,6 +2059,7 @@ document.addEventListener('click', async (e) => {
   const cm = t.closest('[data-cr-modo]'); if (cm) { cambiarModo(cm.dataset.crModo); return; }
   const veh = t.closest('[data-vehiculo]'); if (veh) { await elegirVehiculo(veh.dataset.vehiculo); return; }
   const rf = t.closest('[data-refi]'); if (rf) { elegirRefi(rf.dataset.refi); return; }
+  const dpd = t.closest('[data-dp-deudor]'); if (dpd) { elegirDemanda(dpd.dataset.dpDeudor); return; }
   const cs = t.closest('[data-caso]'); if (cs) { abrirCaso(cs.dataset.caso); return; }
   const chq = t.closest('[data-cheque]'); if (chq) { abrirCheque(chq.dataset.cheque); return; }
   const a = t.closest('[data-a]'); if (!a) return;
@@ -1975,6 +2070,8 @@ document.addEventListener('click', async (e) => {
     await unaVez(a, (b) => accionCredito(act, b)); return;
   }
   if (act.startsWith('rf-') && !S.panel && !S.abierto) { accionRefi(act, a); return; }
+  if (act.startsWith('dp-') && !S.panel && !S.abierto) { accionDemanda(act); return; }
+  if (act === 'ficha-dp') { demandaDeLaFicha(S.abierto); return; }
   if (act.startsWith('ve-') && !S.panel && !S.abierto) { await unaVez(a, () => accionVehiculo(act)); return; }
   if (act.startsWith('ch-') && !S.panel && !S.abierto) {
     if (act === 'ch-copiar') { accionCheque(act, a); return; } // ídem
@@ -2000,7 +2097,7 @@ document.addEventListener('input', (e) => {
   const k = el.dataset?.k; if (!k) return;
   poner(k, el.type === 'checkbox' ? el.checked : el.value);
   if (k.startsWith('cred.veh.sim.')) { actualizarSimulador(k); return; }
-  if (k === 'cred.refi.q') { render(); return; }
+  if (k === 'cred.refi.q' || k === 'cred.dp.q') { render(); return; }
   if (k.startsWith('cred.refi.')) { actualizarRefi(k); return; }
   if (k === 'cred.cuit') { actualizarCuit(); return; }
   if (k === 'cred.numero' || k === 'cred.entidad') { actualizarCheque(); return; }
@@ -2024,6 +2121,7 @@ document.addEventListener('change', (e) => {
   if (k.startsWith('cred.veh.sim.')) { actualizarSimulador(k); return; }
   if (k === 'cred.refi.moraTipo') { S.cred.refi.mora = ''; render(); return; } // la fecha y el N° de cuota son campos distintos
   if (k.startsWith('cred.refi.') && k !== 'cred.refi.q') { actualizarRefi(k); return; }
+  if (k.startsWith('cred.dp.') && k !== 'cred.dp.q') { actualizarDemanda(); return; }
   if (k === 'cred.veh.marca') { S.cred.veh.q = ''; if (el.value) buscarVehiculos({ marca: el.value }); return; }
   if (k === 'cred.entidad') { actualizarCheque(); return; } // por si el navegador no avisa con "input"
   if (k === 'f.msg.modelo') { const d = deudor(S.abierto); S.f.msg.propuesta = S.f.msg.propuesta && el.value === 'plan'; S.f.msg.texto = S.f.msg.base = generar(d, S.f.msg); renderFicha(); return; }

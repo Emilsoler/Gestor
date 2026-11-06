@@ -86,13 +86,13 @@ export function avisosAcuerdo(e) {
 const xmlEsc = (s) => String(s).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 /** Reemplaza los {{campos}} de un texto XML. Lo que falta queda como "[nombre del dato]" para completar a mano. Devuelve { xml, faltan }. */
-export function rellenarXml(xml, valores) {
+export function rellenarXml(xml, valores, nombres = CAMPOS_ACUERDO) {
   const faltan = new Set();
   const out = xml.replace(/\{\{(\w+)\}\}/g, (_, k) => {
     const x = valores[k];
     if (x != null && String(x).trim() !== '') return xmlEsc(x);
     faltan.add(k);
-    return xmlEsc(`[${CAMPOS_ACUERDO[k] || k}]`);
+    return xmlEsc(`[${nombres[k] || k}]`);
   });
   return { xml: out, faltan: [...faltan] };
 }
@@ -129,11 +129,11 @@ export async function leerZip(buf) {
  * Completa el modelo Word con los datos y devuelve { blob, faltan }.
  * `modelo` son los bytes del .docx (Uint8Array).
  */
-export async function armarAcuerdo(modelo, valores) {
+export async function armarAcuerdo(modelo, valores, nombres = CAMPOS_ACUERDO) {
   const partes = await leerZip(modelo), dec = new TextDecoder(), enc = new TextEncoder(), faltan = new Set();
   const salida = partes.map((x) => {
     if (!/^word\/[^/]+\.xml$/.test(x.nombre)) return x;
-    const r = rellenarXml(dec.decode(x.datos), valores);
+    const r = rellenarXml(dec.decode(x.datos), valores, nombres);
     r.faltan.forEach((k) => faltan.add(k));
     return { nombre: x.nombre, datos: enc.encode(r.xml) };
   });
