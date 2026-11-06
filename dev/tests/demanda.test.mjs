@@ -3,12 +3,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { nuevaDemanda, estadoDemanda, datosDemanda, avisosDemanda, demandaDesdeDeudor, CAMPOS_DEMANDA } from '../../docs/cobranzas/demanda.js';
+import { nuevaDemanda, nuevoDemandado, estadoDemanda, datosDemanda, avisosDemanda, demandaDesdeDeudor, CAMPOS_DEMANDA } from '../../docs/cobranzas/demanda.js';
 import { armarAcuerdo, leerZip } from '../../docs/cobranzas/acuerdo.js';
 
 const MODELO = new Uint8Array(readFileSync(new URL('../../docs/cobranzas/modelos/demanda-prendaria.docx', import.meta.url)));
 const formulario = () => ({
-  ...nuevaDemanda(), nombre: 'Calderon Pablo Gabriel', dni: '26.816.517', calle: 'Intendente Da Silva 745', ciudad: 'Bell Ville',
+  ...nuevaDemanda(), demandados: [{ nombre: 'Calderon Pablo Gabriel', dni: '26.816.517', calle: 'Intendente Da Silva 745', ciudad: 'Bell Ville' }],
   prestamo: '2025-05-28', prendaMonto: '17516280', registro: 'Bell Ville N°1', inscripcion: '2025-05-29',
   marca: 'Volkswagen', dominio: 'kmn 065', modelo: 'Amarok 2.0L TDI 122 CV S22', motor: 'CDB 012416', chasis: '8AWDD42H1CA001746',
   cuotas: '12', cuota: '1459690', vto1: '2025-06-30', moraN: '3',
@@ -35,8 +35,9 @@ test('lo reclamado es cuotas impagas × valor de la cuota, y la mora cae en el m
 
 test('los datos salen como en la demanda del estudio', () => {
   const v = datosDemanda(formulario());
-  assert.equal(v.deudor_nombre, 'CALDERON PABLO GABRIEL');
-  assert.equal(v.deudor_calle, 'Intendente Da Silva nro. 745');
+  assert.equal(v.demandados, 'CALDERON PABLO GABRIEL, DNI Nº 26.816.517 con domicilio en calle Intendente Da Silva nro. 745 de la ciudad de Bell Ville, Provincia de Córdoba');
+  assert.equal(v.sea_condenado, 'sea condenado');
+  assert.equal(v.al_demandado, 'al demandado');
   assert.equal(v.monto_letras, 'CATORCE MILLONES QUINIENTOS NOVENTA Y SEIS MIL NOVECIENTOS');
   assert.equal(v.monto, '14.596.900');
   assert.equal(v.prenda_letras, 'DIECISIETE MILLONES QUINIENTOS DIECISÉIS MIL DOSCIENTOS OCHENTA');
@@ -59,9 +60,9 @@ test('el Word sale completo y con el texto del modelo', async () => {
 });
 
 test('lo que falta queda entre corchetes y avisa', async () => {
-  const F = { ...nuevaDemanda(), nombre: 'Perez Juan' };
+  const F = { ...nuevaDemanda(), demandados: [{ ...nuevoDemandado(), nombre: 'Perez Juan' }] };
   const { blob, faltan } = await armarAcuerdo(MODELO, datosDemanda(F), CAMPOS_DEMANDA);
-  assert.ok(faltan.includes('deudor_dni') && faltan.includes('monto'));
+  assert.ok(faltan.includes('monto'));
   assert.ok((await texto(blob)).includes('DNI Nº [DNI del demandado]'));
   assert.ok(avisosDemanda({ ...formulario(), moraN: '13' }).length);
   assert.equal(estadoDemanda({ ...formulario(), moraN: '13' }).reclamado, 0);
@@ -75,11 +76,26 @@ test('de un deudor cargado salen sus datos y la primera cuota vencida como mora'
     cuotas: Array.from({ length: 12 }, (_, i) => ({ id: 'q' + (i + 1), op: 'o1', n: i + 1, de: 12, vto: ['2025-06-30', '2025-07-30', '2025-08-30', '2025-09-30', '2025-10-30', '2025-11-30', '2025-12-30', '2026-01-30', '2026-02-28', '2026-03-30', '2026-04-30', '2026-05-30'][i], importe: 1459690 })).filter((q) => q.n >= 3),
   };
   const F = demandaDesdeDeudor(d, '2026-11-05');
-  assert.equal(F.calle, 'Intendente Da Silva 745');
-  assert.equal(F.ciudad, 'Bell Ville');
+  assert.deepEqual(F.demandados, [{ nombre: 'Calderon Pablo Gabriel', dni: '26816517', calle: 'Intendente Da Silva 745', ciudad: 'Bell Ville' }]);
   assert.equal(F.cuotas, '12');
   assert.equal(F.moraN, '3');
   assert.equal(F.vto1, '2025-06-30');
   assert.equal(F.dominio, 'KMN065');
   assert.equal(estadoDemanda(F).reclamado, 14596900);
+});
+
+test('con más de un demandado se unen los datos y concuerdan «sean condenados» y «a los demandados»', async () => {
+  const F = formulario();
+  F.demandados.push({ nombre: 'Gomez Ana', dni: '30.111.222', calle: 'San Martín 10', ciudad: 'Justiniano Posse' });
+  const v = datosDemanda(F);
+  assert.equal(v.sea_condenado, 'sean condenados');
+  assert.equal(v.al_demandado, 'a los demandados');
+  const { blob } = await armarAcuerdo(MODELO, v, CAMPOS_DEMANDA);
+  const t = await texto(blob);
+  assert.ok(t.includes('en contra en contra de CALDERON PABLO GABRIEL, DNI Nº 26.816.517 con domicilio en calle Intendente Da Silva nro. 745 de la ciudad de Bell Ville, Provincia de Córdoba y GOMEZ ANA, DNI Nº 30.111.222 con domicilio en calle San Martín nro. 10 de la ciudad de Justiniano Posse, Provincia de Córdoba, para que sean condenados al pago de la suma de Pesos'));
+  assert.ok(t.includes('otorgó un préstamo de dinero a los demandados.'));
+  assert.ok(t.includes('Cite y emplace a los demandados a estar a derecho'));
+  F.demandados.push({ nombre: 'Lopez Luis', dni: '', calle: '', ciudad: 'Bell Ville' });
+  const t3 = datosDemanda(F).demandados;
+  assert.ok(t3.includes('Provincia de Córdoba; GOMEZ ANA') && t3.includes('Córdoba y LOPEZ LUIS, DNI Nº [DNI del demandado 3] con domicilio en calle [domicilio del demandado 3]'));
 });

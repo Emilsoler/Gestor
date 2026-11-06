@@ -570,6 +570,7 @@ siempre editable) o se toman de un deudor ya cargado: "Tomar los datos de un deu
   De un deudor salen: nombre, DNI, domicilio, la prenda (operación con prenda o con vehículo: fecha, cuotas, importe,
   vehículo) y como cuota en mora la primera vencida con saldo. **No están en la ficha** y se escriben: monto de la prenda,
   Registro del Automotor y fecha de inscripción (y motor y chasis si la ficha no los trae).
+- **Más de un demandado**: el formulario tiene una tarjeta por demandado (nombre, DNI, calle y número, ciudad) y «+ Agregar otro demandado» (`F.demandados`; de un deudor sale el primero, los demás se escriben). En el modelo, los datos de los demandados son un solo campo (`{{demandados}}`, de «CALDERON…, DNI Nº … con domicilio en calle … de la ciudad de …, Provincia de Córdoba», unidos con «y»; con tres o más, con «;») y hay dos campos de concordancia: `{{sea_condenado}}` («sea condenado» / «sean condenados») y `{{al_demandado}}` («al demandado» / «a los demandados», en el apartado III y en el petitorio). Con un solo demandado el texto queda idéntico al del modelo; el resto del texto no cambia (ya decía «los demandados» en VII y en el petitorio).
 - Lo que falte queda como `[nombre del dato]` en el Word. Pruebas: `node --test tests/demanda.test.mjs` (sin stack).
 
 **Cambiar la app**: `docs/cobranzas/` (`app.js` interfaz, `datos.js` la base, `calculo.js` cuentas,

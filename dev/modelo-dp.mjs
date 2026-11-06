@@ -1,5 +1,6 @@
 // Arma docs/cobranzas/modelos/demanda-prendaria.docx: el modelo de la demanda ejecutiva prendaria del estudio ("haz DP").
-// El texto es el de la demanda del estudio, al pie de la letra; solo los datos variables son {{campos}}.
+// El texto es el de la demanda del estudio, al pie de la letra; solo los datos variables son {{campos}}
+// (con más de un demandado, solo cambian el bloque de datos de los demandados y la concordancia: «sea condenado», «al demandado»).
 // Formato: Garamond 12, interlineado 1,5, justificado, fondo lavanda (CCC0D9), sangría de primera línea en los párrafos numerados.
 // Se parte del esqueleto del modelo del convenio (estilos, tema, ajustes) y se reemplaza el cuerpo.
 //   node dev/modelo-dp.mjs
@@ -33,8 +34,8 @@ const cuerpo = [
   titulo('I.- PERSONERÍA'),
   num('Como lo acredito con copia del Poder General para Pleitos que en este acto se acompaña, soy mandatario de la “ASOCIACIÓN MUTUAL BELL”, con domicilio en calle Bv. Colón n° 135 de esta ciudad. En tal carácter solicito se me tenga por parte.'),
   titulo('II.- OBJETO'),
-  num('Que siguiendo expresas instrucciones de mi mandante, vengo a promover demanda de ejecución prendaria en contra en contra de {{deudor_nombre}}, DNI Nº {{deudor_dni}} con domicilio en calle {{deudor_calle}} de la ciudad de {{deudor_ciudad}}, Provincia de Córdoba, para que sea condenado al pago de la suma de Pesos {{monto_letras}} ($ {{monto}}) con más intereses y costas.'),
-  num(['III.- Préstamo - garantía prendaria:', BU], ' originariamente, con fecha {{prestamo_fecha}} mi mandante otorgó un préstamo de dinero al demandado. En esa fecha se suscribió el contrato de prenda con registro- cuyo certificado acompaño- a favor de la “ASOCIACIÓN MUTUAL BELL”, por el importe de Pesos {{prenda_letras}} ($ {{prenda_monto}}). Dicho contrato fue inscripto en el Registro de la Propiedad del Automotor de {{registro}} con fecha {{inscripcion_fecha}}.'),
+  num('Que siguiendo expresas instrucciones de mi mandante, vengo a promover demanda de ejecución prendaria en contra en contra de {{demandados}}, para que {{sea_condenado}} al pago de la suma de Pesos {{monto_letras}} ($ {{monto}}) con más intereses y costas.'),
+  num(['III.- Préstamo - garantía prendaria:', BU], ' originariamente, con fecha {{prestamo_fecha}} mi mandante otorgó un préstamo de dinero {{al_demandado}}. En esa fecha se suscribió el contrato de prenda con registro- cuyo certificado acompaño- a favor de la “ASOCIACIÓN MUTUAL BELL”, por el importe de Pesos {{prenda_letras}} ($ {{prenda_monto}}). Dicho contrato fue inscripto en el Registro de la Propiedad del Automotor de {{registro}} con fecha {{inscripcion_fecha}}.'),
   num(['IV.- Bien prendado:', BU], ' Dicho gravamen prendario se constituyó sobre el siguiente bien: automotor marca {{marca}} dominio {{dominio}} modelo {{modelo}}, motor {{motor}}, chasis {{chasis}}.'),
   num(['V.- Cuotas:', BU], ' en el contrato con garantía prendaria se pactaron {{cuotas_cant}} cuotas mensuales, iguales y consecutivas de Pesos {{cuota_letras}} ($ {{cuota_monto}}) cada una, con vencimiento la primera el {{primer_venc}} y las restantes cada treinta días subsiguientes.'),
   num(['VI.- Mora:', BU], ' Que la deuda se encuentra en mora, habiéndose abonado {{cuotas_pagadas}} cuotas. La mora se produjo a partir del vencimiento de la cuota n° {{mora_cuota_nro}}, es decir, el {{mora_fecha}}. El contrato prendario tiene previsto que a falta de pago de cualquiera de las cuotas, produce el automático vencimiento de las restantes pendientes de pago, las que se consideran de plazo vencido y exigibles.'),
@@ -44,7 +45,7 @@ const cuerpo = [
   num('X.- Por todo lo expuesto, solicito a V.S:'),
   raya('Téngame por presentado, por parte en el carácter invocado y con domicilio constituido.'),
   raya('Por promovida la presente ejecución en contra de los demandados.'),
-  raya('Cite y emplace al demandado a estar a derecho y de remate con las previsiones de ley.'),
+  raya('Cite y emplace {{al_demandado}} a estar a derecho y de remate con las previsiones de ley.'),
   raya('Libre mandamiento de ejecución, embargo y secuestro.'),
   raya('Haga lugar a la demanda, mandando a llevar adelante la ejecución prendaria en contra de los deudores hasta el completo pago de la suma reclamada con más intereses y costas.'),
   raya('Por acompañada la documental.'),
