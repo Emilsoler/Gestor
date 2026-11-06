@@ -11,7 +11,7 @@ import { r2 } from '../liquidacion.js';
 
 /** Cada campo del modelo con cómo se le dice a la persona cuando falta (queda "[DNI del demandado]" en el Word, a completar a mano). */
 export const CAMPOS_DEMANDA = {
-  deudor_nombre: 'nombre del demandado', deudor_dni: 'DNI del demandado', deudor_calle: 'domicilio del demandado', deudor_ciudad: 'ciudad del demandado',
+  demandados: 'datos de los demandados', sea_condenado: 'condena', al_demandado: 'demandado',
   monto_letras: 'monto reclamado en letras', monto: 'monto reclamado',
   prestamo_fecha: 'fecha del contrato de prenda', prenda_letras: 'monto de la prenda en letras', prenda_monto: 'monto de la prenda',
   registro: 'Registro del Automotor', inscripcion_fecha: 'fecha de inscripción',
@@ -21,8 +21,9 @@ export const CAMPOS_DEMANDA = {
 };
 
 /** Lo que se escribe en la pantalla (textos, como los escribe la persona). */
+export const nuevoDemandado = () => ({ nombre: '', dni: '', calle: '', ciudad: 'Bell Ville' });
 export const nuevaDemanda = () => ({
-  id: '', q: '', nombre: '', dni: '', calle: '', ciudad: 'Bell Ville',
+  id: '', q: '', demandados: [nuevoDemandado()],
   prestamo: '', prendaMonto: '', registro: '', inscripcion: '',
   marca: '', dominio: '', modelo: '', motor: '', chasis: '',
   cuotas: '', cuota: '', vto1: '', moraN: '',
@@ -37,10 +38,9 @@ const ent = (t) => { const n = parseInt(String(t ?? '').trim(), 10); return Numb
  * (el Registro del Automotor, la fecha de inscripción y el monto de la prenda no están en la ficha: se escriben).
  */
 export function demandaDesdeDeudor(d, hoy) {
-  const F = { ...nuevaDemanda(), id: d.id, nombre: d.nombre || '', dni: d.dni || '' };
+  const F = { ...nuevaDemanda(), id: d.id };
   const dom = partirDomicilio(d.domicilio);
-  F.calle = [dom.calle, dom.numero].filter(Boolean).join(' ');
-  if (dom.localidad) F.ciudad = dom.localidad;
+  F.demandados = [{ nombre: d.nombre || '', dni: d.dni || '', calle: [dom.calle, dom.numero].filter(Boolean).join(' '), ciudad: dom.localidad || 'Bell Ville' }]; // otros demandados se agregan a mano
   const ops = d.operaciones || [];
   const op = ops.find((o) => /prenda/i.test(o.tipo || '')) || ops.find((o) => o.vehiculo) || ops[0] || null;
   if (op) {
@@ -78,17 +78,29 @@ export function estadoDemanda(F) {
   };
 }
 
+/** "Calle 745" → "Calle nro. 745" (como en el modelo). */
+const calleDe = (t) => { const dom = partirDomicilio(t); return dom.numero ? `${dom.calle} nro. ${dom.numero}` : dom.calle; };
+/** Los datos de un demandado como van en el escrito; lo que falta queda entre corchetes. */
+function textoDemandado(x, i, varios) {
+  const t = (v) => String(v ?? '').trim(), sufijo = varios ? ' ' + (i + 1) : '';
+  return `${t(x.nombre).toUpperCase() || `[nombre del demandado${sufijo}]`}, DNI Nº ${t(x.dni) || `[DNI del demandado${sufijo}]`} con domicilio en calle ${calleDe(x.calle) || `[domicilio del demandado${sufijo}]`} de la ciudad de ${t(x.ciudad) || `[ciudad del demandado${sufijo}]`}, Provincia de Córdoba`;
+}
+/** Los demandados de a uno, unidos con "y" (con tres o más, separados con punto y coma). */
+export function unirDemandados(xs) {
+  const ps = xs.map((x, i) => textoDemandado(x, i, xs.length > 1));
+  return ps.length < 3 ? ps.join(' y ') : `${ps.slice(0, -1).join('; ')} y ${ps[ps.length - 1]}`;
+}
+
 const mayus = (n) => enLetras(n).toUpperCase();
 const pesosCifra = (n) => cifra(n);
 
 /** Los valores de cada {{campo}} del modelo (vacío: queda "[nombre]" en el Word). */
 export function datosDemanda(F) {
   const e = estadoDemanda(F), prenda = num(F.prendaMonto);
-  const dom = partirDomicilio(F.calle);
-  const calle = dom.numero ? `${dom.calle} nro. ${dom.numero}` : dom.calle;
   const t = (x) => String(x ?? '').trim();
+  const xs = F.demandados?.length ? F.demandados : [nuevoDemandado()], varios = xs.length > 1;
   return {
-    deudor_nombre: t(F.nombre).toUpperCase(), deudor_dni: t(F.dni), deudor_calle: calle, deudor_ciudad: t(F.ciudad),
+    demandados: unirDemandados(xs), sea_condenado: varios ? 'sean condenados' : 'sea condenado', al_demandado: varios ? 'a los demandados' : 'al demandado',
     monto_letras: e.reclamado > 0 ? mayus(e.reclamado) : '', monto: e.reclamado > 0 ? pesosCifra(e.reclamado) : '',
     prestamo_fecha: fechaLarga(F.prestamo),
     prenda_letras: prenda > 0 ? mayus(prenda) : '', prenda_monto: prenda > 0 ? pesosCifra(prenda) : '',

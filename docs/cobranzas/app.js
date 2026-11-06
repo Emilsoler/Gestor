@@ -21,7 +21,7 @@ import {
 import { importe, enCelda, idNuevo, r2 } from '../liquidacion.js';
 import { xlsx } from '../excel.js';
 import { datosAcuerdo, avisosAcuerdo, armarAcuerdo, hojasRefinanciacion, CAMPOS_ACUERDO } from './acuerdo.js';
-import { nuevaDemanda, demandaDesdeDeudor, estadoDemanda, datosDemanda, avisosDemanda, CAMPOS_DEMANDA } from './demanda.js';
+import { nuevaDemanda, nuevoDemandado, demandaDesdeDeudor, estadoDemanda, datosDemanda, avisosDemanda, CAMPOS_DEMANDA } from './demanda.js';
 import { abrirChat } from './chat.js';
 
 const VERSION = '1.9.2';
@@ -1714,6 +1714,7 @@ function vistaDemanda() {
   subtitulo('Demanda prendaria');
   const k = (c) => 'cred.dp.' + c;
   const campo = (c, t, extra = '', modo = 'text') => `<label class="f">${t}<input id="dp_${c}" ${atar(k(c))} inputmode="${modo}" autocomplete="off"${extra}></label>`;
+  const campoDem = (i, c, t, modo = 'text') => `<label class="f">${t}<input id="dp_d${i}_${c}" ${atar(k('demandados.' + i + '.' + c))} inputmode="${modo}" autocomplete="off"></label>`;
   const fechaCampo = (c, t) => `<label class="f">${t}<input type="date" id="dp_${c}" data-k="${k(c)}" value="${esc(F[c])}"></label>`;
   if (S.cred.dpElegir) {
     const q = String(F.q || '').trim().toLowerCase();
@@ -1736,7 +1737,9 @@ function vistaDemanda() {
       <button class="btn${d ? '' : ' primary'}" type="button" data-a="dp-elegir">${d ? 'Cambiar de deudor' : 'Tomar los datos de un deudor'}</button>
       ${d ? `<span class="hint">Datos tomados de <b>${esc(nombre(d))}</b>.</span><button class="btn" type="button" data-a="dp-ficha">Abrir la ficha</button>` : ''}
     </div>
-    <div class="sec"><h4>Demandado</h4><div class="sim-form">${campo('nombre', 'Nombre y apellido')}${campo('dni', 'DNI', '', 'numeric')}${campo('calle', 'Calle y número')}${campo('ciudad', 'Ciudad')}</div></div>
+    ${F.demandados.map((x, i) => `<div class="sec"><div class="sec-cab"><h4>${F.demandados.length > 1 ? 'Demandado ' + (i + 1) : 'Demandado'}</h4>${F.demandados.length > 1 ? `<button class="btn small" type="button" data-a="dp-menos" data-i="${i}">Quitar</button>` : ''}</div>
+      <div class="sim-form">${campoDem(i, 'nombre', 'Nombre y apellido')}${campoDem(i, 'dni', 'DNI', 'numeric')}${campoDem(i, 'calle', 'Calle y número')}${campoDem(i, 'ciudad', 'Ciudad')}</div></div>`).join('')}
+    <div class="actions"><button class="btn" type="button" data-a="dp-mas">+ Agregar otro demandado</button></div>
     <div class="sec"><h4>Contrato de prenda</h4><div class="sim-form">${fechaCampo('prestamo', 'Fecha del contrato')}${campo('prendaMonto', 'Monto de la prenda ($)', ' data-importe', 'decimal')}${campo('registro', 'Registro del Automotor', ' placeholder="Bell Ville N°1"')}${fechaCampo('inscripcion', 'Fecha de inscripción')}</div></div>
     <div class="sec"><h4>Bien prendado</h4><div class="sim-form">${campo('marca', 'Marca')}${campo('modelo', 'Modelo')}${campo('dominio', 'Dominio')}${campo('motor', 'N° de motor')}${campo('chasis', 'N° de chasis')}</div></div>
     <div class="sec"><h4>Cuotas y mora</h4><div class="sim-form">${campo('cuotas', 'Cantidad de cuotas', '', 'numeric')}${campo('cuota', 'Importe de cada cuota ($)', ' data-importe', 'decimal')}${fechaCampo('vto1', 'Vencimiento de la primera cuota')}${campo('moraN', 'Mora desde la cuota N°', '', 'numeric')}</div></div>
@@ -1763,9 +1766,11 @@ function demandaDeLaFicha(id) {
   try { localStorage.setItem('cb.credModo', 'dp'); } catch { /* sin almacenamiento */ }
   cerrarFicha(); verVista('creditos');
 }
-function accionDemanda(act) {
+function accionDemanda(act, a) {
   if (act === 'dp-elegir') { S.cred.dpElegir = true; S.cred.dp.q = ''; render(); return; }
   if (act === 'dp-volver') { S.cred.dpElegir = false; render(); return; }
+  if (act === 'dp-mas') { S.cred.dp.demandados.push(nuevoDemandado()); render(); return; }
+  if (act === 'dp-menos') { const i = +a.dataset.i; if (S.cred.dp.demandados.length > 1) S.cred.dp.demandados.splice(i, 1); render(); return; }
   if (act === 'dp-limpiar') { S.cred.dp = nuevaDemanda(); S.cred.dpElegir = false; render(); return; }
   if (act === 'dp-ficha') { const d = dpDeudor(); if (d) abrirDeudor(d.id); return; }
   if (act === 'dp-word') descargarDemanda();
@@ -1774,14 +1779,15 @@ function accionDemanda(act) {
 /** La demanda: el modelo Word del estudio con los datos. Lo que falte queda entre corchetes. */
 async function descargarDemanda() {
   const F = S.cred.dp;
-  if (!(estadoDemanda(F).reclamado > 0) && !String(F.nombre || '').trim()) { toast('Escribí al menos el nombre del demandado'); return; }
+  if (!(estadoDemanda(F).reclamado > 0) && !String(F.demandados[0]?.nombre || '').trim()) { toast('Escribí al menos el nombre del demandado'); return; }
   try {
     const r = await fetch('./modelos/demanda-prendaria.docx', { cache: 'no-cache' });
     if (!r.ok) throw new Error('modelo ' + r.status);
     const { blob, faltan } = await armarAcuerdo(new Uint8Array(await r.arrayBuffer()), datosDemanda(F), CAMPOS_DEMANDA);
-    const archivo = `${hoy().slice(2).replace(/-/g, '')} - Demanda Ejecutiva Prendaria - ${String(F.nombre || '').trim() || 'demandado'}.docx`;
+    const archivo = `${hoy().slice(2).replace(/-/g, '')} - Demanda Ejecutiva Prendaria - ${F.demandados.map((x) => String(x.nombre || '').trim()).filter(Boolean).join(' y ') || 'demandado'}.docx`;
     if (!(await entregar(blob, archivo))) return;
-    const dd = datosDemanda(F);
+    const dd = datosDemanda(F), faltaDem = /\[[^\]]+\]/.test(dd.demandados);
+    if (faltaDem) faltan.unshift('demandados');
     toast(`Demanda lista: ${archivo}` + (faltan.length ? `. Completá a mano: ${faltan.slice(0, 4).map((c) => CAMPOS_DEMANDA[c] || c).join(', ')}${faltan.length > 4 ? '…' : ''}` : '') + (dd.monto ? '' : '. Falta calcular lo reclamado'));
   } catch (err) { console.error(err); toast('No se pudo armar la demanda'); }
 }
@@ -2070,7 +2076,7 @@ document.addEventListener('click', async (e) => {
     await unaVez(a, (b) => accionCredito(act, b)); return;
   }
   if (act.startsWith('rf-') && !S.panel && !S.abierto) { accionRefi(act, a); return; }
-  if (act.startsWith('dp-') && !S.panel && !S.abierto) { accionDemanda(act); return; }
+  if (act.startsWith('dp-') && !S.panel && !S.abierto) { accionDemanda(act, a); return; }
   if (act === 'ficha-dp') { demandaDeLaFicha(S.abierto); return; }
   if (act.startsWith('ve-') && !S.panel && !S.abierto) { await unaVez(a, () => accionVehiculo(act)); return; }
   if (act.startsWith('ch-') && !S.panel && !S.abierto) {
