@@ -21,7 +21,7 @@ import {
 import { importe, enCelda, idNuevo, r2 } from '../liquidacion.js';
 import { xlsx } from '../excel.js';
 import { datosAcuerdo, avisosAcuerdo, armarAcuerdo, hojasRefinanciacion, CAMPOS_ACUERDO } from './acuerdo.js';
-import { nuevaDemanda, nuevoDemandado, demandaDesdeDeudor, estadoDemanda, datosDemanda, avisosDemanda, CAMPOS_DEMANDA } from './demanda.js';
+import { nuevaDemanda, nuevoDemandado, demandaDesdeDeudor, estadoDemanda, datosDemanda, avisosDemanda, faltanDemanda, CAMPOS_DEMANDA } from './demanda.js';
 import { abrirChat } from './chat.js';
 
 const VERSION = '1.9.2';
@@ -1706,7 +1706,11 @@ function htmlEstadoDemanda(F) {
     ? `<p class="m0">Se reclaman <b>${e.impagas}</b> ${e.impagas === 1 ? 'cuota impaga' : 'cuotas impagas'} (de la ${e.mora} a la ${e.total}) de ${esc(plata(e.cuota))}: <b>${esc(plata(e.reclamado))}</b> más intereses y costas.</p>
        <p class="hint m0">Se abonaron ${e.pagadas} ${e.pagadas === 1 ? 'cuota' : 'cuotas'}.${e.moraFecha ? ' La mora empezó el ' + esc(fmtLargo(e.moraFecha)) + '.' : ''}</p>`
     : '<p class="hint m0">Cargá la cantidad de cuotas, el importe de la cuota y la cuota en que empezó la mora: con eso se calcula lo reclamado.</p>';
-  return lineas + av.map((a) => `<p class="aviso-chico" role="status">${esc(a)}</p>`).join('');
+  const faltan = faltanDemanda(F);
+  const falta = faltan.length
+    ? `<p class="aviso-chico" role="status"><b>Falta cargar:</b> ${esc(faltan.join(', '))}. En el Word van a quedar entre corchetes, para completar a mano.</p>`
+    : '<p class="hint m0">No falta ningún dato: el Word sale completo.</p>';
+  return lineas + falta + av.map((a) => `<p class="aviso-chico" role="status">${esc(a)}</p>`).join('');
 }
 
 function vistaDemanda() {
@@ -1740,7 +1744,7 @@ function vistaDemanda() {
     ${F.demandados.map((x, i) => `<div class="sec"><div class="sec-cab"><h4>${F.demandados.length > 1 ? 'Demandado ' + (i + 1) : 'Demandado'}</h4>${F.demandados.length > 1 ? `<button class="btn small" type="button" data-a="dp-menos" data-i="${i}">Quitar</button>` : ''}</div>
       <div class="sim-form">${campoDem(i, 'nombre', 'Nombre y apellido')}${campoDem(i, 'dni', 'DNI', 'numeric')}${campoDem(i, 'calle', 'Calle y número')}${campoDem(i, 'ciudad', 'Ciudad')}</div></div>`).join('')}
     <div class="actions"><button class="btn" type="button" data-a="dp-mas">+ Agregar otro demandado</button></div>
-    <div class="sec"><h4>Contrato de prenda</h4><div class="sim-form">${fechaCampo('prestamo', 'Fecha del contrato')}${campo('prendaMonto', 'Monto de la prenda ($)', ' data-importe', 'decimal')}${campo('registro', 'Registro del Automotor', ' placeholder="Bell Ville N°1"')}${fechaCampo('inscripcion', 'Fecha de inscripción')}</div></div>
+    <div class="sec"><h4>Contrato de prenda</h4><div class="sim-form">${fechaCampo('prestamo', 'Fecha del contrato')}${campo('prendaMonto', 'Monto de la prenda ($)', ' data-importe', 'decimal')}${campo('registro', 'Registro del Automotor', ' placeholder="Ej.: Bell Ville N° 1"')}${fechaCampo('inscripcion', 'Fecha de inscripción')}</div></div>
     <div class="sec"><h4>Bien prendado</h4><div class="sim-form">${campo('marca', 'Marca')}${campo('modelo', 'Modelo')}${campo('dominio', 'Dominio')}${campo('motor', 'N° de motor')}${campo('chasis', 'N° de chasis')}</div></div>
     <div class="sec"><h4>Cuotas y mora</h4><div class="sim-form">${campo('cuotas', 'Cantidad de cuotas', '', 'numeric')}${campo('cuota', 'Importe de cada cuota ($)', ' data-importe', 'decimal')}${fechaCampo('vto1', 'Vencimiento de la primera cuota')}${campo('moraN', 'Mora desde la cuota N°', '', 'numeric')}</div></div>
     <div id="dpEstado" aria-live="polite">${htmlEstadoDemanda(F)}</div>

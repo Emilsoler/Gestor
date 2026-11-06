@@ -115,6 +115,20 @@ export function datosDemanda(F) {
   };
 }
 
+/**
+ * Los datos que van a quedar entre corchetes en el Word, por sus nombres. Se muestran en pantalla antes de
+ * bajarlo: el Registro, la fecha de inscripción y el monto de la prenda no están en la ficha del deudor y es
+ * fácil darlos por cargados.
+ */
+export function faltanDemanda(F) {
+  const v = datosDemanda(F), faltan = [];
+  for (const [c, nombre] of Object.entries(CAMPOS_DEMANDA)) {
+    if (c === 'demandados') { if (/\[[^\]]+\]/.test(v.demandados)) faltan.push('datos de algún demandado'); continue; }
+    if (!String(v[c] ?? '').trim()) faltan.push(nombre);
+  }
+  return faltan;
+}
+
 /** Avisos para mostrar antes de bajar el Word. */
 export function avisosDemanda(F) {
   const e = estadoDemanda(F), av = [];

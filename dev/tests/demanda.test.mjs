@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { nuevaDemanda, nuevoDemandado, estadoDemanda, datosDemanda, avisosDemanda, demandaDesdeDeudor, CAMPOS_DEMANDA } from '../../docs/cobranzas/demanda.js';
+import { nuevaDemanda, nuevoDemandado, estadoDemanda, datosDemanda, avisosDemanda, faltanDemanda, demandaDesdeDeudor, CAMPOS_DEMANDA } from '../../docs/cobranzas/demanda.js';
 import { armarAcuerdo, leerZip } from '../../docs/cobranzas/acuerdo.js';
 
 const MODELO = new Uint8Array(readFileSync(new URL('../../docs/cobranzas/modelos/demanda-prendaria.docx', import.meta.url)));
@@ -98,4 +98,13 @@ test('con más de un demandado se unen los datos y concuerdan «sean condenados�
   F.demandados.push({ nombre: 'Lopez Luis', dni: '', calle: '', ciudad: 'Bell Ville' });
   const t3 = datosDemanda(F).demandados;
   assert.ok(t3.includes('Provincia de Córdoba; GOMEZ ANA') && t3.includes('Córdoba y LOPEZ LUIS, DNI Nº [DNI del demandado 3] con domicilio en calle [domicilio del demandado 3]'));
+});
+
+test('avisa en pantalla lo que va a quedar entre corchetes', () => {
+  assert.deepEqual(faltanDemanda(formulario()), []);
+  // El Registro, la fecha de inscripción y el monto de la prenda no salen de la ficha del deudor.
+  const F = { ...formulario(), registro: '', inscripcion: '', prendaMonto: '' };
+  assert.deepEqual(faltanDemanda(F), ['monto de la prenda en letras', 'monto de la prenda', 'Registro del Automotor', 'fecha de inscripción']);
+  const sinDni = { ...formulario(), demandados: [{ ...formulario().demandados[0], dni: '' }] };
+  assert.deepEqual(faltanDemanda(sinDni), ['datos de algún demandado']);
 });
