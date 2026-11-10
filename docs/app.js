@@ -2203,7 +2203,6 @@ const verVista = (v) => () => { S.view = v; render(); window.scrollTo(0, 0); };
 $('#vInicio').onclick = verVista('inicio'); $('#vLista').onclick = verVista('lista'); $('#vAgenda').onclick = verVista('agenda'); $('#vAcuerdos').onclick = verVista('acuerdos'); $('#vJuris').onclick = verVista('juris');
 $('#fabNew').onclick = () => openCausa(null);
 $('#btnTpl').onclick = abrirPlantillas;
-$('#btnExport').onclick = exportar;
 // Para lo que el chat de la app no hace (por ejemplo presentar un escrito con archivos adjuntos):
 // una conversación nueva en la app de Claude, con la causa ya nombrada.
 function hablarConClaude(c) {

@@ -616,14 +616,6 @@ test('acuerdos en el celular: la lista plegada y el desarrollo entran en la pant
   sql(`delete from public.acuerdos`);
 });
 
-test('exportar: descarga un CSV con lo que se ve', async () => {
-  const [descarga] = await Promise.all([page.waitForEvent('download'), page.click('#btnExport')]);
-  assert.match(descarga.suggestedFilename(), /^juicios-\d{4}-\d{2}-\d{2}\.csv$/);
-  const s = await descarga.createReadStream(); let csv = ''; for await (const c of s) csv += c;
-  assert.ok(csv.startsWith('﻿Actor;Demandado;Tipo;Expediente;Nominación;Oficina;Ubicación;Estado;Etiqueta Cautelar;Situación;'));
-  assert.equal(csv.trim().split('\n').length, 6); // encabezado + las 5 causas (las archivadas también se ven)
-});
-
 test('lo que actualiza Claude aparece solo, sin recargar', async () => {
   sql(`select gestor.presentacion('1004', 'Solicita se libre oficio')`);
   await page.waitForFunction(() => /Solicita se libre oficio/.test(document.querySelector('#main .causa[data-id="1004"]')?.textContent || ''), null, { timeout: 10000 });
