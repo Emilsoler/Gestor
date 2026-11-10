@@ -67,7 +67,7 @@ before(async () => {
      ('1001','AMB','ALFA ANA','EJECUTIVO','1','OEP','Casillero','1.1 Demanda','Sin Cautelar','En trámite','Pedir embargo','${dia(-2)}','Dimos cédula','${dia(-40)}','[{"fecha":"${dia(-40)}","texto":"Dimos cédula"}]'),
      ('1002','AMB','BETA BRUNO','PRENDARIO','2','OEP','A despacho','4. Ejecución de Sentencia','Vehículo secuestrado','En trámite','',null,'Ejecutamos sentencia','${dia(-5)}','[]'),
      ('1003','AMB','GAMA CARLA','EJECUTIVO','3','OEP VM','Casillero','3. Sentencia','Sin Cautelar','Archivada','',null,'Archivo','${dia(-200)}','[]'),
-     ('1004','AMB','<img src=x onerror="window.__xss=1"> DELTA','EJECUTIVO','1','OEP','Casillero','2. No oposición de excepciones','Embargo de sueldo','En trámite','Enviar cédulas','${dia(3)}','Solicitamos embargo','${dia(-1)}','[]');
+     ('1004','AMB','<img src=x onerror="window.__xss=1"> DELTA','EJECUTIVO','1','OEP','Casillero','2. No oposición de excepciones','Embargo de sueldo trabado','En trámite','Enviar cédulas','${dia(3)}','Solicitamos embargo','${dia(-1)}','[]');
     insert into public.plantillas (id, titulo, cuerpo) values ('aprobacion', 'Solicita aprobación', 'En autos {{caratula}}, expediente {{expediente}} de la {{nominacion}} nominación.');
     commit;`);
   browser = await chromium.launch();
@@ -114,7 +114,7 @@ test('listado: activas, archivadas aparte, búsqueda, filtros y vencidas', async
   assert.equal(await page.getAttribute('.stat[data-q="u:A despacho"]', 'aria-pressed'), 'true');
   await page.click('.stat[data-q="u:Casillero"]');
   assert.deepEqual(await ids(), ['1001', '1004'], 'la archivada tampoco aparece en el casillero');
-  await page.click('#chips .chip[data-t="c:Embargo de sueldo"]');
+  await page.click('#chips .chip[data-t="c:Embargo de sueldo trabado"]');
   assert.deepEqual(await ids(), ['1004']);
   assert.match(await page.textContent('#chips .chip[data-t="c:Vehículo secuestrado"]'), /Vehículos secuestrados · 1/);
   await page.click('#chips .chip[data-t=""]');
@@ -153,11 +153,11 @@ test('nueva causa: validaciones, alta y autoría', async () => {
   // una causa nueva arranca en la primera etapa, en el casillero, sin cautelar y en trámite
   assert.deepEqual([await page.inputValue('#c_ubicacion'), await page.inputValue('#c_estado'), await page.inputValue('#c_cautelar'), await page.inputValue('#c_situacion')],
     ['Casillero', '0. Iniciamos', 'Sin Cautelar', 'En trámite']);
-  await page.selectOption('#c_cautelar', 'Embargo de sueldo');
+  await page.selectOption('#c_cautelar', 'Embargo de sueldo trabado');
   await page.click('.ppie [data-act=save]'); await toast(page, 'Causa creada'); await cerrado(page);
   assert.match(await fila(page, '2001').textContent(), /OMEGA OSCAR/);
   assert.equal(sql(`select concat_ws('|', demandado, ubicacion, estado, cautelar, situacion, proxima, vence, actualizado_por) from public.causas where expte='2001'`),
-    `OMEGA OSCAR|Casillero|0. Iniciamos|Embargo de sueldo|En trámite|Notificar|${dia(10)}|Emi`);
+    `OMEGA OSCAR|Casillero|0. Iniciamos|Embargo de sueldo trabado|En trámite|Notificar|${dia(10)}|Emi`);
 });
 
 test('causa sin demandado: se guarda, se nombra por el actor y se puede editar', async () => {
@@ -1246,15 +1246,15 @@ test('ubicación, estado, etiqueta cautelar y situación: se ven, se filtran, se
   await abrir(page, '1001');
   assert.deepEqual(await page.locator('#c_ubicacion option').allTextContents(), ['Casillero', 'A despacho']);
   assert.deepEqual(await page.locator('#c_estado option').allTextContents(), ['(sin estado)', ...ESTADOS]);
-  assert.deepEqual(await page.locator('#c_cautelar option').allTextContents(), ['Sin Cautelar', 'Embargo de sueldo', 'Vehículo secuestrado']);
+  assert.deepEqual(await page.locator('#c_cautelar option').allTextContents(), ['Sin Cautelar', 'Embargar sueldo', 'Embargo de sueldo trabado', 'Secuestrar vehículo', 'Vehículo secuestrado']);
   assert.deepEqual(await page.locator('#c_situacion option').allTextContents(), ['En trámite', 'Acuerdo', 'Archivada']);
   assert.equal(await page.locator('.panel .chip').count(), 0, 'ya no hay etiquetas sueltas');
   await page.selectOption('#c_ubicacion', 'A despacho');
   await page.selectOption('#c_estado', '1.2 Contestación');
-  await page.selectOption('#c_cautelar', 'Embargo de sueldo');
+  await page.selectOption('#c_cautelar', 'Embargo de sueldo trabado');
   await page.selectOption('#c_situacion', 'Archivada');
   await page.click('.ppie [data-act=save]'); await toast(page, 'Cambios guardados'); await cerrado(page);
-  assert.equal(sql(`select concat_ws('|', ubicacion, estado, cautelar, situacion, actualizado_por) from public.causas where expte = '1001'`), 'A despacho|1.2 Contestación|Embargo de sueldo|Archivada|Emi');
+  assert.equal(sql(`select concat_ws('|', ubicacion, estado, cautelar, situacion, actualizado_por) from public.causas where expte = '1001'`), 'A despacho|1.2 Contestación|Embargo de sueldo trabado|Archivada|Emi');
   // archivada: sale del listado y queda en Archivadas, con su etiqueta
   assert.equal(await fila(page, '1001').count(), 0);
   await page.click('.stat[data-q="arch"]');

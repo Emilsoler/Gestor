@@ -39,7 +39,7 @@ before(async () => {
   token = (await entrar('emi@test.local', 'Clave-de-prueba-2026')).sesion.access_token;
   sql(`begin; select set_config('gestor.autor', 'Semilla', true);
     insert into public.causas (expte, actor, demandado, tipo, nom, oficina, ubicacion, estado, cautelar, proxima, vence, notas, historial) values
-      ('1001', 'AMB', 'ALFA ANA', 'EJECUTIVO', '2', 'OEP', 'Casillero', '4. Ejecución de Sentencia', 'Embargo de sueldo', 'Solicitar aprobación de liquidación', gestor.hoy() + 1, 'tel 123', '[]'),
+      ('1001', 'AMB', 'ALFA ANA', 'EJECUTIVO', '2', 'OEP', 'Casillero', '4. Ejecución de Sentencia', 'Embargo de sueldo trabado', 'Solicitar aprobación de liquidación', gestor.hoy() + 1, 'tel 123', '[]'),
       ('1002', 'AMB', 'BETA BRUNO', 'PRENDARIO', '1', 'OEP', 'A despacho', '2. No oposición de excepciones', 'Vehículo secuestrado', '', null, '', '[]');
     insert into public.plantillas (id, titulo, cuerpo) values
       ('aprobacion', 'Solicita aprobación de liquidación', 'En autos {{caratula}}, expediente {{expediente}}, de la {{nominacion}} nominación: solicito se apruebe la liquidación.');
@@ -110,7 +110,7 @@ test('herramientas: busca, lee, cambia y anota; los cambios quedan firmados como
   assert.equal(busqueda.encontradas, 1);
   assert.equal(busqueda.causas[0].caratula, 'AMB c/ ALFA ANA – EJECUTIVO');
   assert.deepEqual([busqueda.causas[0].ubicacion, busqueda.causas[0].estado, busqueda.causas[0].cautelar, busqueda.causas[0].situacion],
-    ['Casillero', '4. Ejecución de Sentencia', 'Embargo de sueldo', 'En trámite']);
+    ['Casillero', '4. Ejecución de Sentencia', 'Embargo de sueldo trabado', 'En trámite']);
   assert.equal(pendientes.proximas_acciones[0].expte, '1001');
   assert.equal(pendientes.proximas_acciones[0].plazo.startsWith('vence el'), true);
   const [ficha] = res(2);
@@ -153,7 +153,7 @@ test('lo que no se puede hacer vuelve a Claude explicado, sin tocar nada', async
   assert.match(rs[0].error, /No existe la causa con expediente 9999/);
   assert.match(rs[1].error, /Estado desconocido/);
   assert.match(rs[2].error, /No mandaste ningún cambio/);
-  assert.match(rs[3].error, /Etiqueta cautelar desconocida: "Rara"\. Las etiquetas cautelares son: Sin Cautelar, Embargo de sueldo, Vehículo secuestrado/);
+  assert.match(rs[3].error, /Etiqueta cautelar desconocida: "Rara"\. Las etiquetas cautelares son: Sin Cautelar, Embargar sueldo, Embargo de sueldo trabado, Secuestrar vehículo, Vehículo secuestrado/);
   assert.match(rs[4].error, /ya pasó/);
   assert.match(rs[5].error, /no es un N° de expediente/);
   assert.match(rs[6].error, /no tiene próxima acción/);

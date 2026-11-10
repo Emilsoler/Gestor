@@ -68,7 +68,7 @@ export function ultimaDe(h: Mov[]) {
 // y que muestra la app (docs/app.js).
 export const UBICACIONES = ['Casillero', 'A despacho'];
 export const ESTADOS = ['0. Iniciamos', '1.1 Demanda', '1.2 Contestación', '2. No oposición de excepciones', '3. Sentencia', '4. Ejecución de Sentencia', '5. Martillero Designado'];
-export const CAUTELARES = ['Sin Cautelar', 'Embargo de sueldo', 'Vehículo secuestrado'];
+export const CAUTELARES = ['Sin Cautelar', 'Embargar sueldo', 'Embargo de sueldo trabado', 'Secuestrar vehículo', 'Vehículo secuestrado'];
 export const SITUACIONES = ['En trámite', 'Acuerdo', 'Archivada'];
 
 const r2 = (n: number) => Math.round((+n || 0) * 100) / 100;

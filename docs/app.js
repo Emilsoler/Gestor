@@ -14,7 +14,7 @@ const VERSION = '1.13.0';
 // Cuatro datos de cada causa, con valores fijos: los mismos que acepta la base (supabase/migrations/0007).
 const UBICACIONES = ['Casillero', 'A despacho'];
 const ESTADOS = ['0. Iniciamos', '1.1 Demanda', '1.2 Contestación', '2. No oposición de excepciones', '3. Sentencia', '4. Ejecución de Sentencia', '5. Martillero Designado'];
-const CAUTELARES = ['Sin Cautelar', 'Embargo de sueldo', 'Vehículo secuestrado'];
+const CAUTELARES = ['Sin Cautelar', 'Embargar sueldo', 'Embargo de sueldo trabado', 'Secuestrar vehículo', 'Vehículo secuestrado'];
 const SITUACIONES = ['En trámite', 'Acuerdo', 'Archivada'];
 // Los tres rubros de un acuerdo de pago; cada uno lleva sus propias cuotas (ver "Acuerdos").
 const RUBROS_ACU = [['capital', 'Capital, intereses y gastos'], ['martillero', 'Honorarios martillero'], ['abogado', 'Honorarios abogado']];
@@ -73,7 +73,8 @@ const caratula = (c) => `${partes(c)}${c.tipo ? ' – ' + c.tipo : ''}`;
 const uClass = (u) => (u === 'Casillero' ? 's-casillero' : u === 'A despacho' ? 's-despacho' : '');
 // La etapa, por tramos: en discusión (1.1 a 2) ámbar, con sentencia (3 y 4) verde, martillero designado (5) coral.
 const eClass = (e) => { const n = parseFloat(e); return !(n >= 1) ? '' : n < 3 ? 's-notificando' : n < 5 ? 's-sentencia' : 's-subasta'; };
-const CAUTELAR_CLASE = { 'Embargo de sueldo': 't-emb', 'Vehículo secuestrado': 't-sec' };
+// «Embargar» y «Secuestrar» son pendientes (hay que pedirlo); las otras dos, hechos. Comparten color por tema.
+const CAUTELAR_CLASE = { 'Embargar sueldo': 't-emb t-pend', 'Embargo de sueldo trabado': 't-emb', 'Secuestrar vehículo': 't-sec t-pend', 'Vehículo secuestrado': 't-sec' };
 const ubiHtml = (c) => (c.ubicacion ? `<span class="pill ${uClass(c.ubicacion)}">${esc(c.ubicacion)}</span>` : '');
 // La etapa va como etiqueta, debajo de la carátula: una columna más no entra en la pantalla de una notebook.
 const etapaHtml = (c) => (c.estado ? `<span class="tag etapa ${eClass(c.estado)}">${esc(c.estado)}</span>` : '');
@@ -212,7 +213,7 @@ async function reintentar(boton) {
 // ───────────────────────── Listado ─────────────────────────
 
 // Filtros rápidos: u: ubicación (se eligen con las tarjetas del resumen), c: etiqueta cautelar (estas fichas).
-const CHIPS = [{ k: 'c:Embargo de sueldo', l: 'Embargos de sueldo' }, { k: 'c:Vehículo secuestrado', l: 'Vehículos secuestrados' }];
+const CHIPS = [{ k: 'c:Embargar sueldo', l: 'Embargar sueldo' }, { k: 'c:Embargo de sueldo trabado', l: 'Embargos trabados' }, { k: 'c:Secuestrar vehículo', l: 'Secuestrar vehículo' }, { k: 'c:Vehículo secuestrado', l: 'Vehículos secuestrados' }];
 function chipMatch(c, k) { const v = k.slice(2); return (k[0] === 'u' ? c.ubicacion : c.cautelar) === v; }
 
 function filtered() {

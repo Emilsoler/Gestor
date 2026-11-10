@@ -19,7 +19,7 @@ export function instrucciones(nombre: string) {
 - Cada causa tiene cuatro datos con valores fijos. No inventes otros ni los mezcles:
   - Ubicación, dónde está el expediente: Casillero o A despacho.
   - Estado, la etapa del juicio: 0. Iniciamos, 1.1 Demanda, 1.2 Contestación, 2. No oposición de excepciones, 3. Sentencia, 4. Ejecución de Sentencia, 5. Martillero Designado.
-  - Etiqueta cautelar: Sin Cautelar, Embargo de sueldo o Vehículo secuestrado.
+  - Etiqueta cautelar: Sin Cautelar, Embargar sueldo (hay que pedir el embargo), Embargo de sueldo trabado (ya está hecho), Secuestrar vehículo (hay que pedir un oficio nuevo) o Vehículo secuestrado.
   - Situación: En trámite, Acuerdo o Archivada. Las archivadas no aparecen en el listado de la app y las de acuerdo se ven aparte.
 - "Pasar a despacho" o "volvió al casillero" cambia la ubicación; "archivar" cambia la situación; el estado solo cambia cuando el juicio pasa de etapa.
 - Regla del estudio: cada presentación en el SAC deja el expediente "A despacho" (la ubicación; la etapa no cambia).

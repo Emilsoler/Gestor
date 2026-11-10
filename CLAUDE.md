@@ -85,7 +85,10 @@ Después de escribir, leer la fila y contar qué quedó. La app abierta lo muest
     `1.2 Contestación`, `2. No oposición de excepciones`, `3. Sentencia`, `4. Ejecución de Sentencia`,
     `5. Martillero Designado`. Vacío: sin estado (solo en causas
     que venían de antes).
-  - `cautelar` (en la app, "Etiqueta Cautelar"): `Sin Cautelar`, `Embargo de sueldo` o `Vehículo secuestrado`.
+  - `cautelar` (en la app, "Etiqueta Cautelar", migración 0021): `Sin Cautelar`, `Embargar sueldo` (hay que pedirlo),
+    `Embargo de sueldo trabado` (hecho y con cuenta abierta), `Secuestrar vehículo` (hay que pedir un oficio nuevo) o
+    `Vehículo secuestrado`. El nombre anterior, `Embargo de sueldo`, se acepta al escribir y se guarda como el trabado.
+    De «Embargar sueldo» a «Embargo de sueldo trabado» se pasa solo cuando la persona confirma que el embargo está trabado.
   - `situacion`: `En trámite`, `Acuerdo` o `Archivada`. Las archivadas no aparecen en el listado ni
     en la agenda; las de acuerdo se ven aparte ("Con acuerdo").
 

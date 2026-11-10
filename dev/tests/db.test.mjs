@@ -49,7 +49,7 @@ test('sin sesión no se lee ni se escribe nada', async () => {
 test('miembro: alta, lectura, edición con control de revisión y baja', async () => {
   const causa = {
     expte: '14000001', actor: 'AMB', demandado: 'PEREZ JUAN', tipo: 'EJECUTIVO', nom: '2', oficina: 'OEP',
-    ubicacion: 'Casillero', estado: '1.1 Demanda', cautelar: 'Embargo de sueldo', proxima: 'Pedir embargo', vence: '2026-10-09',
+    ubicacion: 'Casillero', estado: '1.1 Demanda', cautelar: 'Embargo de sueldo trabado', proxima: 'Pedir embargo', vence: '2026-10-09',
     ultima: 'Dimos cédula', fecha: '2026-10-01', notas: 'tel 123',
     historial: [{ fecha: '2026-10-01', texto: 'Dimos cédula' }],
     liquidacion: { fecha: '2026-10-01', embargo: 1000, rubros: [{ rubro: 'Capital', monto: 900, pagado: 0 }] },
@@ -59,7 +59,7 @@ test('miembro: alta, lectura, edición con control de revisión y baja', async (
   const rev0 = r.data.rev;
   assert.ok(Number.isSafeInteger(rev0) && rev0 > 0);
   assert.equal(r.data.actualizado_por, 'Emi');
-  assert.equal([r.data.ubicacion, r.data.estado, r.data.cautelar].join('|'), 'Casillero|1.1 Demanda|Embargo de sueldo');
+  assert.equal([r.data.ubicacion, r.data.estado, r.data.cautelar].join('|'), 'Casillero|1.1 Demanda|Embargo de sueldo trabado');
   assert.equal(r.data.situacion, 'En trámite', 'sin decir nada, la causa está en trámite');
   assert.deepEqual(r.data.historial, causa.historial);
   assert.equal(r.data.vence, '2026-10-09');
@@ -247,12 +247,24 @@ test('funciones de Claude: movimiento, presentación, próxima acción y realiza
   assert.match(sqlFalla(`select gestor.realizada('14000001')`), /no tiene próxima acción/);
 });
 
+test('etiquetas cautelares: las cinco valen y el nombre anterior se guarda como el trabado', () => {
+  sql(`insert into public.causas (expte, actor, demandado) values ('5501', 'AMB', 'ETIQUETA EVA')`);
+  for (const v of ['Embargar sueldo', 'Embargo de sueldo trabado', 'Secuestrar vehículo', 'Vehículo secuestrado', 'Sin Cautelar'])
+    assert.equal(sql(`update public.causas set cautelar = '${v}' where expte = '5501' returning cautelar`), v);
+  assert.equal(sql(`update public.causas set cautelar = 'Embargo de sueldo' where expte = '5501' returning cautelar`), 'Embargo de sueldo trabado');
+  // volver a guardar el nombre viejo sobre la ya traducida no es un cambio: no gasta revisión
+  const rev = sql(`select rev from public.causas where expte = '5501'`);
+  assert.equal(sql(`update public.causas set cautelar = 'Embargo de sueldo' where expte = '5501' returning rev`), rev);
+  assert.match(sqlFalla(`update public.causas set cautelar = 'Otra' where expte = '5501'`), /causas_cautelar_check/);
+  sql(`delete from public.causas where expte = '5501'`);
+});
+
 test('de la forma anterior a la nueva: ubicación, estado, cautelar y situación', () => {
   const pasar = (estado, etiquetas) =>
     sql(`select concat_ws('|', n ->> 'ubicacion', n ->> 'estado', n ->> 'cautelar', n ->> 'situacion', n ? 'etiquetas')
            from gestor.forma_0007('${JSON.stringify({ expte: '1', estado, etiquetas })}'::jsonb) n`);
   assert.equal(pasar('Casillero', ['En trámite']), 'Casillero||Sin Cautelar|En trámite|f');
-  assert.equal(pasar('A despacho', ['Embargo de sueldo']), 'A despacho||Embargo de sueldo|En trámite|f');
+  assert.equal(pasar('A despacho', ['Embargo de sueldo']), 'A despacho||Embargo de sueldo trabado|En trámite|f');
   assert.equal(pasar('A despacho', ['Secuestro / subasta', 'En trámite']), 'A despacho||Vehículo secuestrado|En trámite|f');
   assert.equal(pasar('A despacho', ['Martillero']), 'A despacho|5. Martillero Designado|Sin Cautelar|En trámite|f');
   assert.equal(pasar('Tramites p/ subasta', ['Secuestro / subasta']), 'Casillero|4. Ejecución de Sentencia|Vehículo secuestrado|En trámite|f');
@@ -261,7 +273,7 @@ test('de la forma anterior a la nueva: ubicación, estado, cautelar y situación
   assert.equal(pasar('Iniciar', []), 'Casillero|0. Iniciamos|Sin Cautelar|En trámite|f');
   assert.equal(pasar('Acuerdo', ['Acuerdo']), 'Casillero||Sin Cautelar|Acuerdo|f');
   assert.equal(pasar('Casillero', ['Acuerdo']), 'Casillero||Sin Cautelar|Acuerdo|f');
-  assert.equal(pasar('Archivada', ['Acuerdo', 'Embargo de sueldo']), 'Casillero||Embargo de sueldo|Archivada|f');
+  assert.equal(pasar('Archivada', ['Acuerdo', 'Embargo de sueldo']), 'Casillero||Embargo de sueldo trabado|Archivada|f');
   // lo que ya tiene la forma nueva queda igual
   const nueva = '{"expte": "1", "estado": "3. Sentencia", "cautelar": "Sin Cautelar", "situacion": "Acuerdo", "ubicacion": "A despacho"}';
   assert.equal(sql(`select gestor.forma_0007('${nueva}'::jsonb) = '${nueva}'::jsonb`), 't');
@@ -329,7 +341,7 @@ test('deshacer un cambio anterior a la forma nueva: se traduce y la etapa queda 
     ${foto({ demandado: 'ANTES', notas: 'antes', estado: 'Archivada', etiquetas: ['Acuerdo', 'Embargo de sueldo'] })}) returning id`);
   assert.match(sql(`select gestor.deshacer(${id})`), /volvió a como estaba antes/);
   assert.equal(sql(`select concat_ws('|', demandado, notas, ubicacion, estado, cautelar, situacion) from public.causas where expte = '778'`),
-    'ANTES|antes|Casillero|3. Sentencia|Embargo de sueldo|Archivada');
+    'ANTES|antes|Casillero|3. Sentencia|Embargo de sueldo trabado|Archivada');
   // la baja vieja de una causa que ya no está: la etapa sale de lo que había
   id = sql(`insert into gestor.cambios (autor, tabla, clave, operacion, antes) values ('Emi', 'causas', '779', 'baja',
     ${foto({ expte: '779', estado: 'Sentencia', etiquetas: [] })}) returning id`);
