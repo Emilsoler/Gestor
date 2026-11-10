@@ -580,7 +580,7 @@ siempre editable) o se toman de un deudor ya cargado: "Tomar los datos de un deu
 **Fondo del ingreso**: la pantalla de ingreso tiene un video de caballos de fondo (`docs/cobranzas/img/ingreso.mp4`, sin
 sonido, 1,3 MB, y `ingreso.jpg` como foto fija). Lo eligió la persona; es de Pexels ("Wild horses running in open field", de
 Ambam Gorilla, licencia gratuita de Pexels: https://www.pexels.com/video/wild-horses-running-in-open-field-landscape-28899321/).
-Solo va en el ingreso, no detrás de las tablas. `fondoIngreso` (`app.js`) lo arranca cuando esa pantalla se ve (sin `autoplay` ni
+Solo va en el ingreso, no detrás de las tablas. Va con su color original: la persona pidió no oscurecerlo (sin capa encima). `fondoIngreso` (`app.js`) lo arranca cuando esa pantalla se ve (sin `autoplay` ni
 precarga: quien ya entró no lo descarga) y con "reducir movimiento" queda la foto. El service worker no atiende los `.mp4`
 (se piden por tramos y eso no se puede guardar en la copia). En el celular la carátula va al pie para no tapar la manada.
 
