@@ -24,8 +24,6 @@
 <div id="vArranque" class="arranque">Abriendo Créditos y Cobros…</div>
 
 <main id="vIngreso" class="portada" hidden>
-  <!-- Sin autoplay ni precarga: app.js lo arranca solo cuando se ve el ingreso, así quien ya entró no lo descarga. -->
-  <video id="fondoIngreso" class="portada-fondo" muted loop playsinline preload="none" poster="img/ingreso.jpg" aria-hidden="true" tabindex="-1"><source src="img/ingreso.mp4" type="video/mp4"></video>
   <section class="caratula" aria-labelledby="tIngreso">
     <div>
       <h1 id="tIngreso"><span class="j">C</span>réditos y Cobros</h1>
@@ -36,6 +34,8 @@
 </main>
 
 <div id="vApp" hidden>
+  <!-- Fondo de Inicio. Sin autoplay ni precarga: app.js lo arranca solo cuando se ve Inicio. -->
+  <video id="fondoApp" class="app-fondo" muted loop playsinline preload="none" poster="img/ingreso.jpg" aria-hidden="true" tabindex="-1" hidden><source src="img/ingreso.mp4" type="video/mp4"></video>
   <div class="app">
     <!-- En la computadora, la barra lateral. En el celular solo quedan las vistas, debajo del encabezado. -->
     <div class="lateral">

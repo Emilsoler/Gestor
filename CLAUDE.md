@@ -577,12 +577,14 @@ siempre editable) o se toman de un deudor ya cargado: "Tomar los datos de un deu
 - **Lo que falta se avisa en pantalla**, arriba del botón de descarga: `faltanDemanda` (en `demanda.js`) lista por su nombre todo dato que va a salir entre corchetes, y `htmlEstadoDemanda` lo muestra y se actualiza al escribir. Salió de que el ejemplo en gris del Registro («Bell Ville N°1») se leía como un dato ya cargado y la demanda se bajó sin él; ahora el ejemplo dice «Ej.: …». **No poner valores por defecto** en el Registro ni en nada del contrato: cambian según la prenda y un dato equivocado va a un escrito judicial.
 - Lo que falte queda como `[nombre del dato]` en el Word. Pruebas: `node --test tests/demanda.test.mjs` (sin stack).
 
-**Fondo del ingreso**: la pantalla de ingreso tiene un video de caballos de fondo (`docs/cobranzas/img/ingreso.mp4`, sin
-sonido, 1,3 MB, y `ingreso.jpg` como foto fija). Lo eligió la persona; es de Pexels ("Wild horses running in open field", de
-Ambam Gorilla, licencia gratuita de Pexels: https://www.pexels.com/video/wild-horses-running-in-open-field-landscape-28899321/).
-Solo va en el ingreso, no detrás de las tablas. Va con su color original: la persona pidió no oscurecerlo (sin capa encima). `fondoIngreso` (`app.js`) lo arranca cuando esa pantalla se ve (sin `autoplay` ni
-precarga: quien ya entró no lo descarga) y con "reducir movimiento" queda la foto. El service worker no atiende los `.mp4`
-(se piden por tramos y eso no se puede guardar en la copia). En el celular la carátula va al pie para no tapar la manada.
+**Fondo de Inicio**: la vista Inicio tiene un video de caballos de fondo (`docs/cobranzas/img/ingreso.mp4`, sin sonido,
+1,3 MB, y `ingreso.jpg` como foto fija). Lo eligió la persona; es de Pexels ("Wild horses running in open field", de Ambam
+Gorilla, licencia gratuita de Pexels: https://www.pexels.com/video/wild-horses-running-in-open-field-landscape-28899321/).
+Va **adentro de la app, no en la pantalla de ingreso** (se probó ahí primero y la persona pidió pasarlo), y con su color
+original: pidió no oscurecerlo (sin capa encima; al encabezado lo hace legible una sombra en el texto). Solo en Inicio, no
+detrás de las listas ni los formularios. `fondoApp` (`app.js`) lo muestra y lo arranca cuando se ve Inicio (sin `autoplay` ni
+precarga) y lo pausa en las otras vistas o con la pestaña oculta; con "reducir movimiento" queda la foto. El service worker
+no atiende los `.mp4` (se piden por tramos y eso no se puede guardar en la copia).
 
 **Cambiar la app**: `docs/cobranzas/` (`app.js` interfaz, `datos.js` la base, `calculo.js` cuentas,
 `textos.js` fechas, importes y mensajes, `creditos.js` lo que se muestra de una consulta al BCRA (por CUIT y por cheque),

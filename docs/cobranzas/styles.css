@@ -479,12 +479,12 @@ label.f input[readonly]{color:var(--soft)}
 .caratula .btn.primary{padding:10px 20px;font-size:15px;justify-self:start}
 .caratula .error{color:var(--bad);margin:0;font-weight:500}
 .caratula .pie{margin:0;color:var(--muted);border-top:1px solid var(--line-soft);padding-top:14px}
-/* Video de fondo del ingreso (caballos, Pexels), con su color original: la persona pidió no oscurecerlo. La carátula se lee por su propio fondo. */
-.portada{position:relative;isolation:isolate}
-.portada-fondo{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 38%;z-index:-2;background:#0f2124}
-.portada .caratula{background:rgba(15,33,36,.86);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
-/* En el celular la carátula taparía la manada: baja al pie de la pantalla y los caballos pasan por arriba. */
-@media (max-width:720px) and (min-height:700px){.portada{align-content:end;padding-bottom:calc(var(--abajo) + 28px)}}
+/* Video de fondo de Inicio (caballos, Pexels), con su color original: la persona pidió no oscurecerlo.
+   Las tarjetas tienen su propio fondo; al encabezado, que va suelto sobre el video, lo hace legible la sombra. */
+#vApp{position:relative;isolation:isolate}
+.app-fondo{position:fixed;top:0;right:0;bottom:0;left:var(--lat,0px);width:calc(100% - var(--lat,0px));height:100%;object-fit:cover;object-position:50% 38%;z-index:-1;background:var(--bg)}
+body.con-fondo header .titulos{text-shadow:0 1px 2px rgba(0,0,0,.85),0 0 16px rgba(0,0,0,.7)}
+body.con-fondo header .sub{color:var(--fg)}
 .arranque{min-height:60dvh;display:grid;place-items:center;color:var(--muted)}
 
 .fab{display:none}

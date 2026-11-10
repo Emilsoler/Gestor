@@ -169,7 +169,7 @@ function mostrar(pantalla) {
   $('#vArranque').hidden = true;
   $('#vApp').hidden = !enApp;
   $('#vIngreso').hidden = enApp;
-  fondoIngreso(!enApp);
+  if (!enApp) fondoApp(false);
   if (enApp) { $('#ingresoCuerpo').innerHTML = ''; render(); seguirEnlace(); return; }
   cerrarFicha(); S.menu = false; renderMenu();
   for (const k of ['#main', '#chips', '#franja', '#nPlanes', '#nDeudores']) $(k).innerHTML = '';
@@ -177,14 +177,17 @@ function mostrar(pantalla) {
   renderIngreso();
 }
 
-// El video de fondo del ingreso corre solo mientras esa pantalla se ve. Con "reducir movimiento"
-// activado en el dispositivo queda la foto fija (el póster).
-function fondoIngreso(ver) {
-  const v = $('#fondoIngreso');
+// El video de fondo se ve solo en Inicio (detrás de las listas y los formularios molestaría para leer).
+// Corre mientras esa vista está a la vista; con "reducir movimiento" queda la foto fija (el póster).
+function fondoApp(ver) {
+  const v = $('#fondoApp');
   if (!v) return;
-  if (ver && !matchMedia('(prefers-reduced-motion: reduce)').matches) v.play().catch(() => {});
+  v.hidden = !ver;
+  document.body.classList.toggle('con-fondo', ver);
+  if (ver && !document.hidden && !matchMedia('(prefers-reduced-motion: reduce)').matches) v.play().catch(() => {});
   else v.pause();
 }
+document.addEventListener('visibilitychange', () => { if (S.pantalla === 'listo') fondoApp(S.vista === 'inicio'); });
 
 function renderIngreso() {
   const c = $('#ingresoCuerpo'), email = esc(D.usuario?.email || '');
@@ -269,6 +272,7 @@ function render() {
   for (const v of Object.keys(VISTAS)) $('#v_' + v).setAttribute('aria-pressed', S.vista === v);
   $('#tVista').textContent = VISTAS[S.vista];
   $('#btnCuenta').textContent = (D.acceso?.nombre || D.usuario?.email || '?').trim().charAt(0).toUpperCase();
+  fondoApp(S.vista === 'inicio');
   renderFranja();
   $('#toolbar').hidden = !['deudores', 'planes'].includes(S.vista);
   $('#fOrden').hidden = S.vista !== 'deudores';
