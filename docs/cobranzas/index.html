@@ -3,16 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Cobranzas · Estudio Soler</title>
+<title>Créditos y Cobros · Estudio Soler</title>
 <meta name="robots" content="noindex,nofollow">
-<meta name="description" content="Cobranzas del Estudio Soler: deudores en mora, liquidaciones, pagos, planes de pago y aprobación de créditos">
+<meta name="description" content="Créditos y Cobros del Estudio Soler: deudores en mora, liquidaciones, pagos, planes de pago y aprobación de créditos">
 <!-- Solo se cargan archivos de la propia app; lo único externo es la base de datos (Supabase). -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://udfmoxnehgoihzsyrpvy.supabase.co wss://udfmoxnehgoihzsyrpvy.supabase.co; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#0f2124">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Cobranzas">
+<meta name="apple-mobile-web-app-title" content="Créditos y Cobros">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
@@ -21,12 +21,12 @@
 </head>
 <body>
 
-<div id="vArranque" class="arranque">Abriendo cobranzas…</div>
+<div id="vArranque" class="arranque">Abriendo Créditos y Cobros…</div>
 
 <main id="vIngreso" class="portada" hidden>
   <section class="caratula" aria-labelledby="tIngreso">
     <div>
-      <h1 id="tIngreso"><span class="j">C</span>obranzas</h1>
+      <h1 id="tIngreso"><span class="j">C</span>réditos y Cobros</h1>
       <div class="estudio">Estudio Soler</div>
     </div>
     <div id="ingresoCuerpo" class="caratula-cuerpo"></div>
@@ -37,7 +37,7 @@
   <div class="app">
     <!-- En la computadora, la barra lateral. En el celular solo quedan las vistas, debajo del encabezado. -->
     <div class="lateral">
-      <div class="marca" aria-hidden="true"><span class="marca-j">C</span><span class="marca-txt">obranzas</span><small>Estudio Soler</small></div>
+      <div class="marca" aria-hidden="true"><span class="marca-j">C</span><span class="marca-txt">réditos y Cobros</span><small>Estudio Soler</small></div>
       <div class="seg" id="vistas" role="group" aria-label="Vista">
         <button id="v_inicio" aria-pressed="true"><span class="vista-txt">Inicio</span></button>
         <button id="v_deudores" aria-pressed="false"><span class="vista-txt">Deudores</span><span class="badge" id="nDeudores" hidden></span></button>
@@ -50,7 +50,7 @@
     <div class="wrap">
       <header>
         <div class="titulos">
-          <h1><span class="h-marca"><span class="j">C</span>obranzas</span><span class="h-vista" id="tVista">Inicio</span></h1>
+          <h1><span class="h-marca"><span class="j">C</span>réditos y Cobros</span><span class="h-vista" id="tVista">Inicio</span></h1>
           <div class="sub" id="sub"></div>
         </div>
         <div class="actions">
@@ -83,7 +83,7 @@
 <div id="menu" hidden></div>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
-<noscript>La app de cobranzas necesita JavaScript para funcionar.</noscript>
+<noscript>Créditos y Cobros necesita JavaScript para funcionar.</noscript>
 <script src="../vendor/supabase.js"></script>
 <script src="../config.js"></script>
 <script type="module" src="app.js"></script>

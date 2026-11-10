@@ -1886,7 +1886,7 @@ function cuotasDelNuevo(N) {
 }
 function panelNuevo() {
   const N = S.nuevo, qs = cuotasDelNuevo(N), dia = hoy(), venc = qs.filter((q) => q.vto <= dia).length;
-  return `${cabPanel('Cobranzas', 'Nuevo deudor')}
+  return `${cabPanel('Créditos y Cobros', 'Nuevo deudor')}
   <div class="sec"><h4>Deudor</h4><div class="grid2">
     <label class="f ancho">Apellido y nombre<input ${atar('nuevo.nombre')} placeholder="Como figura en la operación"></label>
     <label class="f">DNI / CUIT<input ${atar('nuevo.dni')}></label>
@@ -1953,7 +1953,7 @@ async function accionModelo(a, b) {
 }
 
 function panelAjustes() {
-  return `${cabPanel('Cobranzas', 'Ajustes')}
+  return `${cabPanel('Créditos y Cobros', 'Ajustes')}
   <div class="sec"><h4>Intereses</h4><div class="grid2">
     <label class="f">Interés de los deudores nuevos (% mensual simple)<input ${atar('aj.tasa')} inputmode="decimal"></label>
   </div><p class="hint m0">Cada deudor tiene su propia tasa (en su liquidación).</p></div>
