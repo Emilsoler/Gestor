@@ -562,24 +562,17 @@ test('acuerdos cargados antes de los rubros: sus cuotas son de capital y, al toc
   await page.click('#vLista');
 });
 
-test('acuerdos: se busca por demandado y las cuotas que vencen pronto avisan', async () => {
+test('acuerdos: se busca por demandado; las cuotas por vencer no se avisan ni se muestran', async () => {
   const cuotas = (...ds) => JSON.stringify(ds.map((vence) => ({ rubro: 'capital', vence, monto: 90000, estado: 'pendiente', pago: '' })));
   sql(`insert into public.acuerdos (deudor, notas, cuotas) values ('KAPPA KARINA', 'paga en efectivo', '${cuotas(dia(0), dia(2))}')`);
   sql(`insert into public.acuerdos (deudor, cuotas) values ('LAMBDA LUIS', '${cuotas(dia(40))}')`);
-  // En cualquier vista, un solo aviso junto con la insignia de Acuerdos; la de hoy la pone en coral
   await page.click('#vLista');
-  await page.waitForSelector('#avisos [data-ac=vervenc]', { timeout: 12000 });
-  assert.match(await page.textContent('#avisos'), /Hay 2 cuotas de acuerdos por vencer/);
-  assert.match(await page.textContent('#avisos'), /1 vence hoy · 1 vence en los próximos 3 días/);
-  assert.equal(await page.textContent('#nAcuerdos'), '2 cuotas para revisar');
-  assert.match(await page.getAttribute('#nAcuerdos', 'class'), /urg/, 'vence hoy: la insignia va en coral');
-  await page.click('#avisos [data-ac=vervenc]');
-  assert.equal(await page.textContent('#tVista'), 'Acuerdos');
-  assert.equal(await page.locator('#avisos [data-ac=vervenc]').count(), 0, 'en Acuerdos el detalle ya está a la vista');
-  const venc = page.locator('.proximos .venc');
-  assert.equal(await venc.count(), 2);
-  assert.match(await venc.nth(0).textContent(), /KAPPA KARINA.*vence hoy/s);
-  assert.match(await venc.nth(1).textContent(), /KAPPA KARINA.*vence en 2 días/s);
+  await page.click('#vAcuerdos');
+  await page.waitForFunction(() => /KAPPA KARINA/.test(document.body.textContent) && /LAMBDA LUIS/.test(document.body.textContent), null, { timeout: 12000 });
+  assert.equal(await page.locator('.proximos').count(), 0, 'sin bloque de cuotas por vencer');
+  assert.equal(await page.locator('#avisos [data-ac=vervenc]').count(), 0, 'sin aviso de cuotas por vencer');
+  assert.doesNotMatch(await page.locator('.acitem .acpills').allTextContents().then((t) => t.join('|')), /vence|hoy/, 'sin marca de por vencer en las filas');
+  assert.doesNotMatch((await page.getAttribute('#nAcuerdos', 'title')) || '', /2 cuotas/, 'la insignia no cuenta las por vencer');
 
   // Buscar por demandado, por deudor o por expediente (sin importar mayúsculas ni tildes)
   const n0 = await page.locator('.acitem').count();
@@ -589,23 +582,14 @@ test('acuerdos: se busca por demandado y las cuotas que vencen pronto avisan', a
   assert.equal(await page.locator('.acitem').count(), 1);
   assert.equal(await page.locator('.acitem .acnom b').textContent(), 'BETA BRUNO');
   assert.match(await page.textContent('#sub'), /1 de \d+ acuerdos/);
-  assert.equal(await page.locator('.proximos').count(), 0, 'lo que vence pronto también sigue la búsqueda');
   await page.fill('#q', 'ZETA'); assert.equal(await page.locator('.acitem').count(), 1, 'por el nombre del deudor');
   await page.fill('#q', '1002'); assert.equal(await page.locator('.acitem').count(), 1, 'por el expediente');
-  await page.fill('#q', 'kappá'); assert.equal(await page.locator('.acitem').count(), 1, 'sin importar tildes');
-  assert.equal(await venc.count(), 2);
+  await page.fill('#q', 'kappá'); await page.waitForFunction(() => document.querySelectorAll('.acitem').length === 1).catch(() => {}); assert.equal(await page.locator('.acitem').count(), 1, 'sin importar tildes');
   await page.fill('#q', 'zzzz');
   assert.match(await page.textContent('#main'), /Ningún acuerdo coincide con la búsqueda/);
   await page.fill('#q', '');
   assert.equal(await page.locator('.acitem').count(), n0, 'sin búsqueda vuelven todos');
-
-  // "Pagó" desde la lista de lo que vence
-  await venc.nth(0).locator('[data-v=pagada]').click(); await toast(page, 'Cuota marcada como pagada');
-  await page.waitForFunction(() => document.querySelectorAll('.proximos .venc').length === 1);
-  assert.equal(await page.textContent('#nAcuerdos'), '1 cuota para revisar');
   sql(`delete from public.acuerdos where deudor in ('KAPPA KARINA', 'LAMBDA LUIS')`);
-  await page.click('#vLista');
-  await page.waitForFunction(() => !document.querySelector('#avisos [data-ac=vervenc]'), null, { timeout: 12000 });
 });
 
 test('acuerdos en el celular: la lista plegada y el desarrollo entran en la pantalla, sin deslizar de costado', async () => {

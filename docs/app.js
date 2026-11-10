@@ -257,8 +257,8 @@ function renderFilters() {
   const hoy = iso(today()), urgentes = itemsAgenda('').filter((x) => x.fecha && x.fecha <= hoy), cuotas = cuotasPorPreguntar().length;
   insignia('#nAgenda', urgentes.length, urgentes.some((x) => x.fecha < hoy) ? 'urg' : '', urgentes.length === 1 ? 'para hoy o vencida' : 'para hoy o vencidas');
   // Acuerdos: las cuotas por confirmar y las que vencen pronto (en coral si alguna vence hoy o ya venció).
-  const vencen = cuotasPorVencer(), alertas = cuotas + vencen.length;
-  insignia('#nAcuerdos', alertas, vencen.some((x) => x.n >= 0) ? 'urg' : 'pend', alertas === 1 ? 'cuota para revisar' : 'cuotas para revisar');
+  const alertas = cuotas; // solo las que hay que confirmar: las por vencer no se avisan
+  insignia('#nAcuerdos', alertas, 'pend', alertas === 1 ? 'cuota para revisar' : 'cuotas para revisar');
 }
 function insignia(sel, n, clase, texto) {
   const b = $(sel);
@@ -1317,7 +1317,7 @@ function cuotasPorVencer() {
 }
 /** Un solo aviso para todas las cuotas que vencen pronto, visible en cualquier vista; el detalle está en Acuerdos. */
 function avisoVencimientos() {
-  const xs = cuotasPorVencer(); if (!xs.length || S.view === 'acuerdos' || S.view === 'inicio') return ''; // en Acuerdos ya están a la vista, arriba
+  const xs = []; /* sin avisos de cuotas por vencer */ if (!xs.length || S.view === 'acuerdos' || S.view === 'inicio') return ''; // en Acuerdos ya están a la vista, arriba
   const hoy = xs.filter((x) => x.n === 0).length, tarde = xs.filter((x) => x.n > 0).length, pronto = xs.length - hoy - tarde;
   const partes = [tarde && `${tarde} ${tarde === 1 ? 'venció hace poco' : 'vencieron hace poco'}`, hoy && `${hoy} ${hoy === 1 ? 'vence hoy' : 'vencen hoy'}`, pronto && `${pronto} ${pronto === 1 ? 'vence' : 'vencen'} en los próximos ${AVISO_DIAS} días`].filter(Boolean);
   return `<div class="aviso${tarde ? ' urgente' : ''}"><div><b>${xs.length === 1 ? 'Hay una cuota de un acuerdo por vencer' : `Hay ${xs.length} cuotas de acuerdos por vencer`}</b><small>${partes.join(' · ')}</small></div>
@@ -1453,7 +1453,7 @@ function renderAcuerdos(lista = acuerdosFiltrados(), buscando = false) {
   const sinHallar = `<div class="empty"><b>Ningún acuerdo coincide con la búsqueda</b>Probá con el apellido del demandado o con el número de expediente.</div>`;
   const filas = lista.map((a) => filaAcuerdo(a, porConfirmar.filter((x) => x.a.id === a.id).length)).join('')
     || (S.naAbierto ? '' : buscando ? sinHallar : vacio);
-  return `<div class="acgrid">${nuevo}${proximosVencimientosHtml(lista)}${filas}</div>`;
+  return `<div class="acgrid">${nuevo}${filas}</div>`;
 }
 
 /** Las cuotas que vencen en los próximos días (o vencieron hace poco) de los acuerdos que se ven, en orden de fecha. */
@@ -1472,11 +1472,9 @@ function proximosVencimientosHtml(lista) {
 function filaAcuerdo(a, porConfirmar) {
   const abierto = S.acVer === a.id, k = esc(a.id), t = cuentaCuotas(a.cuotas || []);
   const sub = `${a.expte ? 'Expte. ' + esc(a.expte) : 'Sin causa vinculada'} · ${t.pagadas} de ${t.n} cuotas pagadas`;
-  const vencen = cuotasPorVencer().filter((x) => x.a.id === a.id), tarde = vencen.some((x) => x.n > 0);
   // Hasta tres marcas a la vez: lo que hay que confirmar, lo que vence pronto y las cuotas que no se pagaron.
   const marcas = [
     porConfirmar && `<span class="pill s-notificando">${porConfirmar} por confirmar</span>`,
-    vencen.length && `<span class="pill ${tarde ? 's-notificando' : 's-despacho'}">${vencen.length === 1 ? cuandoVence(vencen[0].n) : `${vencen.length} cuotas por vencer`}</span>`,
     t.impagas && `<span class="pill s-subasta">${t.impagas} ${t.impagas === 1 ? 'impaga' : 'impagas'}</span>`,
   ].filter(Boolean);
   const alerta = marcas.length ? `<span class="acpills">${marcas.join('')}</span>` : '';
