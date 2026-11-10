@@ -154,13 +154,47 @@ const GASTOS_INSCRIPCION = [['sellado', 'Sellado', '% del total del crédito'], 
   ['contratos', 'Contratos y gastos administrativos', '$'], ['envio', 'Envío de documentación', '$'], ['gestoria', 'Gestoría', '$'], ['redondeo', 'Redondeo', '$ · vacío = automático']];
 const GASTOS_OTROS = [['seguro', 'Seguro de vida', '% del capital por cuota'], ['administrativos', 'Gastos administrativos', '$ por cuota'], ['cuotaSocial', 'Cuota social', '$ por cuota'], ['igr', 'IGR', '% de los intereses']];
 
+/** Los gastos editables y el resultado: lo mismo con vehículo y a mano; `pref` es la ruta (data-k) del simulador. */
+function bloqueGastos(S, pref, resultado) {
+  const gasto = ([k, t, u]) => `<label class="f">${esc(t)} <small class="hint">${esc(u)}</small><input id="si_g_${k}" data-k="${pref}.g.${k}" inputmode="decimal" autocomplete="off"${u.startsWith('$') ? ' data-importe' : ''} value="${esc(S.g[k])}"></label>`;
+  return `<details class="sim-gastos">
+      <summary>Gastos (editables)</summary>
+      <h4>Inscripción de prenda</h4>
+      <div class="sim-form sim-chico">${GASTOS_INSCRIPCION.map(gasto).join('')}</div>
+      <details class="sim-otros">
+        <summary><span>Otros gastos <small class="hint">sin interés</small></span><b class="mono" id="si_tot_otros">${resultado ? esc(plata(resultado.otros)) : ''}</b></summary>
+        <div class="sim-form sim-chico">${GASTOS_OTROS.map(gasto).join('')}</div>
+      </details>
+    </details>
+    <div id="simResultado">${htmlSimulacion(resultado)}</div>`;
+}
+
+/** Simulación a mano: el capital, las cuotas y la tasa se escriben; no hace falta ningún vehículo. */
+export function estadoSimuladorManual(sim) {
+  const tasa = String(sim.tasa ?? '').trim() === '' ? NaN : importe(sim.tasa);
+  return { resultado: simularCredito({ capital: importe(sim.capital), cuotas: sim.cuotas, g: gastosDe(sim.g), tasa }) };
+}
+
+/** La tarjeta del simulador a mano (pestaña "Simulación", opción "A mano"). */
+export function htmlSimuladorManual(S) {
+  const est = estadoSimuladorManual(S);
+  return `<section class="card cr-simulador cr-sim-vista" id="crSimulador">
+    <div class="card-cab"><h3>Simulador de crédito</h3><span class="hint">Prendario · a mano</span></div>
+    <div class="sim-form">
+      <label class="f">Capital a financiar ($)<input id="si_capital" data-k="cred.simMan.capital" data-importe inputmode="decimal" autocomplete="off" value="${esc(S.capital)}"></label>
+      <label class="f">Cuotas<input id="si_cuotas" data-k="cred.simMan.cuotas" inputmode="numeric" autocomplete="off" maxlength="3" value="${esc(S.cuotas)}"></label>
+      <label class="f">Tasa mensual (%)<input id="si_tasa" data-k="cred.simMan.tasa" inputmode="decimal" autocomplete="off" value="${esc(S.tasa)}"></label>
+    </div>
+    ${bloqueGastos(S, 'cred.simMan', est.resultado)}
+  </section>`;
+}
+
 /** La tarjeta del simulador (pestaña "Simulación"): el valor del vehículo, el capital, las cuotas, los gastos editables y el resultado. */
 export function htmlSimulador(precios, listPrice, S, modelo) {
   const filas = preciosPorAnio(precios), cero = enPesos(listPrice?.list_price), est = estadoSimulador(precios, listPrice, S);
   if (!est) return '<section class="card cr-sim-vista"><p class="hint m0">InfoAuto no informa precios para este vehículo, así que no hay valor de referencia.</p></section>';
   const { ref } = est;
   const opciones = [...filas.map((x) => [String(x.anio), `Año ${x.anio} · ${plata(x.pesos)}`]), ...(cero ? [['cero', `0km (lista) · ${plata(cero)}`]] : [])];
-  const gasto = ([k, t, u]) => `<label class="f">${esc(t)} <small class="hint">${esc(u)}</small><input id="si_g_${k}" data-k="cred.veh.sim.g.${k}" inputmode="decimal" autocomplete="off"${u.startsWith('$') ? ' data-importe' : ''} value="${esc(S.g[k])}"></label>`;
   return `<section class="card cr-simulador cr-sim-vista" id="crSimulador">
     <div class="card-cab"><h3>${esc(modelo?.descripcion || 'Simulador de crédito')}</h3><span class="hint">Prendario${modelo ? ` · CODIA ${modelo.codia}` : ''}</span></div>
     <div class="sim-form">
@@ -170,15 +204,6 @@ export function htmlSimulador(precios, listPrice, S, modelo) {
       <label class="f">Tasa mensual (%)<input id="si_tasa" data-k="cred.veh.sim.tasa" inputmode="decimal" autocomplete="off" value="${esc(S.tasa)}"></label>
     </div>
     <p class="hint m0" id="si_sugerido">Por defecto se financia el 50% del valor (${esc(plata(Math.round(ref.pesos / 2)))}); podés cambiarlo.</p>
-    <details class="sim-gastos">
-      <summary>Gastos (editables)</summary>
-      <h4>Inscripción de prenda</h4>
-      <div class="sim-form sim-chico">${GASTOS_INSCRIPCION.map(gasto).join('')}</div>
-      <details class="sim-otros">
-        <summary><span>Otros gastos <small class="hint">sin interés</small></span><b class="mono" id="si_tot_otros">${est.resultado ? esc(plata(est.resultado.otros)) : ''}</b></summary>
-        <div class="sim-form sim-chico">${GASTOS_OTROS.map(gasto).join('')}</div>
-      </details>
-    </details>
-    <div id="simResultado">${htmlSimulacion(est.resultado)}</div>
+    ${bloqueGastos(S, 'cred.veh.sim', est.resultado)}
   </section>`;
 }

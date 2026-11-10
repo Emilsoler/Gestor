@@ -10,7 +10,7 @@ import {
   avisoCheque, numeroCheque, bancosRecientes, opcionesBancos, bancoEnLista, fichaCheque, textoCheque, filaCheque,
 } from './creditos.js';
 import { nuevaRefi, vto1Efectivo, estadoRefi, htmlEstadoRefi, htmlPlanRefi, datosCaso, restaurarCaso } from './refinanciacion.js';
-import { modeloSimple, filaModelo, fichaVehiculo, preciosPorAnio, htmlSimulador, htmlSimulacion, estadoSimulador, GASTOS_DEFECTO } from './vehiculos.js';
+import { modeloSimple, filaModelo, fichaVehiculo, preciosPorAnio, htmlSimulador, htmlSimuladorManual, estadoSimuladorManual, htmlSimulacion, estadoSimulador, GASTOS_DEFECTO } from './vehiculos.js';
 import {
   liquidar, resumen, armarPlan, estadoPlan, planVigente, sumarMeses, totalPago, TRAMOS, tramoDe, CADAS, nombrePropio, detalleCuotas, ES_FECHA,
 } from './calculo.js';
@@ -55,6 +55,8 @@ const S = {
     veh: { q: '', marca: '', marcas: null, marcasCargando: false, marcasError: '', buscando: false, error: '', lista: null, sel: null, precios: null, cero: null, cargando: false, errorPrecios: '', anio: '',
       // Simulador de crédito: valor elegido ('' = el año más nuevo), capital (propuesto salvo que se escriba), cuotas y gestoría.
       sim: nuevaSim() },
+    // Simulación a mano (sin vehículo): su propio capital, cuotas, tasa y gastos; `simOrigen` dice cuál de las dos se ve.
+    simMan: nuevaSim(), simOrigen: 'vehiculo',
     // Estado de Deuda y Refinanciación: el deudor elegido y lo que se escribe para armar el plan.
     refi: nuevaRefi(String(ajustes().tasa)),
     dp: nuevaDemanda(), // «Demanda prendaria» (haz DP): lo escrito para armar la demanda en Word
@@ -63,6 +65,7 @@ const S = {
   },
 };
 try { S.vista = VISTAS[localStorage.getItem('cb.vista')] ? localStorage.getItem('cb.vista') : 'inicio'; } catch { /* sin almacenamiento */ }
+try { if (localStorage.getItem('cb.simOrigen') === 'mano') S.cred.simOrigen = 'mano'; } catch { /* sin almacenamiento */ }
 try { const m = localStorage.getItem('cb.credModo'); if (m === 'cheque' || m === 'vehiculo' || m === 'refi' || m === 'simulacion' || m === 'dp') S.cred.modo = m; } catch { /* sin almacenamiento */ }
 try { S.maxi = localStorage.getItem('cb.maxi') === '1'; } catch { /* sin almacenamiento */ }
 
@@ -791,14 +794,16 @@ function accionRefi(act, a) {
 
 /** La pestaña "Simulación": usa el vehículo elegido en la pestaña Vehículo (su valor de referencia). */
 function vistaSimulacion() {
-  const V = S.cred.veh;
+  const V = S.cred.veh, mano = S.cred.simOrigen === 'mano';
   subtitulo('Simulador de crédito prendario');
-  if (V.cargando) return `<section class="card cr-sim-vista"><p class="hint m0">Buscando el precio…</p></section>`;
-  if (!V.sel || !V.precios || V.errorPrecios) return `<section class="card cr-sim-vista cr-vacio-sim">
-    <p class="m0"><b>Primero elegí un vehículo.</b></p>
-    <p class="hint m0">El simulador parte del valor del vehículo. Buscalo en la pestaña Vehículo y volvé acá.</p>
-    <div><button class="btn small primary" type="button" data-cr-modo="vehiculo">Ir a Vehículo</button></div></section>`;
-  return htmlSimulador(V.precios, V.cero, V.sim, V.sel);
+  const origen = `<nav class="tabs cr-origen" role="tablist" aria-label="De dónde sale el capital">${[['vehiculo', 'Con un vehículo'], ['mano', 'A mano']].map(([k, l]) => `<button role="tab" type="button" data-sim-origen="${k}" aria-selected="${(k === 'mano') === mano}">${l}</button>`).join('')}</nav>`;
+  if (mano) return origen + htmlSimuladorManual(S.cred.simMan);
+  if (V.cargando) return origen + `<section class="card cr-sim-vista"><p class="hint m0">Buscando el precio…</p></section>`;
+  if (!V.sel || !V.precios || V.errorPrecios) return origen + `<section class="card cr-sim-vista cr-vacio-sim">
+    <p class="m0"><b>Elegí un vehículo o cargá el monto a mano.</b></p>
+    <p class="hint m0">Con un vehículo, el simulador parte de su valor. Si no, escribí el capital y las cuotas en «A mano».</p>
+    <div><button class="btn small primary" type="button" data-cr-modo="vehiculo">Ir a Vehículo</button> <button class="btn small" type="button" data-sim-origen="mano">Cargar a mano</button></div></section>`;
+  return origen + htmlSimulador(V.precios, V.cero, V.sim, V.sel);
 }
 
 function pedirMarcas() {
@@ -843,6 +848,12 @@ async function elegirVehiculo(codia) {
 
 /** Redibuja solo el resultado (y el capital propuesto) para no perder el foco al escribir. */
 function actualizarSimulador(k) {
+  if (k.startsWith('cred.simMan.')) { // a mano: no hay valor del vehículo, solo se redibuja el resultado
+    const r = estadoSimuladorManual(S.cred.simMan).resultado;
+    const res = $('#simResultado'); if (res) res.innerHTML = htmlSimulacion(r);
+    const t = $('#si_tot_otros'); if (t) t.textContent = r ? plata(r.otros) : '';
+    return;
+  }
   const V = S.cred.veh, est = estadoSimulador(V.precios, V.cero, V.sim);
   if (!est) return;
   if (k === 'cred.veh.sim.capital') V.sim.capitalManual = !!V.sim.capital.trim();
@@ -2066,6 +2077,7 @@ document.addEventListener('click', async (e) => {
   const tab = t.closest('[data-tab-ir]'); if (tab) { irATab(tab.dataset.tabIr); return; }
   const ab = t.closest('[data-abrir]'); if (ab) { e.stopPropagation(); abrirDeudor(ab.dataset.abrir, ab.dataset.tab || 'resumen', ab.dataset.con || ''); return; }
   const cq = t.closest('[data-consulta]'); if (cq) { await abrirConsulta(cq.dataset.consulta); return; }
+  const so = t.closest('[data-sim-origen]'); if (so) { S.cred.simOrigen = so.dataset.simOrigen === 'mano' ? 'mano' : 'vehiculo'; try { localStorage.setItem('cb.simOrigen', S.cred.simOrigen); } catch { /* sin almacenamiento */ } render(); return; }
   const cm = t.closest('[data-cr-modo]'); if (cm) { cambiarModo(cm.dataset.crModo); return; }
   const veh = t.closest('[data-vehiculo]'); if (veh) { await elegirVehiculo(veh.dataset.vehiculo); return; }
   const rf = t.closest('[data-refi]'); if (rf) { elegirRefi(rf.dataset.refi); return; }
@@ -2106,7 +2118,7 @@ document.addEventListener('input', (e) => {
   if (el.id === 'q') { S.q = el.value; render(); return; }
   const k = el.dataset?.k; if (!k) return;
   poner(k, el.type === 'checkbox' ? el.checked : el.value);
-  if (k.startsWith('cred.veh.sim.')) { actualizarSimulador(k); return; }
+  if (k.startsWith('cred.veh.sim.') || k.startsWith('cred.simMan.')) { actualizarSimulador(k); return; }
   if (k === 'cred.refi.q' || k === 'cred.dp.q') { render(); return; }
   if (k.startsWith('cred.refi.')) { actualizarRefi(k); return; }
   if (k === 'cred.cuit') { actualizarCuit(); return; }
@@ -2128,7 +2140,7 @@ document.addEventListener('change', (e) => {
   if (el.id === 'f_tasa' || el.id === 'f_hon') { guardarTasa(el.id === 'f_tasa' ? 'tasa' : 'hon', el); return; }
   if (!k) return;
   poner(k, el.type === 'checkbox' ? el.checked : el.value);
-  if (k.startsWith('cred.veh.sim.')) { actualizarSimulador(k); return; }
+  if (k.startsWith('cred.veh.sim.') || k.startsWith('cred.simMan.')) { actualizarSimulador(k); return; }
   if (k === 'cred.refi.moraTipo') { S.cred.refi.mora = ''; render(); return; } // la fecha y el N° de cuota son campos distintos
   if (k.startsWith('cred.refi.') && k !== 'cred.refi.q') { actualizarRefi(k); return; }
   if (k.startsWith('cred.dp.') && k !== 'cred.dp.q') { actualizarDemanda(); return; }

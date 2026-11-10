@@ -79,3 +79,14 @@ test('simulador: gastos y tasa editables, arancel proporcional y datos inválido
   assert.equal(simularCredito({ capital: 0, cuotas: 24, g: G }), null);
   assert.equal(simularCredito({ capital: 1000, cuotas: 0, g: G }), null);
 });
+
+test('simulación a mano: capital y cuotas escritos, sin vehículo', async () => {
+  const { estadoSimuladorManual, htmlSimuladorManual } = await import('../../docs/cobranzas/vehiculos.js');
+  const sim = { valor: '', capital: '1.000.000', capitalManual: true, cuotas: '12', tasa: '7', g: { ...GASTOS_DEFECTO } };
+  const r = estadoSimuladorManual(sim).resultado;
+  assert.equal(r.capital, 1000000);
+  assert.equal(r.cuotas, 12);
+  assert.deepEqual(r, simularCredito({ capital: 1000000, cuotas: 12, g: gastosDe(sim.g), tasa: 7 }));
+  assert.match(htmlSimuladorManual(sim), /data-k="cred\.simMan\.capital"/);
+  assert.equal(estadoSimuladorManual({ ...sim, capital: '' }).resultado, null); // sin capital no hay resultado
+});
