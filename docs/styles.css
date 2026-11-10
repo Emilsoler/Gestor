@@ -86,7 +86,7 @@ textarea{resize:vertical}
   padding:var(--arriba) var(--pad) calc(var(--abajo) + 40px)}
 .wrap,.lateral{display:contents}
 .marca,.otra-app{display:none}
-header{order:1} #franja{order:2} #avisos{order:3} #stats{order:4} #toolbar{order:5} #vistas{order:6} #chips{order:7} #main{order:8}
+header{order:1} #franja{order:2} #avisos{order:3} #stats{order:7} #toolbar{order:5} #vistas{order:6} #chips{order:7} #main{order:8}
 #franja:empty,#avisos:empty{display:none}
 
 header{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;padding-top:18px}
@@ -706,4 +706,11 @@ body:has(#drawer:not([hidden])) #btnChat,body:has(#drawer:not([hidden])) .fab,bo
   #btnChat{bottom:calc(var(--abajo) + 76px);right:14px;padding:12px 18px}
   .fab{bottom:calc(var(--abajo) + 130px);right:14px}
   .app{padding-bottom:calc(var(--abajo) + 150px)}
+}
+
+/* Causas: tres tarjetas debajo del buscador (Casillero, A despacho, Acuerdos) que filtran la lista */
+@media (min-width:721px){
+  #stats{grid-template-columns:repeat(3,1fr);max-width:none;gap:12px}
+  #stats .stat{min-height:84px;padding:14px 16px}
+  #stats .stat b{font-size:28px}
 }

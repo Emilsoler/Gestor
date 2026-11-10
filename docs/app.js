@@ -219,6 +219,9 @@ function filtered() {
   const q = S.q.trim().toLowerCase();
   const r = D.causas.filter((c) => {
     if (q) { const h = [c.actor, c.demandado, c.tipo, c.expte, c.ultima, c.proxima, c.oficina, c.notas, c.ubicacion, c.estado, c.cautelar].join(' ').toLowerCase(); if (!h.includes(q)) return false; }
+    // Las tarjetas de abajo del buscador: Casillero / A despacho (ubicación) o Acuerdos (situación).
+    if (S.tag.startsWith('u:') && (isArch(c) || isAcu(c) || c.ubicacion !== S.tag.slice(2))) return false;
+    if (S.quick === 'acu' && !isAcu(c)) return false;
     return true;
   });
   const { k, dir } = S.sort;
@@ -233,11 +236,7 @@ function renderStats() {
   const items = [
     { id: 'u:Casillero', n: vivas.filter((c) => c.ubicacion === 'Casillero').length, l: 'Casillero' },
     { id: 'u:A despacho', n: vivas.filter((c) => c.ubicacion === 'A despacho').length, l: 'A despacho' },
-    { id: 'acu', n: D.causas.filter(isAcu).length, l: 'Acuerdos' },
-    { id: 'arch', n: D.causas.filter(isArch).length, l: 'Archivados' }];
-  // Escritos para el SAC: solo aparece si hay alguno, y en rojo si alguno no se pudo presentar.
-  const sac = D.causas.filter((c) => agendaAbierta(c.expte).length);
-  if (sac.length || S.quick === 'sac') items.push({ id: 'sac', n: sac.length, l: 'Con escritos para el SAC', cls: D.agenda.some((x) => x.estado === 'error') ? 'alert' : '' });
+    { id: 'acu', n: D.causas.filter(isAcu).length, l: 'Acuerdos' }];
   // Casillero y A despacho filtran por la ubicación; las otras, por la situación de la causa.
   const puesta = (id) => (id.startsWith('u:') ? S.tag === id : S.quick === id);
   $('#stats').innerHTML = items.map((i) => `<button class="stat ${i.cls || ''}" data-q="${esc(i.id)}" aria-pressed="${puesta(i.id)}"><b>${i.n}</b><span>${i.l}</span></button>`).join('');
@@ -437,7 +436,7 @@ function vistaLiq() {
 
 function irA(v) {
   if (v === 'plantillas') { abrirPlantillas(); return; }
-  S.view = v; S.q = ''; $('#q').value = '';
+  S.view = v; S.q = ''; S.tag = ''; S.quick = ''; $('#q').value = '';
   render(); window.scrollTo(0, 0);
 }
 function accionInicio(k) {
@@ -452,7 +451,8 @@ function dibujar() {
   $('#btnCuenta').textContent = inicial;
   const main = $('#main'), v = S.view, isAc = v === 'acuerdos', isAg = v === 'agenda', conBuscador = v === 'lista' || isAg || isAc || v === 'liq';
   // Sin filtros ni resumen: el listado muestra todas las causas.
-  ['#stats', '#chips', '#btnFiltros', '#filtros'].forEach((k) => { $(k).hidden = true; });
+  ['#chips', '#btnFiltros', '#filtros'].forEach((k) => { $(k).hidden = true; });
+  $('#stats').hidden = v !== 'lista'; // solo en Causas: Casillero, A despacho y Acuerdos, debajo del buscador
   $('#fabNew').hidden = v !== 'lista';
   $('#toolbar').hidden = !conBuscador;
   const banda = BANDAS[v];

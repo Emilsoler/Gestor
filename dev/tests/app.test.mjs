@@ -100,7 +100,16 @@ test('listado: todas las causas sin filtros (las archivadas al final, con su eti
   assert.match(await fila(page, '1003').textContent(), /GAMA CARLA/);
   assert.match(await fila(page, '1003').locator('.tag').allTextContents().then((t) => t.join('|')), /Archivada/);
   // sin filtros ni resumen: lo que se ve es la lista entera y el buscador
-  for (const sel of ['#stats', '#chips', '#fEstado', '#fNom', '#btnFiltros']) assert.equal(await page.locator(sel).isVisible(), false, sel + ' no se muestra');
+  for (const sel of ['#chips', '#fEstado', '#fNom', '#btnFiltros']) assert.equal(await page.locator(sel).isVisible(), false, sel + ' no se muestra');
+  // debajo del buscador: Casillero, A despacho y Acuerdos, que filtran la lista al tocarlas
+  assert.deepEqual(await page.locator('#stats .stat span').allTextContents(), ['Casillero', 'A despacho', 'Acuerdos']);
+  const n = async (k) => Number(await page.textContent(`#stats .stat[data-q="${k}"] b`));
+  for (const k of ['u:Casillero', 'u:A despacho', 'acu']) {
+    await page.click(`#stats .stat[data-q="${k}"]`);
+    assert.equal(await page.locator('#main .causa').count(), await n(k), k + ': la lista tiene tantas como dice la tarjeta');
+    await page.click(`#stats .stat[data-q="${k}"]`); // tocarla de nuevo saca el filtro
+    assert.equal(await page.locator('#main .causa').count(), 4);
+  }
   await page.fill('#q', 'beta');
   assert.equal(await page.locator('#main .causa').count(), 1);
   await page.fill('#q', '');
@@ -907,8 +916,6 @@ test('escritos para el SAC: uno que no se pudo presentar se ve, se vuelve a pedi
   const id = sql(`insert into public.agenda (expte, titulo, cuerpo, fecha, estado) values ('1002', 'Acompaña cédula', 'Texto', gestor.hoy(), 'pendiente') returning id`);
   sql(`select gestor.agenda_fallida('${id}', 'La compu del estudio estaba apagada')`);
   await page.waitForFunction(() => /SAC: no se presentó/.test(document.querySelector('#main .causa[data-id="1002"]')?.textContent || ''), null, { timeout: 8000 });
-  assert.equal(await page.textContent('.stat[data-q="sac"] b'), '1');
-  assert.match(await page.getAttribute('.stat[data-q="sac"]', 'class'), /alert/);
   await abrir(page, '1002');
   assert.match(await page.textContent('#agendaFicha'), /La compu del estudio estaba apagada/);
   await espiarPestañas(page);
@@ -921,7 +928,6 @@ test('escritos para el SAC: uno que no se pudo presentar se ve, se vuelve a pedi
   assert.equal(sql(`select estado from public.agenda where id='${id}'`), 'cancelado');
   assert.equal(await page.locator('#agendaFicha .agcard').count(), 0);
   await page.keyboard.press('Escape');
-  assert.equal(await page.locator('.stat[data-q="sac"]').count(), 0, 'sin escritos pendientes, el resumen no lo muestra');
 });
 
 const borradorDeClaude = (expte, titulo, fecha) => sql(`begin; select set_config('gestor.autor', 'Claude', true);
