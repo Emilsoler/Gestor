@@ -31,7 +31,7 @@ async function nuevoContexto(opciones = {}) {
   vigilar(p, opciones.nombre || 'pc');
   return { c, p };
 }
-async function entrar(p, email, clave, consulta = '') {
+async function entrar(p, email, clave, consulta = '#vista=lista') {
   await p.goto(BASE + consulta);
   await p.waitForSelector('#fIngreso');
   await p.fill('#i_email', email);
@@ -42,7 +42,7 @@ const caido = (v) => fetch(`${env.SUPABASE_URL}/__caido`, { method: 'POST', body
 const tiempoReal = (v) => fetch(`${env.SUPABASE_URL}/__realtime`, { method: 'POST', body: JSON.stringify({ activo: v }) });
 const toast = (p, texto) => p.waitForFunction((t) => { const e = document.querySelector('#toast'); return e && !e.hidden && e.textContent.includes(t); }, texto, { timeout: 8000 });
 const fila = (p, expte) => p.locator(`#main .causa[data-id="${expte}"]`);
-const abrir = async (p, expte) => { await fila(p, expte).locator('.causa-info h3').click(); await p.waitForSelector('.panel'); };
+const abrir = async (p, expte) => { if (!(await p.locator('#main .causas').count())) { await p.click('#vLista'); await p.waitForSelector('#main .causas'); } await fila(p, expte).locator('.causa-info h3').click(); await p.waitForSelector('.panel'); };
 const cerrado = (p) => p.waitForSelector('#drawer', { state: 'hidden' });
 const enfocado = (p) => p.evaluate(() => document.activeElement?.id);
 async function leer(descarga) { const partes = []; for await (const c of await descarga.createReadStream()) partes.push(c); return Buffer.concat(partes); }
@@ -92,39 +92,55 @@ test('ingreso: clave equivocada, clave temporal y elección de la definitiva', a
   assert.equal(await page.locator('#ingresoCuerpo input').count(), 0, 'la clave no queda en la página');
 });
 
-test('listado: activas, archivadas aparte, búsqueda, filtros y vencidas', async () => {
-  assert.equal(await page.locator('#main .causa').count(), 3); // la archivada no se lista
-  assert.match(await page.textContent('#sub'), /3 de 4 causas/);
-  // el resumen: dos en el casillero, una a despacho, ningún acuerdo y la archivada
-  assert.deepEqual(await page.locator('#stats .stat').evaluateAll((bs) => bs.map((b) => b.dataset.q + '=' + b.querySelector('b').textContent)),
-    ['u:Casillero=2', 'u:A despacho=1', 'acu=0', 'arch=1']);
-  await page.click('.stat[data-q="arch"]');
-  assert.equal(await page.locator('#main .causa').count(), 1);
+test('listado: todas las causas sin filtros (las archivadas al final, con su etiqueta) y búsqueda', async () => {
+  assert.equal(await page.locator('#main .causa').count(), 4);
+  assert.match(await page.textContent('#sub'), /4 causas/);
+  const ids = () => page.locator('#main .causa').evaluateAll((rs) => rs.map((r) => r.dataset.id));
+  assert.equal((await ids()).at(-1), '1003', 'la archivada va al final');
   assert.match(await fila(page, '1003').textContent(), /GAMA CARLA/);
-  await page.click('.stat[data-q="arch"]');
+  assert.match(await fila(page, '1003').locator('.tag').allTextContents().then((t) => t.join('|')), /Archivada/);
+  // sin filtros ni resumen: lo que se ve es la lista entera y el buscador
+  for (const sel of ['#stats', '#chips', '#fEstado', '#fNom', '#btnFiltros']) assert.equal(await page.locator(sel).isVisible(), false, sel + ' no se muestra');
   await page.fill('#q', 'beta');
   assert.equal(await page.locator('#main .causa').count(), 1);
   await page.fill('#q', '');
-  await page.selectOption('#fNom', '1');
-  assert.equal(await page.locator('#main .causa').count(), 2);
-  await page.selectOption('#fNom', '');
-  const ids = () => page.locator('#main .causa').evaluateAll((rs) => rs.map((r) => r.dataset.id).sort());
-  await page.click('.stat[data-q="u:A despacho"]');
-  assert.deepEqual(await ids(), ['1002']);
-  assert.equal(await page.getAttribute('.stat[data-q="u:A despacho"]', 'aria-pressed'), 'true');
-  await page.click('.stat[data-q="u:Casillero"]');
-  assert.deepEqual(await ids(), ['1001', '1004'], 'la archivada tampoco aparece en el casillero');
-  await page.click('#chips .chip[data-t="c:Embargo de sueldo"]');
-  assert.deepEqual(await ids(), ['1004']);
-  assert.match(await page.textContent('#chips .chip[data-t="c:Vehículo secuestrado"]'), /Vehículos secuestrados · 1/);
-  await page.click('#chips .chip[data-t=""]');
-  await page.selectOption('#fEstado', '1.1 Demanda');
-  assert.deepEqual(await ids(), ['1001']);
-  await page.selectOption('#fEstado', '');
-  // cada tarjeta muestra la carátula, el expediente con el juzgado y la última acción con su fecha
+  assert.equal(await page.locator('#main .causa').count(), 4);
+  // cada tarjeta muestra la carátula, el expediente con el juzgado, la última acción con su fecha y la próxima acción si la tiene
   assert.equal(await page.locator('#main .causa[data-id="1004"] .causa-linea').textContent(), 'Expte. N° 1004 · Juzg. 1° Nom. OEP');
   assert.match(await page.locator('#main .causa[data-id="1002"] .causa-ult').textContent(), /Ejecutamos sentencia/);
+  assert.match(await page.locator('#main .causa[data-id="1004"] .causa-prox').textContent(), /Próxima acción\s*Enviar cédulas/);
+  assert.equal(await page.locator('#main .causa[data-id="1002"] .causa-prox').count(), 0, 'sin próxima acción, no hay renglón');
   assert.equal((await page.locator('#main .causa[data-id="1002"] [data-lista]').allTextContents()).join('|'), 'Acción cautelar');
+});
+
+test('inicio: nombre, frase con busto, acciones rápidas y las fotos; la app abre siempre ahí', async () => {
+  const { c, p } = await nuevoContexto({ nombre: 'inicio' });
+  await entrar(p, EMAIL, CLAVE, '');
+  await p.waitForSelector('#main .presenta');
+  assert.match(await p.textContent('#nombre'), /Dr\. Soler\s*Emiliano/);
+  assert.equal(await p.textContent('.prof'), 'Abogado');
+  assert.ok((await p.textContent('.frase p')).length > 10);
+  assert.match(await p.getAttribute('.busto', 'src'), /^img\/(socrates|platon|aristoteles)\.jpg$/);
+  assert.deepEqual(await p.locator('.acciones-rapidas .btn').allTextContents(), ['+Nueva causa', '+Nuevo escrito para el SAC', '+Nuevo acuerdo de pago']);
+  assert.deepEqual(await p.locator('.tile span').allTextContents(), ['Causas', 'Agenda', 'Acuerdos', 'Plantillas', 'Liquidaciones', 'Créditos y Cobros', 'Jurisprudencia', 'SAC']);
+  assert.equal(await p.getAttribute('.t-cobros', 'href'), 'cobranzas/');
+  assert.match(await p.getAttribute('.t-sac', 'href'), /justiciacordoba\.gob\.ar/);
+  assert.equal(await p.locator('#stats, #toolbar').evaluateAll((es) => es.every((e) => e.offsetParent === null)), true, 'sin resumen ni buscador en el inicio');
+  // cada tarjeta lleva a su pantalla
+  await p.click('.t-causas'); await p.waitForSelector('#main .causas'); await p.click('#vInicio');
+  await p.click('.t-agenda'); await p.waitForSelector('#main .agenda'); await p.click('#vInicio');
+  await p.click('.t-acuerdos'); await p.waitForSelector('#main .empty, #main .acuerdos, #main [data-ac]'); await p.click('#vInicio');
+  await p.click('.t-plantillas'); await p.waitForSelector('.panel'); await p.keyboard.press('Escape'); await cerrado(p);
+  await p.click('.t-liquidaciones'); await p.waitForSelector('#main .empty, #main .liqs'); await p.click('#vInicio');
+  await p.click('.t-jurisprudencia'); await p.waitForSelector('#fJuris');
+  await p.fill('#jq', 'prueba'); await p.click('#fJuris button[type=submit]'); await toast(p, 'se conecta más adelante');
+  // acciones rápidas
+  await p.click('#vInicio'); await p.click('[data-inicio=causa]'); await p.waitForSelector('.panel'); await p.keyboard.press('Escape'); await cerrado(p);
+  await p.click('[data-inicio=acuerdo]'); await p.waitForSelector('#na_deudor'); await p.click('#vInicio');
+  assert.equal(await p.locator('#btnChat').isVisible(), true, 'Claude es un botón flotante');
+  await p.click('[data-inicio=escrito]'); await p.waitForSelector('#charla');
+  assert.match(await p.inputValue('#chatTexto'), /escrito para presentar en el SAC/);
+  await c.close();
 });
 
 test('un dato con HTML se muestra como texto, no se ejecuta', async () => {
@@ -605,7 +621,7 @@ test('exportar: descarga un CSV con lo que se ve', async () => {
   assert.match(descarga.suggestedFilename(), /^juicios-\d{4}-\d{2}-\d{2}\.csv$/);
   const s = await descarga.createReadStream(); let csv = ''; for await (const c of s) csv += c;
   assert.ok(csv.startsWith('﻿Actor;Demandado;Tipo;Expediente;Nominación;Oficina;Ubicación;Estado;Etiqueta Cautelar;Situación;'));
-  assert.equal(csv.trim().split('\n').length, 5); // encabezado + 4 causas activas
+  assert.equal(csv.trim().split('\n').length, 6); // encabezado + las 5 causas (las archivadas también se ven)
 });
 
 test('lo que actualiza Claude aparece solo, sin recargar', async () => {
@@ -709,17 +725,13 @@ test('celular: tarjetas, filtros plegados y botón de nueva causa', async () => 
   const { c, p } = await nuevoContexto({ nombre: 'cel', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   await entrar(p, EMAIL, CLAVE + '-2');
   await p.waitForSelector('#main .causas');
-  assert.equal(await p.locator('#main .causa').count(), 3);
+  assert.equal(await p.locator('#main .causa').count(), 4);
   assert.equal(await p.isVisible('#fabNew'), true, 'Nueva causa flota en el celular');
   assert.equal(await p.isVisible('#btnTpl'), true, 'Plantillas está entre las vistas');
   assert.equal(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, 'sin desplazamiento horizontal de la página');
-  assert.equal(await p.isVisible('#fEstado'), false);
-  await p.tap('#btnFiltros');
-  assert.equal(await p.isVisible('#fEstado'), true);
-  await p.selectOption('#fEstado', '1.1 Demanda');
-  assert.equal(await p.locator('#main .causa').count(), 1);
-  assert.match(await p.textContent('#btnFiltros'), /Filtros · 1/);
-  await p.selectOption('#fEstado', '');
+  assert.equal(await p.isVisible('#fEstado'), false, 'sin filtros');
+  assert.equal(await p.isVisible('#btnFiltros'), false, 'sin botón de filtros');
+  assert.equal(await p.evaluate(() => getComputedStyle(document.querySelector('#vistas')).position), 'fixed', 'las vistas son una barra fija abajo');
   await p.tap('#vLista');
   await p.tap('#main .causa[data-id="1002"] h3');
   await p.waitForSelector('.panel');
@@ -787,7 +799,7 @@ test('acceso a Cobranzas: al pie de la barra y en el menú de la cuenta; abre la
 test('con tiempo real el cambio de Claude llega al instante; si se corta, sigue con el respaldo', async () => {
   await tiempoReal(true);
   const { c, p } = await nuevoContexto({ nombre: 'vivo' });
-  await entrar(p, EMAIL, CLAVE + '-2', '?sondeo=3000');
+  await entrar(p, EMAIL, CLAVE + '-2', '?sondeo=3000#vista=lista');
   await p.waitForSelector('#main .causas');
   await p.waitForSelector('#sub .vivo', { timeout: 10000 }); // "en vivo": con el canal abierto solo relee cada 5 minutos
   let t0 = Date.now();
@@ -1229,7 +1241,7 @@ test('cheques: la ficha los muestra y los guarda como cheque', async () => {
   assert.equal(sql(`select titulos -> 0 ->> 'tipo' from public.causas where expte='1002'`), 'cheque');
 });
 
-test('ubicación, estado, etiqueta cautelar y situación: se ven, se filtran, se guardan, y archivar saca la causa del listado', async () => {
+test('ubicación, estado, etiqueta cautelar y situación: se ven, se guardan, y archivar la manda al final del listado', async () => {
   const ESTADOS = ['0. Iniciamos', '1.1 Demanda', '1.2 Contestación', '2. No oposición de excepciones', '3. Sentencia', '4. Ejecución de Sentencia', '5. Martillero Designado'];
   sql(`begin; select set_config('gestor.autor', 'Semilla', true);
     update public.causas set ubicacion = 'A despacho', estado = '5. Martillero Designado', cautelar = 'Vehículo secuestrado', situacion = 'En trámite' where expte = '1002';
@@ -1255,11 +1267,9 @@ test('ubicación, estado, etiqueta cautelar y situación: se ven, se filtran, se
   await page.selectOption('#c_situacion', 'Archivada');
   await page.click('.ppie [data-act=save]'); await toast(page, 'Cambios guardados'); await cerrado(page);
   assert.equal(sql(`select concat_ws('|', ubicacion, estado, cautelar, situacion, actualizado_por) from public.causas where expte = '1001'`), 'A despacho|1.2 Contestación|Embargo de sueldo|Archivada|Emi');
-  // archivada: sale del listado y queda en Archivadas, con su etiqueta
-  assert.equal(await fila(page, '1001').count(), 0);
-  await page.click('.stat[data-q="arch"]');
+  // archivada: sigue en el listado (las archivadas van al final), con su etiqueta
   assert.match(await fila(page, '1001').textContent(), /Archivada/);
-  await page.click('.stat[data-q="arch"]');
+  assert.equal((await page.locator('#main .causa').evaluateAll((rs) => rs.map((r) => r.dataset.id))).slice(-2).includes('1001'), true);
   sql(`begin; select set_config('gestor.autor', 'Semilla', true); update public.causas set situacion = 'En trámite' where expte = '1001'; commit;`);
   await page.waitForFunction(() => !!document.querySelector('#main .causa[data-id="1001"]'), null, { timeout: 8000 });
 });
@@ -1357,7 +1367,7 @@ test('cerrar sesión borra del dispositivo la sesión y la copia de los datos', 
 
 test('si se le quita el acceso a alguien que está usando la app, deja de ver los datos', async () => {
   await page.fill('#i_email', EMAIL); await page.fill('#i_clave', CLAVE + '-2'); await page.click('#fIngreso button[type=submit]');
-  await page.waitForSelector('#main .causas');
+  await page.waitForSelector('#vApp:not([hidden])');
   sql(`delete from gestor.miembros where email='${EMAIL}'`);
   await page.waitForFunction(() => /no está autorizada/.test(document.querySelector('#ingresoCuerpo')?.textContent || ''), null, { timeout: 10000 });
   assert.equal(await page.evaluate(() => localStorage.getItem('gj.cache')), null);

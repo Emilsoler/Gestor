@@ -6,7 +6,7 @@
 // - Todo lo que no es de este sitio (la base de datos) va directo a la red: acá no se guardan datos.
 //
 // Al cambiar la lista de archivos o una tipografía/ícono, subir VERSION para renovar la copia.
-const VERSION = 'gestor-v8';
+const VERSION = 'gestor-v9';
 const ESPERA_MS = 4000;
 
 const NUCLEO = [
@@ -14,6 +14,8 @@ const NUCLEO = [
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
   'fonts/plex-sans-latin-300.woff2', 'fonts/plex-sans-latin-400.woff2', 'fonts/plex-sans-latin-500.woff2', 'fonts/plex-sans-latin-600.woff2',
   'fonts/plex-mono-latin-400.woff2', 'fonts/plex-mono-latin-500.woff2',
+  'fonts/cinzel-latin-400-normal.woff2', 'fonts/eb-garamond-latin-400-italic.woff2', 'fonts/poppins-latin-600-normal.woff2', 'fonts/poppins-latin-700-normal.woff2',
+  'img/causas.jpg', 'img/agenda.jpg', 'img/acuerdos.jpg', 'img/plantillas.jpg', 'img/liquidaciones.jpg', 'img/cobros.jpg', 'img/jurisprudencia.jpg', 'img/sac.jpg', 'img/justicia.jpg',
 ];
 
 self.addEventListener('install', (e) => {
@@ -33,7 +35,7 @@ self.addEventListener('fetch', (e) => {
   if (pedido.method !== 'GET' || url.origin !== self.location.origin) return;
   // Las otras apps (cobranzas/ y prenda/) tienen su propio service worker: lo suyo no se toca acá.
   if (url.pathname.includes('/cobranzas/') || url.pathname.includes('/prenda/')) return;
-  const fijo = /\/(fonts|icons)\//.test(url.pathname);
+  const fijo = /\/(fonts|icons|img)\//.test(url.pathname);
   e.respondWith(fijo ? copiaPrimero(pedido) : redPrimero(e, pedido));
 });
 

@@ -325,26 +325,29 @@ recién cuando la persona toca "Presentar ahora" y después "Ejecutar ahora" en 
 
 - Textos de la interfaz en castellano rioplatense, de vos, frases cortas. Un botón dice lo que
   hace ("Guardar cambios") y el aviso posterior usa las mismas palabras ("Cambios guardados").
-- El diseño ya tiene su lenguaje: tema claro único, celeste y dorado. Fondo en degradado de celeste
-  a marfil (`body`), tarjetas casi blancas con borde dorado (`--line`, `--line-soft`), celeste como
-  acento (`--grad`: botón principal, vista elegida, mensajes propios del chat) y dorado para las
-  insignias, el borde izquierdo de las causas «A despacho», `--oro-grad` y lo elegido en el resumen
-  (`--oro-soft`). Colores de estado oscurecidos para leerse sobre fondo claro, IBM Plex Sans (300 solo
-  para las cifras grandes del resumen) y Plex Mono para expedientes e importes, esquinas muy redondas
-  (`--r`) y botones píldora. Los avisos son tarjetas con una franja a la izquierda del color de lo que
-  avisan. Los íconos son SVG de trazo dentro de `styles.css`, usados como máscara (`--i-…`).
-  Las pantallas nuevas lo siguen; no sumar librerías.
-- Armado: en la computadora, barra lateral con las vistas (Lista, Agenda, Acuerdos) y Plantillas
-  (columna de íconos desde 721 px, entera desde 1140 px); en el celular, las vistas quedan debajo del
-  buscador. Es el mismo HTML: `.lateral` y `.wrap` pasan a `display: contents` y el orden lo da
-  `order`. Los botones del encabezado (Exportar, Claude, SAC y la cuenta) van junto al título y
-  «+ Nueva causa» es un botón flotante en todas las pantallas.
-- Listado: una tarjeta por causa (`renderCausas`), igual en la computadora y en el celular: carátula,
-  expediente y juzgado («Juzg. 1° Nom. Sec.2»: nominación y oficina), última acción con su fecha y los
-  botón «Acción cautelar» (la tarjeta entera abre la causa al tocarla). El resumen son cuatro tarjetas —Casillero, A despacho,
-  Acuerdos, Archivados— que filtran al tocarlas (y una quinta, «Con escritos para el SAC», solo si
-  hay). La próxima acción y su vencimiento se ven en Agenda y en la ficha; ya no hay tablero ni
-  tabla ni selector de orden (el listado va por el movimiento más antiguo primero).
+- **Rediseño oscuro (nov 2026)**: tema oscuro único (fondo negro, tarjetas azul noche `--surface`, dorado `--accent` como
+  acento y `--grad` para el botón principal y la vista elegida), IBM Plex Sans y Plex Mono, y fotos de estatuas y bustos
+  griegos (en `docs/img/`, las puso la persona; no sumar fotos de internet). Los estilos del rediseño están al final de
+  `styles.css` («Rediseño»); las variables de color, arriba. Tipografías de la portada en `docs/fonts/`: Cinzel (el nombre),
+  EB Garamond cursiva (la frase) y Poppins (títulos de tarjetas), servidas por la app (sin CDN).
+- **Inicio** (`vistaInicio` en `app.js`): la app abre siempre ahí (no recuerda la última vista; un enlace con `#vista=lista`,
+  `agenda`, `acuerdos`, `juris` o `liq` abre esa pantalla). Solo «Dr. Soler Emiliano · Abogado» (el nombre ocupa todo el
+  ancho: `ajustarNombre` lo escala), una frase de filósofos griegos con su busto (`FRASES`, al azar en cada apertura), las
+  acciones rápidas (Nueva causa, Nuevo escrito para el SAC —abre el chat— y Nuevo acuerdo de pago) y ocho tarjetas con foto:
+  Causas, Agenda, Acuerdos, Plantillas, Liquidaciones, Créditos y Cobros (`cobranzas/`), Jurisprudencia y SAC (enlace
+  al extranet). Sin hora, fecha ni tarjetas de vencimientos. Los avisos de cuotas por vencer no se muestran en el inicio.
+- **Jurisprudencia** (`vistaJuris`): el buscador está armado pero todavía no busca (muestra un aviso); la persona lo conecta
+  después. **Liquidaciones** (`vistaLiq`): las causas con planilla, con total, cobrado y saldo; tocarla abre la causa.
+- Armado: en la computadora, barra lateral con Inicio, Causas, Agenda, Acuerdos, Jurisprudencia y Plantillas (columna de
+  íconos desde 721 px, entera desde 1140 px); en el celular, esas vistas son una barra fija abajo. Es el mismo HTML:
+  `.lateral` y `.wrap` pasan a `display: contents` y el orden lo da `order`. El chat con Claude es un botón flotante
+  (`#btnChat`; se oculta con una ficha abierta) y «+ Nueva causa» flota en Causas.
+- **Causas**: banda con la foto de la Justicia, buscador y **todas** las causas en una lista sin filtros ni resumen (las
+  archivadas van al final, con su etiqueta; las de acuerdo también se ven acá). Cada tarjeta (`renderCausas`): carátula,
+  expediente y juzgado («Juzg. 1° Nom. Sec.2»), última acción con su fecha, la próxima acción si la hay (`.causa-prox`),
+  etiquetas y el botón «Acción cautelar» (la tarjeta entera abre la causa). **Agenda**: banda con la loba (foto de fondo
+  difuminada y la nítida al centro, porque la imagen es chica) y sin filtros. Los selectores y botones de filtro y el resumen
+  (`#stats`, `#chips`, `#fEstado`, `#fNom`, `#btnFiltros`) siguen en el HTML pero siempre ocultos.
 - Comentarios en el código: por qué, no qué.
 
 ## Cobranzas (`docs/cobranzas/`)

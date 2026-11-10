@@ -8,8 +8,8 @@
 <meta name="description" content="Gestor de juicios del Estudio Soler">
 <!-- Solo se cargan archivos de la propia app; lo único externo es la base de datos (Supabase). -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://udfmoxnehgoihzsyrpvy.supabase.co wss://udfmoxnehgoihzsyrpvy.supabase.co; object-src 'none'; base-uri 'none'; form-action 'none'">
-<meta name="color-scheme" content="light">
-<meta name="theme-color" content="#d9e9f1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#000000">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Juicios">
@@ -39,9 +39,11 @@
     <div class="lateral">
       <div class="marca" aria-hidden="true"><span class="marca-j">J</span><span class="marca-txt">uicios</span><small>Estudio Soler</small></div>
       <div class="seg" id="vistas" role="group" aria-label="Vista">
-        <button id="vLista" aria-pressed="true"><span class="vista-txt">Lista</span></button>
+        <button id="vInicio" aria-pressed="true"><span class="vista-txt">Inicio</span></button>
+        <button id="vLista" aria-pressed="false"><span class="vista-txt">Causas</span></button>
         <button id="vAgenda" aria-pressed="false"><span class="vista-txt">Agenda</span><span class="badge" id="nAgenda" hidden></span></button>
         <button id="vAcuerdos" aria-pressed="false"><span class="vista-txt">Acuerdos</span><span class="badge" id="nAcuerdos" hidden></span></button>
+        <button id="vJuris" aria-pressed="false"><span class="vista-txt">Jurisprudencia</span></button>
         <button id="btnTpl" type="button"><span class="vista-txt">Plantillas</span></button>
       </div>
       <a class="otra-app" href="cobranzas/" target="_blank" rel="noopener" title="Abrir Créditos y Cobros" aria-label="Abrir Créditos y Cobros"><span class="otra-c" aria-hidden="true">C</span><span class="otra-txt" aria-hidden="true">Créditos y Cobros</span></a>
@@ -66,6 +68,7 @@
       <div id="avisos"></div>
       <div class="stats" id="stats"></div>
 
+      <div id="banda"></div>
       <div class="toolbar" id="toolbar">
         <input type="search" id="q" placeholder="Buscar por demandado, actor, expediente o acción…" aria-label="Buscar">
         <button class="btn solo-movil" id="btnFiltros" aria-expanded="false" aria-controls="filtros">Filtros</button>

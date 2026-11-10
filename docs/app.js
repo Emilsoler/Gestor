@@ -9,7 +9,7 @@ import {
 import { idNuevo, nuevaLiquidacion, cobradoRubro, totalPago, liqNormal, liqCalc, importe, pesos, enCelda, planillaExcel } from './liquidacion.js';
 import { MODELOS, ACCIONES, CAMPOS_OFICIO, esModeloOficio, rellenar, htmlOficio, pdfOficio, enLetras, cifra, ordinal, datosDeCausa, partirDomicilio, dniOficio, nombreArchivo } from './oficio.js';
 
-const VERSION = '1.13.0';
+const VERSION = '1.14.0';
 
 // Cuatro datos de cada causa, con valores fijos: los mismos que acepta la base (supabase/migrations/0007).
 const UBICACIONES = ['Casillero', 'A despacho'];
@@ -35,7 +35,7 @@ const COBRANZAS = 'cobranzas/'; // la app de cobranzas, en la misma base y con l
 
 const S = {
   pantalla: 'arranque',
-  q: '', estado: '', nom: '', tag: '', quick: '', view: 'lista', sort: { k: 'dias', dir: -1 },
+  q: '', estado: '', nom: '', tag: '', quick: '', view: 'inicio', sort: { k: 'dias', dir: -1 },
   open: null, isNew: false, confirmDel: false, choque: null, // ficha abierta
   planilla: false, liqSucia: false, // la planilla de liquidación está a la vista / tiene cambios sin guardar
   cau: null, // la acción cautelar que se está armando desde la ficha (ver "Acción cautelar")
@@ -47,8 +47,8 @@ const S = {
   menu: false, instalar: null, ocupado: false,
   chat: null, // la conversación con Claude (ver "Chat con Claude")
 };
-try { S.view = localStorage.getItem('gj.view') || 'lista'; } catch { /* sin almacenamiento */ }
-if (S.view !== 'agenda' && S.view !== 'acuerdos') S.view = 'lista'; // el tablero ya no existe
+// La app abre siempre en el inicio; un enlace con #vista=lista (agenda, acuerdos, juris, liq) abre esa pantalla.
+S.view = (/^#vista=(lista|agenda|acuerdos|juris|liq)$/.exec(location.hash) || [])[1] || 'inicio';
 try { S.maxi = localStorage.getItem('gj.maxi') === '1'; } catch { /* sin almacenamiento */ }
 
 // ───────────────────────── Utilidades ─────────────────────────
@@ -110,7 +110,7 @@ function mostrar(pantalla) {
   $('#vIngreso').hidden = enApp;
   if (enApp) { $('#ingresoCuerpo').innerHTML = ''; render(); seguirEnlace(); return; } // no dejar el formulario (ni la clave) en la página
   closeDrawer(); cerrarChat(); S.chat = null; S.menu = false; renderMenu();
-  for (const k of ['#main', '#stats', '#chips', '#avisos', '#franja', '#fEstado', '#fNom', '#nAgenda', '#nAcuerdos']) $(k).innerHTML = ''; // ni los datos, al salir
+  for (const k of ['#main', '#banda', '#stats', '#chips', '#avisos', '#franja', '#fEstado', '#fNom', '#nAgenda', '#nAcuerdos']) $(k).innerHTML = ''; // ni los datos, al salir
   $('#sub').textContent = ''; $('#q').value = ''; S.q = '';
   renderIngreso();
 }
@@ -218,21 +218,14 @@ function chipMatch(c, k) { const v = k.slice(2); return (k[0] === 'u' ? c.ubicac
 function filtered() {
   const q = S.q.trim().toLowerCase();
   const r = D.causas.filter((c) => {
-    if (S.estado && (c.estado || '(sin estado)') !== S.estado) return false;
-    if (S.nom && String(c.nom) !== S.nom) return false;
-    if (S.tag && !chipMatch(c, S.tag)) return false;
-    if (S.quick !== 'arch' && isArch(c)) return false;
-    if (S.quick === 'arch' && !isArch(c)) return false;
-    if (S.quick === 'acu' && !isAcu(c)) return false;
-    if (S.quick === 'sac' && !agendaAbierta(c.expte).length) return false;
-    if (S.quick !== 'acu' && isAcu(c)) return false;
     if (q) { const h = [c.actor, c.demandado, c.tipo, c.expte, c.ultima, c.proxima, c.oficina, c.notas, c.ubicacion, c.estado, c.cautelar].join(' ').toLowerCase(); if (!h.includes(q)) return false; }
     return true;
   });
   const { k, dir } = S.sort;
   const val = (c) => (k === 'dias' ? (days(c.fecha) ?? 99999) : k === 'vence' ? (c.proxima && c.vence) || '9999' : k === 'nom' ? Number(c.nom) || 0 : k === 'demandado' ? titulo(c).toLowerCase() : String(c[k] || '').toLowerCase());
   r.sort((a, b) => { const x = val(a), y = val(b); return (x > y ? 1 : x < y ? -1 : 0) * dir; });
-  return r;
+  // Todas las causas, sin filtros: las archivadas van al final (con su etiqueta).
+  return [...r.filter((c) => !isArch(c)), ...r.filter(isArch)];
 }
 
 function renderStats() {
@@ -304,6 +297,7 @@ function renderCausas(rows) {
       <h3>${esc(titulo(c))}</h3>
       <div class="causa-linea"><b class="mono">Expte. N° ${id}</b>${j ? ' · ' + esc(j) : ''}</div>
       <div class="causa-ult">${c.ultima ? `<time>${fmt(c.fecha)}</time><span>${esc(c.ultima)}</span>` : '<span class="hint">Sin acción cargada</span>'}${n === null ? '<small class="age old">sin fecha</small>' : `<small class="age ${n > STALE ? 'old' : ''}">hace ${n} d</small>`}</div>
+      ${c.proxima && c.proxima.trim() ? `<div class="causa-prox"><b>Próxima acción</b><span>${esc(c.proxima)}</span>${c.vence ? `<small>${esc(fmt(c.vence))}</small>` : ''}</div>` : ''}
       ${tagsHtml(c, ubiHtml(c) + etapaHtml(c))}
     </div>
     <div class="causa-acc"><button class="btn small" data-lista="cautelar" data-id="${id}">Acción cautelar</button></div>
@@ -362,18 +356,119 @@ function render() {
   // Si se redibuja mientras se escribe en el listado (formularios de acuerdos), el foco y el cursor vuelven a su lugar.
   conFoco($('#main'), dibujar);
 }
+// ───────────────────────── Inicio, Jurisprudencia y Liquidaciones ─────────────────────────
+
+// Una frase de los filósofos griegos con su busto, distinta en cada apertura de la app.
+const FRASES = [
+  { t: 'Una vida sin examen no merece ser vivida.', a: 'Sócrates', b: 'socrates' },
+  { t: 'Conócete a ti mismo.', a: 'Sócrates', b: 'socrates' },
+  { t: 'El comienzo es la parte más importante del trabajo.', a: 'Platón', b: 'platon' },
+  { t: 'La justicia consiste en que cada uno haga lo que le corresponde.', a: 'Platón', b: 'platon' },
+  { t: 'La ley es la razón libre de pasión.', a: 'Aristóteles', b: 'aristoteles' },
+  { t: 'El hombre es, por naturaleza, un animal político.', a: 'Aristóteles', b: 'aristoteles' },
+  { t: 'La justicia consiste en tratar igual a los iguales y desigual a los desiguales.', a: 'Aristóteles', b: 'aristoteles' },
+];
+const FRASE = FRASES[Math.floor(Math.random() * FRASES.length)];
+
+const TILES = [
+  { k: 'causas', t: 'Causas', ir: 'lista' }, { k: 'agenda', t: 'Agenda', ir: 'agenda' },
+  { k: 'acuerdos', t: 'Acuerdos', ir: 'acuerdos' }, { k: 'plantillas', t: 'Plantillas', ir: 'plantillas' },
+  { k: 'liquidaciones', t: 'Liquidaciones', ir: 'liq' }, { k: 'cobros', t: 'Créditos y Cobros', href: COBRANZAS },
+  { k: 'jurisprudencia', t: 'Jurisprudencia', ir: 'juris' }, { k: 'sac', t: 'SAC', sac: true },
+];
+const BANDAS = { lista: ['justicia', 'Causas'], agenda: ['agenda', 'Agenda'], acuerdos: ['acuerdos', 'Acuerdos'], juris: ['jurisprudencia', 'Jurisprudencia'], liq: ['liquidaciones', 'Liquidaciones'] };
+
+function vistaInicio() {
+  const tile = (x) => {
+    const img = `<img src="img/${x.k}.jpg" alt="" loading="lazy" decoding="async"><span>${esc(x.t)}</span>`;
+    if (x.sac) { const a = $('#btnSac'); return `<a class="tile t-${x.k}" href="${esc(a.getAttribute('href'))}"${a.getAttribute('target') ? ' target="_blank" rel="noopener"' : ''}>${img}</a>`; }
+    if (x.href) return `<a class="tile t-${x.k}" href="${esc(x.href)}" target="_blank" rel="noopener">${img}</a>`;
+    return `<button type="button" class="tile t-${x.k}" data-ir="${x.ir}">${img}</button>`;
+  };
+  return `<section class="presenta" aria-label="Presentación">
+    <h2 class="nombre" id="nombre"><span><i>D</i>r. <i>S</i>oler</span> <span><i>E</i>miliano</span></h2>
+    <div class="prof">Abogado</div>
+    <div class="frase-fila">
+      <blockquote class="frase"><p>“${esc(FRASE.t)}”</p><footer>${esc(FRASE.a)}</footer></blockquote>
+      <img class="busto" src="img/${FRASE.b}.jpg" alt="Busto de ${esc(FRASE.a)}">
+    </div>
+  </section>
+  <div class="inicio">
+    <aside class="acciones-rapidas" aria-label="Acciones rápidas"><h3>Acciones rápidas</h3>
+      <button type="button" class="btn" data-inicio="causa"><span class="mas" aria-hidden="true">+</span>Nueva causa</button>
+      <button type="button" class="btn" data-inicio="escrito"><span class="mas" aria-hidden="true">+</span>Nuevo escrito para el SAC</button>
+      <button type="button" class="btn" data-inicio="acuerdo"><span class="mas" aria-hidden="true">+</span>Nuevo acuerdo de pago</button>
+    </aside>
+    <div class="tiles">${TILES.map(tile).join('')}</div>
+  </div>`;
+}
+
+// El nombre ocupa todo el ancho: se mide con un tamaño de prueba y se escala (en el celular, en dos renglones).
+function ajustarNombre() {
+  const h = $('#nombre'); if (!h) return;
+  h.classList.toggle('dos', window.innerWidth < 640);
+  h.style.fontSize = '100px';
+  const w = h.getBoundingClientRect().width, ancho = h.parentElement.clientWidth;
+  if (w > 0 && ancho > 0) h.style.fontSize = (100 * ancho / w * 0.995) + 'px';
+}
+window.addEventListener('resize', ajustarNombre);
+if (document.fonts?.ready) document.fonts.ready.then(ajustarNombre);
+
+function vistaJuris() {
+  return `<section class="juris"><form id="fJuris" role="search" class="juris-form">
+    <label class="vh" for="jq">Buscar jurisprudencia</label>
+    <input type="search" id="jq" placeholder="Buscar fallos, doctrina o jurisprudencia…" autocomplete="off">
+    <button type="submit" class="btn primary">Buscar</button>
+  </form><p class="hint">El buscador se conecta más adelante.</p></section>`;
+}
+
+// Liquidaciones: las causas que tienen planilla, con su total, lo cobrado y el saldo. Se abre la causa al tocarlas.
+function vistaLiq() {
+  const q = S.q.trim().toLowerCase();
+  const xs = D.causas.filter((c) => c.liquidacion && !isArch(c) && (!q || [c.actor, c.demandado, c.expte].join(' ').toLowerCase().includes(q)));
+  if (!xs.length) return `<div class="empty"><b>No hay liquidaciones</b>Acá aparecen las causas que tienen una planilla de liquidación cargada.</div>`;
+  return `<div class="filas liqs">` + xs.map((c) => {
+    const k = liqCalc(c.liquidacion);
+    return `<article class="fila liqfila" data-id="${esc(c.expte)}" tabindex="0" role="button" aria-label="Abrir la ficha de ${esc(titulo(c))}">
+    <div class="fila-top"><span class="next">${esc(titulo(c))}</span><span class="mono">${esc(c.expte)}</span></div>
+    <dl class="cifras"><div><dt>Total</dt><dd>${pesos(k.tot)}</dd></div><div><dt>Cobrado</dt><dd>${pesos(k.pag)}</dd></div><div><dt>Saldo</dt><dd>${pesos(k.saldo)}</dd></div></dl></article>`;
+  }).join('') + `</div>`;
+}
+
+function irA(v) {
+  if (v === 'plantillas') { abrirPlantillas(); return; }
+  S.view = v; S.q = ''; $('#q').value = '';
+  render(); window.scrollTo(0, 0);
+}
+function accionInicio(k) {
+  if (k === 'causa') return openCausa(null);
+  if (k === 'escrito') return abrirChat(null, 'Quiero armar un escrito para presentar en el SAC. ');
+  if (k === 'acuerdo') { S.view = 'acuerdos'; S.naAbierto = true; render(); window.scrollTo(0, 0); $('#na_deudor')?.focus(); }
+}
+
 function dibujar() {
   renderStats(); renderFilters(); renderAvisos(); renderFranja();
   const inicial = (D.acceso?.nombre || D.usuario?.email || '?').trim().charAt(0).toUpperCase();
   $('#btnCuenta').textContent = inicial;
-  const main = $('#main'), isAc = S.view === 'acuerdos', isAg = S.view === 'agenda';
-  ['#stats', '#chips', '#btnFiltros', '#filtros', '#fabNew'].forEach((k) => { $(k).hidden = isAc || isAg; });
-  // En Acuerdos solo se busca (por demandado, deudor o expediente): los filtros son del listado.
+  const main = $('#main'), v = S.view, isAc = v === 'acuerdos', isAg = v === 'agenda', conBuscador = v === 'lista' || isAg || isAc || v === 'liq';
+  // Sin filtros ni resumen: el listado muestra todas las causas.
+  ['#stats', '#chips', '#btnFiltros', '#filtros'].forEach((k) => { $(k).hidden = true; });
+  $('#fabNew').hidden = v !== 'lista';
+  $('#toolbar').hidden = !conBuscador;
+  const banda = BANDAS[v];
+  $('#banda').innerHTML = banda ? `<section class="banda b-${banda[0]}" aria-label="${esc(banda[1])}">${v === 'agenda' ? `<img class="fondo" src="img/${banda[0]}.jpg" alt="">` : ''}<img class="${v === 'agenda' ? 'frente' : ''}" src="img/${banda[0]}.jpg" alt=""><h2>${esc(banda[1])}</h2></section>` : '';
+  // En Acuerdos solo se busca (por demandado, deudor o expediente).
   $('#q').placeholder = isAc ? 'Buscar acuerdo por demandado, deudor o expediente…' : 'Buscar por demandado, actor, expediente o acción…';
-  $('#tVista').textContent = { agenda: 'Agenda', acuerdos: 'Acuerdos' }[S.view] || 'Causas'; // título en la computadora, con la barra lateral
-  if (!D.cargado) {
+  $('#tVista').textContent = { agenda: 'Agenda', acuerdos: 'Acuerdos', juris: 'Jurisprudencia', liq: 'Liquidaciones', inicio: 'Inicio' }[v] || 'Causas'; // título en la computadora, con la barra lateral
+  if (v === 'inicio') {
+    main.innerHTML = vistaInicio(); $('#sub').textContent = ''; ajustarNombre();
+  } else if (v === 'juris') {
+    main.innerHTML = vistaJuris(); $('#sub').textContent = '';
+  } else if (!D.cargado) {
     main.innerHTML = `<div class="empty"><b>Cargando tus causas…</b>Acá vas a ver el listado de juicios con su estado, última acción y próxima acción.</div>`;
     subtitulo('Cargando causas…');
+  } else if (v === 'liq') {
+    main.innerHTML = vistaLiq(); subtitulo('Planillas de liquidación');
   } else if (isAc) {
     const hallados = acuerdosFiltrados(), buscando = !!S.q.trim();
     main.innerHTML = renderAcuerdos(hallados, buscando);
@@ -388,9 +483,10 @@ function dibujar() {
     main.innerHTML = `<div class="empty"><b>Todavía no hay causas cargadas</b>Usá “+ Nueva causa” para agregar la primera.</div>`; subtitulo('0 causas');
   } else {
     const rows = filtered();
-    subtitulo(`${rows.length} de ${D.causas.length} causas`);
-    main.innerHTML = rows.length ? renderCausas(rows) : `<div class="empty"><b>Ninguna causa coincide con los filtros</b>Probá con otra búsqueda o quitá algún filtro.</div>`;
+    subtitulo(`${rows.length} ${rows.length === 1 ? 'causa' : 'causas'}`);
+    main.innerHTML = rows.length ? renderCausas(rows) : `<div class="empty"><b>Ninguna causa coincide con la búsqueda</b>Probá con otra palabra.</div>`;
   }
+  for (const [id, vista] of [['#vInicio', 'inicio'], ['#vLista', 'lista'], ['#vAgenda', 'agenda'], ['#vAcuerdos', 'acuerdos'], ['#vJuris', 'juris']]) $(id).setAttribute('aria-pressed', v === vista);
 }
 
 // Verbos que no siguen la regla en pretérito (nosotros): lo que termina así cambia entero.
@@ -1221,7 +1317,7 @@ function cuotasPorVencer() {
 }
 /** Un solo aviso para todas las cuotas que vencen pronto, visible en cualquier vista; el detalle está en Acuerdos. */
 function avisoVencimientos() {
-  const xs = cuotasPorVencer(); if (!xs.length || S.view === 'acuerdos') return ''; // en Acuerdos ya están a la vista, arriba
+  const xs = cuotasPorVencer(); if (!xs.length || S.view === 'acuerdos' || S.view === 'inicio') return ''; // en Acuerdos ya están a la vista, arriba
   const hoy = xs.filter((x) => x.n === 0).length, tarde = xs.filter((x) => x.n > 0).length, pronto = xs.length - hoy - tarde;
   const partes = [tarde && `${tarde} ${tarde === 1 ? 'venció hace poco' : 'vencieron hace poco'}`, hoy && `${hoy} ${hoy === 1 ? 'vence hoy' : 'vencen hoy'}`, pronto && `${pronto} ${pronto === 1 ? 'vence' : 'vencen'} en los próximos ${AVISO_DIAS} días`].filter(Boolean);
   return `<div class="aviso${tarde ? ' urgente' : ''}"><div><b>${xs.length === 1 ? 'Hay una cuota de un acuerdo por vencer' : `Hay ${xs.length} cuotas de acuerdos por vencer`}</b><small>${partes.join(' · ')}</small></div>
@@ -1420,7 +1516,7 @@ async function acAct(b) {
   guardarFormsAcu();
   // Lo que solo cambia lo que se ve
   if (k === 'nuevo') { soltar('na.'); S.naAbierto = !S.naAbierto; if (!S.naAbierto) S.na = NA_VACIO(); redibujarAcuerdos(); if (S.naAbierto) $('#na_deudor')?.focus(); return; }
-  if (k === 'vervenc') { S.view = 'acuerdos'; try { localStorage.setItem('gj.view', 'acuerdos'); } catch { /* sin almacenamiento */ } render(); window.scrollTo(0, 0); return; }
+  if (k === 'vervenc') { S.view = 'acuerdos'; render(); window.scrollTo(0, 0); return; }
   if (k === 'ver') { S.acVer = S.acVer === id ? '' : id; redibujarAcuerdos(); return; }
   if (k === 'abrir') { const a = D.acuerdos.find((x) => x.id === id); if (a && causaDe(a)) openCausa(a.expte); return; }
   if (k === 'cargarf') { if (!S.open) return; S.naf = NA_VACIO(S.open.demandado || S.open.actor || ''); refrescarAcuerdoFicha(); $('#naf_deudor')?.focus(); return; }
@@ -1848,7 +1944,7 @@ function refrescarCharla(bajar = false) {
   $('#chatEnviar').disabled = S.chat.enviando;
 }
 
-function abrirChat(causa) {
+function abrirChat(causa, texto = '') {
   const c = estadoChat();
   if (!c.abierto) {
     c.abierto = true; S.menu = false; renderMenu();
@@ -1858,8 +1954,9 @@ function abrirChat(causa) {
   refrescarCharla(true);
   const t = $('#chatTexto');
   if (causa?.expte && !t.value.trim()) t.value = `Sobre la causa ${causa.expte} (${partes(causa)}): `;
+  else if (texto && !t.value.trim()) t.value = texto;
   ajustarAlto(t);
-  if (!movil.matches || causa) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); }
+  if (!movil.matches || causa || texto) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); }
 }
 function cerrarChat() {
   if (S.chat) S.chat.abierto = false;
@@ -1980,6 +2077,8 @@ async function unaVez(boton, tarea) {
 }
 
 document.addEventListener('click', async (e) => {
+  const vi = e.target.closest('[data-ir]'); if (vi) { irA(vi.dataset.ir); return; }
+  const ai = e.target.closest('[data-inicio]'); if (ai) { accionInicio(ai.dataset.inicio); return; }
   const ing = e.target.closest('[data-ing]');
   if (ing) { if (ing.dataset.ing === 'salir') { await salir(); mostrar('ingreso'); } else await reintentar(ing); return; }
   if (e.target.closest('#btnReintentar')) { await reintentar(e.target.closest('#btnReintentar')); if (D.enLinea) toast('Conexión recuperada'); return; }
@@ -2096,11 +2195,12 @@ document.addEventListener('change', (e) => {
   if (/^t_tipo\d+$/.test(e.target.id)) { readForm(); rerenderDrawer(); return; }
   if (e.target.id === 'tp_sel') { readForm(); S.tpSel = e.target.value; rerenderDrawer(); }
 });
+document.addEventListener('submit', (e) => { if (e.target.id === 'fJuris') { e.preventDefault(); toast('El buscador de jurisprudencia se conecta más adelante.'); } });
 $('#q').addEventListener('input', (e) => { S.q = e.target.value; render(); });
 $('#fEstado').addEventListener('change', (e) => { S.estado = e.target.value; render(); });
 $('#fNom').addEventListener('change', (e) => { S.nom = e.target.value; render(); });
-const verVista = (v) => () => { S.view = v; try { localStorage.setItem('gj.view', v); } catch { /* sin almacenamiento */ } render(); };
-$('#vLista').onclick = verVista('lista'); $('#vAgenda').onclick = verVista('agenda'); $('#vAcuerdos').onclick = verVista('acuerdos');
+const verVista = (v) => () => { S.view = v; render(); window.scrollTo(0, 0); };
+$('#vInicio').onclick = verVista('inicio'); $('#vLista').onclick = verVista('lista'); $('#vAgenda').onclick = verVista('agenda'); $('#vAcuerdos').onclick = verVista('acuerdos'); $('#vJuris').onclick = verVista('juris');
 $('#fabNew').onclick = () => openCausa(null);
 $('#btnTpl').onclick = abrirPlantillas;
 $('#btnExport').onclick = exportar;
@@ -2135,7 +2235,7 @@ movil.addEventListener('change', () => render());
 alCambiar((que, detalle) => {
   if (que === 'sesion') { if (detalle !== S.pantalla) mostrar(detalle); else if (detalle === 'listo') render(); return; }
   if (S.pantalla !== 'listo') return;
-  if (que === 'estado') { renderFranja(); if (D.cargado && S.view !== 'acuerdos' && S.view !== 'agenda') subtitulo(`${filtered().length} de ${D.causas.length} causas`); if (S.menu) renderMenu(); return; }
+  if (que === 'estado') { renderFranja(); if (D.cargado && S.view === 'lista') subtitulo(`${filtered().length} de ${D.causas.length} causas`); if (S.menu) renderMenu(); return; }
   render();
   seguirEnlace(); // un enlace que llegó antes de que estuvieran los datos
   if (S.tpl) refrescarTpl();
