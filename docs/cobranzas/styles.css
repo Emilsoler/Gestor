@@ -495,6 +495,12 @@ body.con-fondo header .titulos{justify-self:start;background:rgba(15,33,36,.82);
 body.con-fondo header .sub{color:var(--soft)}
 body.con-fondo #main .tabs{background:var(--surface);border-radius:12px 12px 0 0;margin:0;padding:0 8px 2px}
 body.con-fondo .chip[aria-pressed="true"]{background:linear-gradient(var(--accent-soft),var(--accent-soft)),var(--surface)}
+/* En el celular el video no va de fondo: a pantalla completa se estiraba cuatro veces (es de 1024 px de ancho) y se
+   pixelaba, y las tarjetas tapaban a los caballos. Va como una franja nítida, a su tamaño, entre las pestañas y el contenido. */
+@media (max-width:720px){
+  video.app-fondo{position:static;order:2;width:100%;height:auto;aspect-ratio:16/9;object-position:50% 50%;z-index:auto;border-radius:var(--r);box-shadow:0 14px 34px rgba(1,8,8,.45)}
+  body[data-fondo="inicio"] header .titulos{background:none;-webkit-backdrop-filter:none;backdrop-filter:none;padding:0;border-radius:0}
+}
 .arranque{min-height:60dvh;display:grid;place-items:center;color:var(--muted)}
 
 .fab{display:none}

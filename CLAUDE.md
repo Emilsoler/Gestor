@@ -588,6 +588,9 @@ de Pexels, licencia gratuita); no sumar otros sin que los pida.
 - Van **adentro de la app, no en la pantalla de ingreso** (el video se probó ahí primero y la persona pidió pasarlo), y con su
   color original: pidió no oscurecerlos (sin capa encima). Lo que iba suelto sobre el fondo (título, pestañas, filtro elegido)
   tiene fondo propio para que se lea (`body.con-fondo …` en `styles.css`).
+- **En el celular (hasta 720 px) el video de Inicio no es fondo**: es una franja 16:9 entre las pestañas y el contenido
+  (`video.app-fondo` en `styles.css`; por eso el `<video>` está al final de `.app`). A pantalla completa se pixelaba (el
+  archivo es de 1024 px) y las tarjetas tapaban a los caballos; la persona pidió que se vean. En la computadora sigue de fondo.
 - `fondoApp` (`app.js`, se llama en cada `render`) pone `body[data-fondo]` (`inicio`, `deudores`, `planes`, `cred-<pestaña>`);
   la foto de cada clave y su encuadre están en `styles.css`. El video corre solo con Inicio a la vista (sin `autoplay` ni
   precarga) y se pausa en las otras vistas o con la pestaña oculta; con "reducir movimiento" queda la foto. El service worker

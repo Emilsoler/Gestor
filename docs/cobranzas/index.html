@@ -34,8 +34,6 @@
 </main>
 
 <div id="vApp" hidden>
-  <!-- Fondo de Inicio. Sin autoplay ni precarga: app.js lo arranca solo cuando se ve Inicio. -->
-  <video id="fondoApp" class="app-fondo" muted loop playsinline preload="none" poster="img/ingreso.jpg" aria-hidden="true" tabindex="-1" hidden><source src="img/ingreso.mp4" type="video/mp4"></video>
   <!-- Foto de fondo de las demás vistas: cuál va en cada una lo dice styles.css según body[data-fondo]. -->
   <div id="fondoFoto" class="app-fondo app-foto" aria-hidden="true" hidden></div>
   <div class="app">
@@ -78,6 +76,9 @@
 
       <main id="main"></main>
     </div>
+    <!-- Fondo de Inicio. Sin autoplay ni precarga: app.js lo arranca solo cuando se ve Inicio. Va al final de .app
+         porque en el celular no es fondo: es una franja entre las pestañas y el contenido (ver styles.css). -->
+    <video id="fondoApp" class="app-fondo" muted loop playsinline preload="none" poster="img/ingreso.jpg" aria-hidden="true" tabindex="-1" hidden><source src="img/ingreso.mp4" type="video/mp4"></video>
   </div>
   <button class="btn primary fab" id="fabNuevo">+ Nuevo deudor</button>
 </div>
