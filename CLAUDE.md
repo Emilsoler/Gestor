@@ -577,26 +577,8 @@ siempre editable) o se toman de un deudor ya cargado: "Tomar los datos de un deu
 - **Lo que falta se avisa en pantalla**, arriba del botón de descarga: `faltanDemanda` (en `demanda.js`) lista por su nombre todo dato que va a salir entre corchetes, y `htmlEstadoDemanda` lo muestra y se actualiza al escribir. Salió de que el ejemplo en gris del Registro («Bell Ville N°1») se leía como un dato ya cargado y la demanda se bajó sin él; ahora el ejemplo dice «Ej.: …». **No poner valores por defecto** en el Registro ni en nada del contrato: cambian según la prenda y un dato equivocado va a un escrito judicial.
 - Lo que falte queda como `[nombre del dato]` en el Word. Pruebas: `node --test tests/demanda.test.mjs` (sin stack).
 
-**Fondos** (la persona quiere que entrar a la app "sea algo bonito y no solo números y nombres"): cada vista tiene un
-fondo a pantalla completa, detrás de las tarjetas. Los archivos están en `docs/cobranzas/img/` y los puso la persona (todos
-de Pexels, licencia gratuita); no sumar otros sin que los pida.
-- **Inicio**: video de caballos (`ingreso.mp4`, sin sonido, 1,3 MB, con `ingreso.jpg` como foto fija; "Wild horses running in
-  open field", de Ambam Gorilla: https://www.pexels.com/video/wild-horses-running-in-open-field-landscape-28899321/).
-- **Deudores** y Créditos · **Demanda prendaria**: león (`fondo-leon.jpg`). **Planes** y Créditos · **Estado de Deuda y
-  Refinanciación**: cabras (`fondo-cabras.jpg`). Créditos · **Deudas por CUIT**: tigre; **Cheques denunciados**: hipopótamo;
-  **Vehículo**: ñu; **Simulación**: perro. Dos fotos se repiten porque llegaron seis para ocho pantallas.
-- Van **adentro de la app, no en la pantalla de ingreso** (el video se probó ahí primero y la persona pidió pasarlo), y con su
-  color original: pidió no oscurecerlos (sin capa encima). Lo que iba suelto sobre el fondo (título, pestañas, filtro elegido)
-  tiene fondo propio para que se lea (`body.con-fondo …` en `styles.css`).
-- **En el celular (hasta 720 px) el video de Inicio no es fondo**: es una franja 16:9 entre las pestañas y el contenido
-  (`video.app-fondo` en `styles.css`; por eso el `<video>` está al final de `.app`). A pantalla completa se pixelaba (el
-  archivo es de 1024 px) y las tarjetas tapaban a los caballos; la persona pidió que se vean. En la computadora sigue de fondo.
-- `fondoApp` (`app.js`, se llama en cada `render`) pone `body[data-fondo]` (`inicio`, `deudores`, `planes`, `cred-<pestaña>`);
-  la foto de cada clave y su encuadre están en `styles.css`. El video corre solo con Inicio a la vista (sin `autoplay` ni
-  precarga) y se pausa en las otras vistas o con la pestaña oculta; con "reducir movimiento" queda la foto. El service worker
-  no atiende los `.mp4` (se piden por tramos y eso no se puede guardar en la copia).
-- Para mirar las vistas sin el stack: Playwright con una sesión inventada en `localStorage` (`gestor.sesion`) y las respuestas
-  de `*.supabase.co` simuladas (`mi_acceso`, `deudores` de ejemplo, el resto vacío).
+**Sin fondos de video ni de fotos**: en nov 2026 se probó un video de fondo (en el ingreso y después en Inicio) y una foto por
+vista; a la persona no le gustó (las fotos se veían pixeladas) y pidió volver a como estaba. No volver a sumarlos sin que los pida.
 
 **Cambiar la app**: `docs/cobranzas/` (`app.js` interfaz, `datos.js` la base, `calculo.js` cuentas,
 `textos.js` fechas, importes y mensajes, `creditos.js` lo que se muestra de una consulta al BCRA (por CUIT y por cheque),

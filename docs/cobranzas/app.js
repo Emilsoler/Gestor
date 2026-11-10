@@ -169,29 +169,12 @@ function mostrar(pantalla) {
   $('#vArranque').hidden = true;
   $('#vApp').hidden = !enApp;
   $('#vIngreso').hidden = enApp;
-  if (!enApp) fondoApp(false);
   if (enApp) { $('#ingresoCuerpo').innerHTML = ''; render(); seguirEnlace(); return; }
   cerrarFicha(); S.menu = false; renderMenu();
   for (const k of ['#main', '#chips', '#franja', '#nPlanes', '#nDeudores']) $(k).innerHTML = '';
   $('#sub').textContent = ''; $('#q').value = ''; S.q = '';
   renderIngreso();
 }
-
-// Fondos de la app: en Inicio, el video; en cada una de las otras vistas (y en cada pestaña de Créditos), una
-// foto. El video corre mientras Inicio está a la vista; con "reducir movimiento" queda su foto fija (el póster).
-// Qué foto va en cada vista lo dice styles.css según body[data-fondo].
-function fondoApp(ver) {
-  const v = $('#fondoApp'), f = $('#fondoFoto');
-  if (!v || !f) return;
-  const clave = !ver ? '' : S.vista === 'creditos' ? 'cred-' + S.cred.modo : S.vista;
-  const video = clave === 'inicio';
-  v.hidden = !video; f.hidden = !clave || video;
-  if (clave) document.body.dataset.fondo = clave; else delete document.body.dataset.fondo;
-  document.body.classList.toggle('con-fondo', !!clave);
-  if (video && !document.hidden && !matchMedia('(prefers-reduced-motion: reduce)').matches) v.play().catch(() => {});
-  else v.pause();
-}
-document.addEventListener('visibilitychange', () => { if (S.pantalla === 'listo') fondoApp(true); });
 
 function renderIngreso() {
   const c = $('#ingresoCuerpo'), email = esc(D.usuario?.email || '');
@@ -276,7 +259,6 @@ function render() {
   for (const v of Object.keys(VISTAS)) $('#v_' + v).setAttribute('aria-pressed', S.vista === v);
   $('#tVista').textContent = VISTAS[S.vista];
   $('#btnCuenta').textContent = (D.acceso?.nombre || D.usuario?.email || '?').trim().charAt(0).toUpperCase();
-  fondoApp(true);
   renderFranja();
   $('#toolbar').hidden = !['deudores', 'planes'].includes(S.vista);
   $('#fOrden').hidden = S.vista !== 'deudores';

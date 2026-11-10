@@ -479,28 +479,6 @@ label.f input[readonly]{color:var(--soft)}
 .caratula .btn.primary{padding:10px 20px;font-size:15px;justify-self:start}
 .caratula .error{color:var(--bad);margin:0;font-weight:500}
 .caratula .pie{margin:0;color:var(--muted);border-top:1px solid var(--line-soft);padding-top:14px}
-/* Fondos de la app: el video de Inicio (caballos) y una foto por vista, con su color original: la persona pidió
-   no oscurecerlos. Las tarjetas tienen su propio fondo; a lo que iba suelto sobre la foto (título, pestañas, filtro elegido) se le da uno. */
-#vApp{position:relative;isolation:isolate}
-.app-fondo{position:fixed;top:0;right:0;bottom:0;left:var(--lat,0px);width:calc(100% - var(--lat,0px));height:100%;object-fit:cover;object-position:50% 38%;z-index:-1;background:var(--bg) center/cover no-repeat}
-body[data-fondo="deudores"] .app-foto{background-image:url(img/fondo-leon.jpg);background-position:50% 38%}
-body[data-fondo="planes"] .app-foto{background-image:url(img/fondo-cabras.jpg);background-position:50% 62%}
-body[data-fondo="cred-cuit"] .app-foto{background-image:url(img/fondo-tigre.jpg);background-position:50% 40%}
-body[data-fondo="cred-cheque"] .app-foto{background-image:url(img/fondo-hipopotamo.jpg);background-position:50% 36%}
-body[data-fondo="cred-vehiculo"] .app-foto{background-image:url(img/fondo-nu.jpg);background-position:50% 30%}
-body[data-fondo="cred-simulacion"] .app-foto{background-image:url(img/fondo-perro.jpg);background-position:50% 30%}
-body[data-fondo="cred-refi"] .app-foto{background-image:url(img/fondo-cabras.jpg);background-position:50% 62%}
-body[data-fondo="cred-dp"] .app-foto{background-image:url(img/fondo-leon.jpg);background-position:50% 38%}
-body.con-fondo header .titulos{justify-self:start;background:rgba(15,33,36,.82);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);padding:8px 14px;border-radius:12px}
-body.con-fondo header .sub{color:var(--soft)}
-body.con-fondo #main .tabs{background:var(--surface);border-radius:12px 12px 0 0;margin:0;padding:0 8px 2px}
-body.con-fondo .chip[aria-pressed="true"]{background:linear-gradient(var(--accent-soft),var(--accent-soft)),var(--surface)}
-/* En el celular el video no va de fondo: a pantalla completa se estiraba cuatro veces (es de 1024 px de ancho) y se
-   pixelaba, y las tarjetas tapaban a los caballos. Va como una franja nítida, a su tamaño, entre las pestañas y el contenido. */
-@media (max-width:720px){
-  video.app-fondo{position:static;order:2;width:100%;height:auto;aspect-ratio:16/9;object-position:50% 50%;z-index:auto;border-radius:var(--r);box-shadow:0 14px 34px rgba(1,8,8,.45)}
-  body[data-fondo="inicio"] header .titulos{background:none;-webkit-backdrop-filter:none;backdrop-filter:none;padding:0;border-radius:0}
-}
 .arranque{min-height:60dvh;display:grid;place-items:center;color:var(--muted)}
 
 .fab{display:none}
