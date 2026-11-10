@@ -169,11 +169,21 @@ function mostrar(pantalla) {
   $('#vArranque').hidden = true;
   $('#vApp').hidden = !enApp;
   $('#vIngreso').hidden = enApp;
+  fondoIngreso(!enApp);
   if (enApp) { $('#ingresoCuerpo').innerHTML = ''; render(); seguirEnlace(); return; }
   cerrarFicha(); S.menu = false; renderMenu();
   for (const k of ['#main', '#chips', '#franja', '#nPlanes', '#nDeudores']) $(k).innerHTML = '';
   $('#sub').textContent = ''; $('#q').value = ''; S.q = '';
   renderIngreso();
+}
+
+// El video de fondo del ingreso corre solo mientras esa pantalla se ve. Con "reducir movimiento"
+// activado en el dispositivo queda la foto fija (el póster).
+function fondoIngreso(ver) {
+  const v = $('#fondoIngreso');
+  if (!v) return;
+  if (ver && !matchMedia('(prefers-reduced-motion: reduce)').matches) v.play().catch(() => {});
+  else v.pause();
 }
 
 function renderIngreso() {

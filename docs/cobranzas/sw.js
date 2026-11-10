@@ -5,12 +5,12 @@
 // configuración, las cuentas de importes, el armado de Excel y las tipografías (../).
 //
 // Al cambiar la lista de archivos o una tipografía/ícono, subir VERSION para renovar la copia.
-const VERSION = 'cobranzas-v30';
+const VERSION = 'cobranzas-v31';
 const ESPERA_MS = 4000;
 
 const NUCLEO = [
   './', 'styles.css', 'app.js', 'datos.js', 'calculo.js', 'textos.js', 'creditos.js', 'chat.js', 'vehiculos.js', 'refinanciacion.js', 'acuerdo.js', 'demanda.js', 'modelos/acuerdo-refinanciacion.docx', 'modelos/demanda-prendaria.docx', 'manifest.webmanifest',
-  'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
+  'img/ingreso.jpg', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
   '../vendor/supabase.js', '../config.js', '../liquidacion.js', '../excel.js', '../oficio.js',
   '../fonts/plex-sans-latin-300.woff2', '../fonts/plex-sans-latin-400.woff2', '../fonts/plex-sans-latin-500.woff2', '../fonts/plex-sans-latin-600.woff2',
   '../fonts/plex-mono-latin-400.woff2', '../fonts/plex-mono-latin-500.woff2',
@@ -32,6 +32,8 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const pedido = e.request, url = new URL(pedido.url);
   if (pedido.method !== 'GET' || url.origin !== self.location.origin) return;
+  // El video del ingreso se pide por tramos (respuestas parciales), que no se pueden guardar en la copia: va directo a la red.
+  if (pedido.headers.has('range') || /\.mp4$/.test(url.pathname)) return;
   const fijo = /\/(fonts|icons)\//.test(url.pathname);
   e.respondWith(fijo ? copiaPrimero(pedido) : redPrimero(e, pedido));
 });
