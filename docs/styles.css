@@ -714,3 +714,9 @@ body:has(#drawer:not([hidden])) #btnChat,body:has(#drawer:not([hidden])) .fab,bo
   #stats .stat{min-height:84px;padding:14px 16px}
   #stats .stat b{font-size:28px}
 }
+
+/* Tarjeta «Archivadas» al pie del listado de Causas (y «Volver» dentro de ella) */
+.causa-arch{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;margin-top:12px;padding:14px 18px;background:var(--surface);border:1.5px dashed var(--line);border-radius:var(--r);color:var(--fg);font:inherit;cursor:pointer;text-align:left}
+.causa-arch span{color:var(--accent);font-weight:600}
+.causa-arch:hover{border-color:var(--accent)}
+.causa-arch:first-child{margin:0 0 12px}

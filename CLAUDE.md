@@ -342,8 +342,8 @@ recién cuando la persona toca "Presentar ahora" y después "Ejecutar ahora" en 
   íconos desde 721 px, entera desde 1140 px); en el celular, esas vistas son una barra fija abajo. Es el mismo HTML:
   `.lateral` y `.wrap` pasan a `display: contents` y el orden lo da `order`. El chat con Claude es un botón flotante
   (`#btnChat`; se oculta con una ficha abierta) y «+ Nueva causa» flota en Causas.
-- **Causas**: banda con la foto de la Justicia, buscador y todas las causas en una lista sin filtros ni resumen, **salvo las archivadas, que no se muestran**
-  (las de acuerdo sí se ven acá). Cada tarjeta (`renderCausas`): carátula,
+- **Causas**: banda con la foto de la Justicia, buscador y todas las causas en una lista sin filtros ni resumen, **salvo las archivadas**: esas están en la tarjeta «Archivadas» al pie
+  del listado (`S.arch`, `data-arch`), que las abre aparte con una tarjeta «Volver a las causas» (las de acuerdo sí se ven en el listado). Cada tarjeta (`renderCausas`): carátula,
   expediente y juzgado («Juzg. 1° Nom. Sec.2»), última acción con su fecha, la próxima acción si la hay (`.causa-prox`),
   etiquetas y el botón «Acción cautelar» (la tarjeta entera abre la causa). **Agenda**: banda con la loba (foto de fondo
   difuminada y la nítida al centro, porque la imagen es chica) y sin filtros. Los selectores y botones de filtro y el resumen

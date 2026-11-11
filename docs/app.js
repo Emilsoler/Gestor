@@ -35,7 +35,7 @@ const COBRANZAS = 'cobranzas/'; // la app de cobranzas, en la misma base y con l
 
 const S = {
   pantalla: 'arranque',
-  q: '', estado: '', nom: '', tag: '', quick: '', view: 'inicio', sort: { k: 'dias', dir: -1 },
+  q: '', estado: '', nom: '', tag: '', quick: '', arch: false, view: 'inicio', sort: { k: 'dias', dir: -1 },
   open: null, isNew: false, confirmDel: false, choque: null, // ficha abierta
   planilla: false, liqSucia: false, // la planilla de liquidación está a la vista / tiene cambios sin guardar
   cau: null, // la acción cautelar que se está armando desde la ficha (ver "Acción cautelar")
@@ -227,8 +227,8 @@ function filtered() {
   const { k, dir } = S.sort;
   const val = (c) => (k === 'dias' ? (days(c.fecha) ?? 99999) : k === 'vence' ? (c.proxima && c.vence) || '9999' : k === 'nom' ? Number(c.nom) || 0 : k === 'demandado' ? titulo(c).toLowerCase() : String(c[k] || '').toLowerCase());
   r.sort((a, b) => { const x = val(a), y = val(b); return (x > y ? 1 : x < y ? -1 : 0) * dir; });
-  // Todas las causas, sin filtros, salvo las archivadas: no se muestran en el listado.
-  return r.filter((c) => !isArch(c));
+  // Las archivadas no se ven en el listado: están en su propia tarjeta («Archivadas»), que las abre aparte.
+  return r.filter((c) => isArch(c) === S.arch);
 }
 
 function renderStats() {
@@ -436,7 +436,7 @@ function vistaLiq() {
 
 function irA(v) {
   if (v === 'plantillas') { abrirPlantillas(); return; }
-  S.view = v; S.q = ''; S.tag = ''; S.quick = ''; $('#q').value = '';
+  S.view = v; S.q = ''; S.tag = ''; S.quick = ''; S.arch = false; $('#q').value = '';
   render(); window.scrollTo(0, 0);
 }
 function accionInicio(k) {
@@ -482,9 +482,13 @@ function dibujar() {
   } else if (!D.causas.length) {
     main.innerHTML = `<div class="empty"><b>Todavía no hay causas cargadas</b>Usá “+ Nueva causa” para agregar la primera.</div>`; subtitulo('0 causas');
   } else {
-    const rows = filtered();
-    subtitulo(`${rows.length} ${rows.length === 1 ? 'causa' : 'causas'}`);
-    main.innerHTML = rows.length ? renderCausas(rows) : `<div class="empty"><b>Ninguna causa coincide con la búsqueda</b>Probá con otra palabra.</div>`;
+    const rows = filtered(), nArch = D.causas.filter(isArch).length;
+    subtitulo(`${rows.length} ${S.arch ? (rows.length === 1 ? 'causa archivada' : 'causas archivadas') : (rows.length === 1 ? 'causa' : 'causas')}`);
+    const vacio = S.arch && !S.q.trim() ? '<div class="empty"><b>No hay causas archivadas</b></div>' : '<div class="empty"><b>Ninguna causa coincide con la búsqueda</b>Probá con otra palabra.</div>';
+    const tarjeta = S.arch
+      ? '<button type="button" class="causa-arch" data-arch="0"><b>← Volver a las causas</b></button>'
+      : (nArch ? `<button type="button" class="causa-arch" data-arch="1"><b>Archivadas</b><span>${nArch}</span></button>` : '');
+    main.innerHTML = (S.arch ? tarjeta : '') + (rows.length ? renderCausas(rows) : vacio) + (S.arch ? '' : tarjeta);
   }
   for (const [id, vista] of [['#vInicio', 'inicio'], ['#vLista', 'lista'], ['#vAgenda', 'agenda'], ['#vAcuerdos', 'acuerdos'], ['#vJuris', 'juris']]) $(id).setAttribute('aria-pressed', v === vista);
 }
@@ -2088,6 +2092,7 @@ document.addEventListener('click', async (e) => {
   const ag = e.target.closest('[data-ag]'); if (ag) { await unaVez(ag, agAct); return; }
   const tp = e.target.closest('[data-tp]'); if (tp) { await unaVez(tp, tplAct); return; }
   const acb = e.target.closest('[data-ac]'); if (acb) { await unaVez(acb, acAct); return; }
+  const ar = e.target.closest('[data-arch]'); if (ar) { S.arch = ar.dataset.arch === '1'; S.q = ''; $('#q').value = ''; render(); window.scrollTo(0, 0); return; }
   const st = e.target.closest('.stat');
   if (st) {
     const q = st.dataset.q;

@@ -97,6 +97,13 @@ test('listado: todas las causas sin filtros, menos las archivadas, y búsqueda',
   assert.match(await page.textContent('#sub'), /3 causas/);
   const ids = () => page.locator('#main .causa').evaluateAll((rs) => rs.map((r) => r.dataset.id));
   assert.equal((await ids()).includes('1003'), false, 'la archivada no se muestra');
+  // las archivadas están en su tarjeta, al pie del listado: se abre aparte y se vuelve con «Volver»
+  assert.match(await page.locator('#main .causa-arch').textContent(), /Archivadas\s*1/);
+  await page.click('#main .causa-arch');
+  assert.deepEqual(await ids(), ['1003']);
+  assert.match(await fila(page, '1003').locator('.tag').allTextContents().then((t) => t.join('|')), /Archivada/);
+  await page.click('#main .causa-arch'); // «Volver a las causas»
+  assert.equal(await page.locator('#main .causa').count(), 3);
   // sin filtros ni resumen: lo que se ve es la lista entera y el buscador
   for (const sel of ['#chips', '#fEstado', '#fNom', '#btnFiltros']) assert.equal(await page.locator(sel).isVisible(), false, sel + ' no se muestra');
   // debajo del buscador: Casillero, A despacho y Acuerdos, que filtran la lista al tocarlas
