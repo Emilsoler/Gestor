@@ -15,7 +15,7 @@ import {
   liquidar, resumen, armarPlan, estadoPlan, planVigente, sumarMeses, totalPago, TRAMOS, tramoDe, CADAS, nombrePropio, detalleCuotas, ES_FECHA,
 } from './calculo.js';
 import {
-  esc, hoy, fmt, fmtLargo, fmtDia, nombreMes, mesDe, mesMas, plata, compacto, porciento, cuantos, telefonos, TIPOS_OPERACION,
+  esc, hoy, iso, fmt, fmtLargo, fmtDia, nombreMes, mesDe, mesMas, plata, compacto, porciento, cuantos, telefonos, TIPOS_OPERACION,
   vehiculoTexto, operacionTexto, CAMPOS_MENSAJE, planDetalle, contextoMensaje, completar, SITUACION_PLAN, frecuencia,
 } from './textos.js';
 import { importe, enCelda, idNuevo, r2 } from '../liquidacion.js';
@@ -719,7 +719,15 @@ function bloqueCasos(guardar) {
   return `<div class="rf-caso">
     <div class="sim-form"><label class="f">${abierto ? 'Caso abierto' : 'Nombre del caso'} (es el deudor del convenio)<input id="rf_nombreCaso" ${atar('cred.caso.nombre')} maxlength="200" placeholder="ej.: Juan Pérez" autocomplete="off"></label>
     <label class="f">DNI del deudor<input id="rf_dniDeudor" ${atar('cred.refi.dniDeudor')} maxlength="40" placeholder="${esc(refiDeudor()?.dni || '')}" inputmode="text" autocomplete="off"></label></div>
+    ${textoFechaCaso(abierto)}
     <div class="actions">${acciones}</div>${lista}</div>`;
+}
+/** Dice a qué fecha están los montos: al guardar quedan fijos, y con el caso abierto se pueden poner a hoy a propósito. */
+function textoFechaCaso(abierto) {
+  const f = S.cred.refi.fecha;
+  if (!abierto) return '<p class="hint m0">Al guardar el caso, los montos quedan fijos a la fecha de hoy.</p>';
+  const hoyYa = f === hoy();
+  return `<p class="hint m0">Montos calculados al <b>${esc(fmtLargo(ES_FECHA.test(f || '') ? f : hoy()))}</b>${hoyYa ? '' : ' (no cambian con los días).'} ${hoyYa ? '' : '<button class="btn small" type="button" data-a="rf-caso-hoy">Actualizar a hoy</button>'}</p>`;
 }
 const subCaso = (x) => {
   const t = x.actualizado ? new Date(x.actualizado) : null;
@@ -752,6 +760,8 @@ function actualizarRefi(k) {
 function abrirCaso(id) {
   const x = D.casos_refi.find((c) => c.id === id); if (!x) return;
   S.cred.refi = restaurarCaso(x.datos, String(ajustes().tasa));
+  // Un caso guardado antes de que se fijara la fecha queda calculado al día en que se guardó por última vez.
+  if (!S.cred.refi.fecha && x.actualizado && !isNaN(new Date(x.actualizado))) S.cred.refi.fecha = iso(new Date(x.actualizado));
   S.cred.caso = { id: x.id, nombre: x.nombre, confirmar: false };
   render();
 }
@@ -770,9 +780,12 @@ async function accionCaso(act) {
     } catch (e) { toast(mensaje(e, 'no se archivó')); }
     render(); return;
   }
+  if (act === 'rf-caso-hoy') { S.cred.refi.fecha = hoy(); toast('Montos actualizados a hoy. Tocá “Guardar cambios” para dejarlos fijos.'); render(); return; }
   const nombre = C.nombre.trim();
   if (act !== 'rf-caso-borrar' && !nombre) { toast('Escribí un nombre para el caso'); $('#rf_nombreCaso')?.focus(); return; }
-  const R = S.cred.refi, datos = datosCaso(R);
+  const R = S.cred.refi;
+  if (!ES_FECHA.test(R.fecha || '')) R.fecha = hoy(); // al guardar, los montos quedan fijos a esta fecha
+  const datos = datosCaso(R);
   try {
     if (act === 'rf-caso-nuevo') {
       const f = await crearCasoRefi(nombre, R.fuente === 'deudor' ? R.id : '', datos);

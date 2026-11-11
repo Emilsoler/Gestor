@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { nuevaRefi, estadoRefi } from '../../docs/cobranzas/refinanciacion.js';
-import { datosAcuerdo, avisosAcuerdo, armarAcuerdo, leerZip, hojasRefinanciacion, fechaLarga, CAMPOS_ACUERDO } from '../../docs/cobranzas/acuerdo.js';
+import { datosAcuerdo, avisosAcuerdo, armarAcuerdo, leerZip, hojasRefinanciacion, fechaLarga, dniConPuntos, CAMPOS_ACUERDO } from '../../docs/cobranzas/acuerdo.js';
 import { xlsx } from '../../docs/excel.js';
 import { fmtLargo } from '../../docs/cobranzas/textos.js';
 
@@ -95,4 +95,22 @@ test('la planilla de Excel tiene el resumen y las cuotas, con fórmulas', async 
   const hoja1 = new TextDecoder().decode(partes.find((p) => p.nombre === 'xl/worksheets/sheet1.xml').datos);
   assert.ok(hoja1.includes('<f>SUM(Cuotas!C2:C25)</f>'));
   assert.equal(fechaLarga('nada'), '');
+});
+
+test('el DNI va con puntos en los miles y lo que no es un DNI queda como se escribió', () => {
+  assert.equal(dniConPuntos('12345678'), '12.345.678');
+  assert.equal(dniConPuntos(' 9876543 '), '9.876.543');
+  assert.equal(dniConPuntos('12.345.678'), '12.345.678');
+  assert.equal(dniConPuntos('PAS 123'), 'PAS 123');
+  assert.equal(dniConPuntos(''), '');
+});
+
+test('el DNI sale con puntos en el Word y las firmas siguen al final', async () => {
+  const R = { ...formulario(), dniDeudor: '12345678' };
+  const e = estadoRefi(null, R, HOY);
+  const { blob } = await armarAcuerdo(MODELO, datosAcuerdo(e, R, null, HOY, 'JUAN PEREZ'));
+  const xml = await texto(blob);
+  assert.ok(xml.includes('DNI N° 12.345.678') || xml.includes('12.345.678'));
+  assert.equal(xml.includes('12345678'), false);
+  assert.ok(xml.indexOf('JUAN PEREZ', xml.indexOf('ANEXO I')) < xml.indexOf('SOLER CARLOS EMILIANO'));
 });

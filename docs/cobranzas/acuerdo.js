@@ -37,6 +37,12 @@ const cantLetras = (n) => enLetras(n).toLowerCase();
 /** Las cuotas que entran en la deuda: las vencidas y, si se tildó, las que faltan vencer. */
 const cuotasDeuda = (e) => e.liq.cuotas.filter((c) => c.saldo > 0 && (c.incluida || e.aVencer > 0));
 
+/** DNI con puntos en los miles (12345678 → 12.345.678). Lo que no sea solo cifras (o no tenga 6 a 9) queda como se escribió. */
+export function dniConPuntos(v) {
+  const t = String(v ?? '').trim(), n = t.replace(/[.\s]/g, '');
+  return /^\d{6,9}$/.test(n) ? n.replace(/\B(?=(\d{3})+$)/g, '.') : t;
+}
+
 /**
  * Los datos del convenio. `e` es el resultado de estadoRefi, `R` lo escrito en la pantalla, `d` el deudor de la app
  * (o null si se cargó a mano) y `hoy` la fecha de hoy ('aaaa-mm-dd').
@@ -54,7 +60,7 @@ export function datosAcuerdo(e, R, d, hoy, nombre = '') {
   const n = e.n, plan = e.plan;
   const v = {
     deudor_nombre: String(nombre || d?.nombre || '').trim(),
-    deudor_dni: (R.dniDeudor || d?.dni || '').trim(),
+    deudor_dni: dniConPuntos(R.dniDeudor || d?.dni || ''),
     deudor_calle: (R.calle || d?.domicilio || '').trim(),
     deudor_ciudad: (R.ciudad || '').trim() || 'Bell Ville',
     dia_firma: String(fd), mes_firma: MESES[fm - 1], anio_firma: String(fy),

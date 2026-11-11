@@ -36,14 +36,15 @@ export const nuevaRefi = (tasaMora = '5') => ({
 });
 
 // ───────────────────────── Casos guardados ─────────────────────────
-// Un caso es el formulario tal cual, sin las cuentas: al abrirlo se rehacen a la fecha de hoy.
+// Un caso es el formulario tal cual, sin las cuentas, más la fecha a la que se calculó (`fecha`): al abrirlo se rehacen
+// con la lógica de hoy pero a esa fecha, así los montos no cambian con los días.
 
 const TEXTOS = ['id', 'cuota', 'cantCuotas', 'vto1', 'moraVto', 'mora', 'tasaMora', 'hon', 'justicia', 'martillero', 'abogado', 'otros', 'iVencer', 'entrega', 'cuotas', 'tasa', 'primerVto', 'dniDeudor', 'calle', 'ciudad', 'prestamo', 'firma'];
 const IMPUTACIONES = ['capital', 'intereses', 'honorarios'];
 
-/** Lo que se guarda de un caso: el formulario sin el buscador y sin la fecha de cálculo (siempre es hoy). */
+/** Lo que se guarda de un caso: el formulario sin el buscador y con la fecha de cálculo (fija, la del día en que se guardó). */
 export function datosCaso(R) {
-  const { q, fecha, ...resto } = structuredClone(R);
+  const { q, ...resto } = structuredClone(R);
   return resto;
 }
 
@@ -51,6 +52,7 @@ export function datosCaso(R) {
 export function restaurarCaso(datos, tasaMora = '5') {
   const base = nuevaRefi(tasaMora), d = datos && typeof datos === 'object' && !Array.isArray(datos) ? datos : {};
   for (const k of TEXTOS) if (typeof d[k] === 'string' || typeof d[k] === 'number') base[k] = String(d[k]);
+  base.fecha = typeof d.fecha === 'string' && ES_FECHA.test(d.fecha) ? d.fecha : ''; // sin fecha (casos viejos): se calcula a hoy
   base.fuente = d.fuente === 'deudor' && base.id ? 'deudor' : 'mano';
   base.aVencer = d.aVencer === true;
   base.plan = d.plan === true;

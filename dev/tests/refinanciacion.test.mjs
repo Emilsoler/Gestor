@@ -146,11 +146,11 @@ test('a mano sin datos no inventa una deuda', () => {
 // ───────────────────────── Casos guardados ─────────────────────────
 import { datosCaso, restaurarCaso } from '../../docs/cobranzas/refinanciacion.js';
 
-test('datosCaso: sin buscador y sin fecha de cálculo (un caso siempre se calcula a hoy)', () => {
+test('datosCaso: sin buscador y con la fecha de cálculo (los montos de un caso no cambian con los días)', () => {
   const R = formNuevo('5'); R.q = 'perez'; R.cuota = '100.000'; R.fecha = '2026-10-01';
   const d = datosCaso(R);
   assert.equal('q' in d, false);
-  assert.equal('fecha' in d, false);
+  assert.equal(d.fecha, '2026-10-01');
   assert.equal(d.cuota, '100.000');
   assert.equal(R.q, 'perez', 'no toca el original');
 });
@@ -250,4 +250,16 @@ test('el detalle de cuotas tiene la columna Subtotal: saldo + interés de cada c
   const fila = e.liq.cuotas.find((c) => c.saldo > 0);
   const esperado = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 }).format(Math.round(fila.saldo + (fila.interes || 0)));
   assert.ok(html.replace(/\./g, '').includes(esperado.replace(/\./g, '')), 'el subtotal aparece en la tabla');
+});
+
+test('restaurarCaso: la fecha guardada se respeta; una inválida o ausente vuelve a hoy', () => {
+  assert.equal(restaurarCaso({ fecha: '2026-11-05' }, '5').fecha, '2026-11-05');
+  assert.equal(restaurarCaso({ fecha: 'ayer' }, '5').fecha, '');
+  assert.equal(restaurarCaso({}, '5').fecha, '');
+});
+
+test('un caso con fecha fija da los mismos montos hoy que el día que se guardó', () => {
+  const R = { ...PLANILLA, fecha: '2026-11-05' };
+  const vuelta = restaurarCaso(JSON.parse(JSON.stringify(datosCaso(R))), '5');
+  assert.equal(estadoRefi(null, vuelta, '2026-11-05').deuda, estadoRefi(null, vuelta, '2027-03-01').deuda);
 });
