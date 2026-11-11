@@ -92,13 +92,11 @@ test('ingreso: clave equivocada, clave temporal y elección de la definitiva', a
   assert.equal(await page.locator('#ingresoCuerpo input').count(), 0, 'la clave no queda en la página');
 });
 
-test('listado: todas las causas sin filtros (las archivadas al final, con su etiqueta) y búsqueda', async () => {
-  assert.equal(await page.locator('#main .causa').count(), 4);
-  assert.match(await page.textContent('#sub'), /4 causas/);
+test('listado: todas las causas sin filtros, menos las archivadas, y búsqueda', async () => {
+  assert.equal(await page.locator('#main .causa').count(), 3);
+  assert.match(await page.textContent('#sub'), /3 causas/);
   const ids = () => page.locator('#main .causa').evaluateAll((rs) => rs.map((r) => r.dataset.id));
-  assert.equal((await ids()).at(-1), '1003', 'la archivada va al final');
-  assert.match(await fila(page, '1003').textContent(), /GAMA CARLA/);
-  assert.match(await fila(page, '1003').locator('.tag').allTextContents().then((t) => t.join('|')), /Archivada/);
+  assert.equal((await ids()).includes('1003'), false, 'la archivada no se muestra');
   // sin filtros ni resumen: lo que se ve es la lista entera y el buscador
   for (const sel of ['#chips', '#fEstado', '#fNom', '#btnFiltros']) assert.equal(await page.locator(sel).isVisible(), false, sel + ' no se muestra');
   // debajo del buscador: Casillero, A despacho y Acuerdos, que filtran la lista al tocarlas
@@ -108,12 +106,12 @@ test('listado: todas las causas sin filtros (las archivadas al final, con su eti
     await page.click(`#stats .stat[data-q="${k}"]`);
     assert.equal(await page.locator('#main .causa').count(), await n(k), k + ': la lista tiene tantas como dice la tarjeta');
     await page.click(`#stats .stat[data-q="${k}"]`); // tocarla de nuevo saca el filtro
-    assert.equal(await page.locator('#main .causa').count(), 4);
+    assert.equal(await page.locator('#main .causa').count(), 3);
   }
   await page.fill('#q', 'beta');
   assert.equal(await page.locator('#main .causa').count(), 1);
   await page.fill('#q', '');
-  assert.equal(await page.locator('#main .causa').count(), 4);
+  assert.equal(await page.locator('#main .causa').count(), 3);
   // cada tarjeta muestra la carátula, el expediente con el juzgado, la última acción con su fecha y la próxima acción si la tiene
   assert.equal(await page.locator('#main .causa[data-id="1004"] .causa-linea').textContent(), 'Expte. N° 1004 · Juzg. 1° Nom. OEP');
   assert.match(await page.locator('#main .causa[data-id="1002"] .causa-ult').textContent(), /Ejecutamos sentencia/);
@@ -710,7 +708,7 @@ test('celular: tarjetas, filtros plegados y botón de nueva causa', async () => 
   const { c, p } = await nuevoContexto({ nombre: 'cel', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   await entrar(p, EMAIL, CLAVE + '-2');
   await p.waitForSelector('#main .causas');
-  assert.equal(await p.locator('#main .causa').count(), 4);
+  assert.equal(await p.locator('#main .causa').count(), 3);
   assert.equal(await p.isVisible('#fabNew'), true, 'Nueva causa flota en el celular');
   assert.equal(await p.isVisible('#btnTpl'), true, 'Plantillas está entre las vistas');
   assert.equal(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, 'sin desplazamiento horizontal de la página');
@@ -1249,9 +1247,8 @@ test('ubicación, estado, etiqueta cautelar y situación: se ven, se guardan, y 
   await page.selectOption('#c_situacion', 'Archivada');
   await page.click('.ppie [data-act=save]'); await toast(page, 'Cambios guardados'); await cerrado(page);
   assert.equal(sql(`select concat_ws('|', ubicacion, estado, cautelar, situacion, actualizado_por) from public.causas where expte = '1001'`), 'A despacho|1.2 Contestación|Embargo de sueldo|Archivada|Emi');
-  // archivada: sigue en el listado (las archivadas van al final), con su etiqueta
-  assert.match(await fila(page, '1001').textContent(), /Archivada/);
-  assert.equal((await page.locator('#main .causa').evaluateAll((rs) => rs.map((r) => r.dataset.id))).slice(-2).includes('1001'), true);
+  // archivada: sale del listado
+  await page.waitForFunction(() => !document.querySelector('#main .causa[data-id="1001"]'), null, { timeout: 8000 });
   sql(`begin; select set_config('gestor.autor', 'Semilla', true); update public.causas set situacion = 'En trámite' where expte = '1001'; commit;`);
   await page.waitForFunction(() => !!document.querySelector('#main .causa[data-id="1001"]'), null, { timeout: 8000 });
 });

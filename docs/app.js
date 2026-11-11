@@ -227,8 +227,8 @@ function filtered() {
   const { k, dir } = S.sort;
   const val = (c) => (k === 'dias' ? (days(c.fecha) ?? 99999) : k === 'vence' ? (c.proxima && c.vence) || '9999' : k === 'nom' ? Number(c.nom) || 0 : k === 'demandado' ? titulo(c).toLowerCase() : String(c[k] || '').toLowerCase());
   r.sort((a, b) => { const x = val(a), y = val(b); return (x > y ? 1 : x < y ? -1 : 0) * dir; });
-  // Todas las causas, sin filtros: las archivadas van al final (con su etiqueta).
-  return [...r.filter((c) => !isArch(c)), ...r.filter(isArch)];
+  // Todas las causas, sin filtros, salvo las archivadas: no se muestran en el listado.
+  return r.filter((c) => !isArch(c));
 }
 
 function renderStats() {
