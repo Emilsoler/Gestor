@@ -280,34 +280,6 @@ aplicarla con `apply_migration` y pasar `get_advisors` (seguridad).
   La anterior (`trig_01EX9sLZMbvqDtgqTNJFGTg5`) se había creado sin ese requisito: corría en la
   nube y no llegaba al Chrome. Quedó desactivada.
 
-## Jurisprudencia: pedidos a Claude (solapa «Jurisprudencia», migración 0021)
-
-La persona escribe un pedido («fallos de demanda prendaria donde el actor sea una mutual»), con filtros opcionales (sede, año,
-instancia, tipo) y, si quiere, una causa vinculada. «Pedir a Claude» lo deja **pendiente**; «Buscar ahora» lo marca `ahora` (va
-primero). Claude lo busca en **Jurisemia** (https://www.justiciacordoba.gob.ar/Jurisemia/, el catálogo del Boletín Judicial de Córdoba)
-y deja las fichas en `public.juris_pedidos`; la solapa las muestra en vivo. Estados: pendiente → buscando → listo | error; o
-cancelado (solo antes de que lo tomen). La app y los pedidos viven en `docs/app.js` (`vistaJuris`, `jurAct`) y `docs/datos.js`
-(`J`, `cargarJuris`, `pedirJuris`, `cancelarJuris`, `soltarJuris`); la tabla es opcional: sin ella la solapa avisa y la app sigue.
-
-Para Claude, por el conector (firman "Claude"):
-
-```sql
-select * from gestor.juris_tomar(true);   -- toma el próximo pedido «Buscar ahora» (queda «buscando»); sin filas: no hay
-select * from gestor.juris_tomar();       -- ídem, cualquier pendiente
-select gestor.juris_listo('<id>', 'nota para la persona', 3, '[{"caratula":"A c/ B","resolucion":"Sentencia 36","fecha":"03/04/2018","tribunal":"Cámara 8ª, Córdoba","sumario_leido":true,"resumen":"hasta 600 caracteres, con tus palabras","archivo":"2018 04 03 S36.pdf"}]'::jsonb);
-select gestor.juris_fallido('<id>', 'motivo');   -- si no se pudo
-```
-
-Para buscar usar la skill `buscador-jurisprudencia-cordoba` (Claude in Chrome en la compu del estudio). Reglas que no se negocian
-(términos de uso de Jurisemia): **un pedido por corrida y a lo sumo 4 consultas**, siempre porque la persona lo pidió (nada de
-tareas con horario ni búsquedas masivas); no poner nombres de clientes en la consulta; **no guardar el texto de la resolución ni del
-sumario** (la base rechaza resúmenes de más de 600 caracteres); marcar `sumario_leido` en verdadero solo si de verdad se leyó el
-sumario completo (si no, falso: solo carátula y síntesis); en la nota, decir qué no se encontró sin afirmar que no existe. Los
-fallos no son copia auténtica: la persona verifica la resolución completa y su vigencia antes de citar. «Guardar en la causa» (botón de
-cada ficha de un pedido vinculado) agrega una línea con la cita a las `notas` de la causa; no toca la última acción.
-Todavía no hay una tarea programada que resuelva los pedidos: se hace pidiéndole a Claude, en una conversación vinculada a la
-compu del estudio, «resolvé los pedidos de jurisprudencia». `gestor.deshacer` no cubre esta tabla (son consultas del momento).
-
 ## Acciones cautelares (botón de la ficha)
 
 En la ficha, "Acción cautelar" pregunta "¿Solicitar embargo de haberes?" o "¿Solicitar oficio de
@@ -364,7 +336,9 @@ recién cuando la persona toca "Presentar ahora" y después "Ejecutar ahora" en 
   acciones rápidas (Nueva causa, Nuevo escrito para el SAC —abre el chat— y Nuevo acuerdo de pago) y ocho tarjetas con foto:
   Causas, Agenda, Acuerdos, Plantillas, Liquidaciones, Créditos y Cobros (`cobranzas/`), Jurisprudencia y SAC (enlace
   al extranet). Sin hora, fecha ni tarjetas de vencimientos. Los avisos de cuotas por vencer no se muestran en el inicio.
-- **Jurisprudencia** (`vistaJuris`): ver «Jurisprudencia: pedidos a Claude», más abajo. **Liquidaciones** (`vistaLiq`): las causas con planilla, con total, cobrado y saldo; tocarla abre la causa.
+- **Jurisprudencia** (`vistaJuris`): el campo y el botón «Buscar» están desactivados a propósito: la persona pidió dejar la solapa
+  sin buscador y decidir más adelante cómo tener uno (en nov 2026 se probó un sistema de pedidos a Claude con Jurisemia y lo
+  descartó; no volver a armarlo sin que lo pida). **Liquidaciones** (`vistaLiq`): las causas con planilla, con total, cobrado y saldo; tocarla abre la causa.
 - Armado: en la computadora, barra lateral con Inicio, Causas, Agenda, Acuerdos, Jurisprudencia y Plantillas (columna de
   íconos desde 721 px, entera desde 1140 px); en el celular, esas vistas son una barra fija abajo. Es el mismo HTML:
   `.lateral` y `.wrap` pasan a `display: contents` y el orden lo da `order`. El chat con Claude es un botón flotante

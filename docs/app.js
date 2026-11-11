@@ -5,7 +5,6 @@ import {
   crearAcuerdo, actualizarAcuerdo, borrarAcuerdo,
   crearPlantilla, guardarPlantilla, borrarPlantilla,
   crearEscrito, actualizarAgenda, preguntarAClaude, leerChat, guardarChat, leerDeudor,
-  J, cargarJuris, pedirJuris, cancelarJuris, soltarJuris,
 } from './datos.js';
 import { idNuevo, nuevaLiquidacion, cobradoRubro, totalPago, liqNormal, liqCalc, importe, pesos, enCelda, planillaExcel } from './liquidacion.js';
 import { MODELOS, ACCIONES, CAMPOS_OFICIO, esModeloOficio, rellenar, htmlOficio, pdfOficio, enLetras, cifra, ordinal, datosDeCausa, partirDomicilio, dniOficio, nombreArchivo } from './oficio.js';
@@ -414,96 +413,12 @@ function ajustarNombre() {
 window.addEventListener('resize', ajustarNombre);
 if (document.fonts?.ready) document.fonts.ready.then(ajustarNombre);
 
-// ───────────────────────── Jurisprudencia ─────────────────────────
-// La persona deja un pedido; Claude lo busca en Jurisemia (Boletín Judicial de Córdoba) y deja las fichas.
-// Cuida las reglas de uso de Jurisemia: pedidos de a uno, sin nombres de clientes, y acá solo queda cómo
-// identificar cada fallo y un resumen breve (nunca el texto de la resolución). Ver migración 0021.
-const TAREA_JURIS = ''; // enlace de la tarea de Claude que resuelve los pedidos (se completa cuando exista)
-const JURIS_ESTADO = { pendiente: ['Pendiente', 'info'], buscando: ['Buscando…', 'warn'], listo: ['Listo', 'ok'], error: ['Con error', 'bad'], cancelado: ['Cancelado', ''] };
-const JURIS_FILTROS = [['sede', 'Sede', 'Ej.: Bell Ville'], ['anio', 'Año', 'Ej.: 2024'], ['instancia', 'Instancia', 'Cámara, juzgado o TSJ'], ['tipo', 'Tipo', 'Sentencia o auto']];
-
-function fichaJuris(f, p) {
-  const leido = f.sumario_leido;
-  const dato = [f.resolucion, f.fecha, f.tribunal].filter(Boolean).join(' · ');
-  const causa = p.expte && D.causas.some((c) => c.expte === p.expte);
-  return `<article class="jficha"><div class="jficha-top"><b>${esc(f.caratula)}</b>
-    <span class="pill ${leido ? 'jok' : 'jwarn'}">${leido ? 'Sumario leído' : 'Solo carátula y síntesis'}</span></div>
-    ${dato ? `<div class="jdato">${esc(dato)}</div>` : ''}
-    ${f.resumen ? `<p>${esc(f.resumen)}</p>` : ''}
-    ${causa ? `<div class="jacc"><button type="button" class="btn" data-jur="guardar" data-id="${esc(p.id)}" data-i="${p.resultados.indexOf(f)}">Guardar en la causa</button></div>` : ''}</article>`;
-}
-function pedidoJuris(p) {
-  const [txt, tono] = JURIS_ESTADO[p.estado] || [p.estado, ''];
-  const filtros = JURIS_FILTROS.map(([k, t]) => (p.filtros?.[k] ? `${t}: ${p.filtros[k]}` : '')).filter(Boolean).join(' · ');
-  const causa = p.expte ? D.causas.find((c) => c.expte === p.expte) : null;
-  const res = p.resultados || [];
-  const leidos = res.filter((f) => f.sumario_leido).length;
-  const cuando = p.creado ? new Date(p.creado).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Cordoba' }) : '';
-  let cuerpo = '';
-  if (p.estado === 'listo') {
-    cuerpo = `${p.nota ? `<p class="jnota"><b>Nota de Claude:</b> ${esc(p.nota)}</p>` : ''}
-      ${res.length ? res.map((f) => fichaJuris(f, p)).join('') : '<p class="hint">No encontré fallos que sirvan para este pedido. Que no aparezcan no quiere decir que no existan.</p>'}
-      <p class="jfuente">Fuente: catálogo del Boletín Judicial de Córdoba (Jurisemia). No es copia auténtica: verificá la resolución completa y su vigencia antes de citar. Acá solo se guardan los datos de identificación y el resumen de Claude.</p>`;
-  } else if (p.estado === 'error') {
-    cuerpo = `<p class="jnota">${esc(p.resultado || 'No se pudo buscar.')}</p>`;
-  } else if (p.estado === 'pendiente') {
-    cuerpo = `<div class="jacc"><button type="button" class="btn danger" data-jur="cancelar" data-id="${esc(p.id)}" data-rev="${esc(p.rev)}">Cancelar pedido</button></div>`;
-  } else if (p.estado === 'buscando' && p.actualizado && Date.now() - new Date(p.actualizado).getTime() > 30 * 60_000) {
-    cuerpo = `<p class="hint">Hace más de media hora que está buscando.</p><div class="jacc"><button type="button" class="btn" data-jur="soltar" data-id="${esc(p.id)}" data-rev="${esc(p.rev)}">Marcar como no resuelto</button></div>`;
-  }
-  const meta = [cuando, causa ? `Causa: ${caratula(causa)}` : '', p.estado === 'listo' ? `${p.consultas} ${p.consultas === 1 ? 'consulta' : 'consultas'} · ${res.length} ${res.length === 1 ? 'fallo' : 'fallos'} · sumario leído en ${leidos} de ${res.length}` : '', filtros].filter(Boolean).join(' · ');
-  return `<section class="jpedido"><div class="jpedido-top"><div><b>${esc(p.pedido)}</b><div class="jdato">${esc(meta)}</div></div><span class="pill j${tono}">${txt}</span></div>${cuerpo}</section>`;
-}
-function listaJuris() {
-  if (!J.disponible) return '<div class="empty"><b>Falta activar los pedidos de jurisprudencia</b>La base todavía no tiene la tabla de pedidos (migración 0021).</div>';
-  if (!J.cargado) return '<p class="hint">Cargando pedidos…</p>';
-  if (!J.pedidos.length) return '<div class="empty"><b>Todavía no hay pedidos</b>Escribí arriba qué querés que busque Claude y aparece acá con los fallos que encuentre.</div>';
-  return J.pedidos.map(pedidoJuris).join('');
-}
-function refrescarJuris() { const l = $('#jlista'); if (l) l.innerHTML = listaJuris(); }
 function vistaJuris() {
-  const causas = [...D.causas].filter((c) => !isArch(c)).sort((a, b) => caratula(a).localeCompare(caratula(b)));
-  return `<section class="juris"><form id="fJuris" class="jnuevo" autocomplete="off">
-    <h3>Nuevo pedido</h3>
-    <label for="jq">¿Qué querés que busque?</label>
-    <textarea id="jq" rows="3" maxlength="600" placeholder="Ej.: fallos de demanda prendaria donde el actor sea una mutual"></textarea>
-    <div class="jfiltros">${JURIS_FILTROS.map(([k, t, ph]) => `<div><label for="jf_${k}">${t}</label><input id="jf_${k}" maxlength="60" placeholder="${esc(ph)}"></div>`).join('')}</div>
-    <label for="jf_expte">Vincular a una causa (opcional)</label>
-    <select id="jf_expte"><option value="">Ninguna</option>${causas.map((c) => `<option value="${esc(c.expte)}">${esc(caratula(c))} · ${esc(c.expte)}</option>`).join('')}</select>
-    <p class="javiso">No pongas nombres de clientes ni datos personales: se busca por el tema, no por la persona.</p>
-    <div class="jbotones"><button type="submit" class="btn primary">Pedir a Claude</button><button type="button" class="btn" data-jur="ahora">Buscar ahora</button></div>
-    <p class="hint">«Pedir» lo deja pendiente hasta que Claude lo tome; «Buscar ahora» lo adelanta. Cada pedido hace como máximo 4 consultas, una sola vez: nada automático ni masivo.</p>
-  </form><div id="jlista" class="jlista">${listaJuris()}</div></section>`;
-}
-async function enviarJuris(ahora) {
-  const pedido = ($('#jq').value || '').trim();
-  if (pedido.length < 3) { toast('Escribí qué querés que busque'); $('#jq').focus(); return; }
-  const filtros = {};
-  for (const [k] of JURIS_FILTROS) { const v = ($(`#jf_${k}`).value || '').trim(); if (v) filtros[k] = v; }
-  try {
-    await pedirJuris({ pedido, filtros, expte: $('#jf_expte').value || '', ahora });
-    $('#jq').value = ''; JURIS_FILTROS.forEach(([k]) => { $(`#jf_${k}`).value = ''; }); $('#jf_expte').value = '';
-    toast(ahora ? 'Pedido hecho: va primero' : 'Pedido hecho');
-    if (ahora && TAREA_JURIS) window.open(TAREA_JURIS, '_blank', 'noopener');
-  } catch (e) { toast(mensaje(e, 'no se pudo dejar el pedido')); }
-}
-async function jurAct(b) {
-  const a = b.dataset.jur;
-  if (a === 'ahora') return enviarJuris(true);
-  if (a === 'cancelar') {
-    try { toast(await cancelarJuris(b.dataset.id, b.dataset.rev) ? 'Pedido cancelado' : 'Ese pedido ya lo tomó Claude'); } catch (e) { toast(mensaje(e, 'no se pudo cancelar')); }
-  } else if (a === 'soltar') {
-    try { await soltarJuris(b.dataset.id, b.dataset.rev); toast('Marcado como no resuelto'); } catch (e) { toast(mensaje(e, 'no se pudo marcar')); }
-  } else if (a === 'guardar') {
-    const p = J.pedidos.find((x) => x.id === b.dataset.id), f = p?.resultados?.[+b.dataset.i], c = p && D.causas.find((x) => x.expte === p.expte);
-    if (!f || !c) return;
-    const linea = `Jurisprudencia: ${f.caratula}${[f.resolucion, f.fecha, f.tribunal].filter(Boolean).length ? ` (${[f.resolucion, f.fecha, f.tribunal].filter(Boolean).join(', ')})` : ''}. Fuente: Boletín Judicial (Jurisemia).`;
-    if ((c.notas || '').includes(linea)) { toast('Ya está en las notas de la causa'); return; }
-    try {
-      const r = await actualizarCausa(c.expte, c.rev, { notas: c.notas ? `${c.notas}\n${linea}` : linea });
-      toast(r.conflicto ? 'La causa cambió: volvé a intentar' : 'Guardado en las notas de la causa');
-    } catch (e) { toast(mensaje(e, 'no se pudo guardar')); }
-  }
+  return `<section class="juris"><form id="fJuris" role="search" class="juris-form">
+    <label class="vh" for="jq">Buscar jurisprudencia</label>
+    <input type="search" id="jq" placeholder="Buscar fallos, doctrina o jurisprudencia…" autocomplete="off" disabled>
+    <button type="submit" class="btn primary" disabled>Buscar</button>
+  </form><p class="hint">El buscador se conecta más adelante.</p></section>`;
 }
 
 // Liquidaciones: las causas que tienen planilla, con su total, lo cobrado y el saldo. Se abre la causa al tocarlas.
@@ -549,7 +464,6 @@ function dibujar() {
     main.innerHTML = vistaInicio(); $('#sub').textContent = ''; ajustarNombre();
   } else if (v === 'juris') {
     main.innerHTML = vistaJuris(); $('#sub').textContent = '';
-    if (Date.now() - (S.jurisLeido || 0) > 5000) { S.jurisLeido = Date.now(); cargarJuris(); }
   } else if (!D.cargado) {
     main.innerHTML = `<div class="empty"><b>Cargando tus causas…</b>Acá vas a ver el listado de juicios con su estado, última acción y próxima acción.</div>`;
     subtitulo('Cargando causas…');
@@ -2175,7 +2089,6 @@ document.addEventListener('click', async (e) => {
   const mn = e.target.closest('[data-m]'); if (mn) { if (mn.dataset.m === 'cerrar') { S.menu = false; renderMenu(); } else await menuAct(mn); return; }
   const cb = e.target.closest('[data-chat]'); if (cb) { chatAct(cb); return; }
   const cu = e.target.closest('[data-cau]'); if (cu) { if (S.open && S.cau) await unaVez(cu, cauAct); return; }
-  const ju = e.target.closest('[data-jur]'); if (ju) { await unaVez(ju, jurAct); return; }
   const ag = e.target.closest('[data-ag]'); if (ag) { await unaVez(ag, agAct); return; }
   const tp = e.target.closest('[data-tp]'); if (tp) { await unaVez(tp, tplAct); return; }
   const acb = e.target.closest('[data-ac]'); if (acb) { await unaVez(acb, acAct); return; }
@@ -2285,7 +2198,7 @@ document.addEventListener('change', (e) => {
   if (/^t_tipo\d+$/.test(e.target.id)) { readForm(); rerenderDrawer(); return; }
   if (e.target.id === 'tp_sel') { readForm(); S.tpSel = e.target.value; rerenderDrawer(); }
 });
-document.addEventListener('submit', (e) => { if (e.target.id === 'fJuris') { e.preventDefault(); enviarJuris(false); } });
+document.addEventListener('submit', (e) => { if (e.target.id === 'fJuris') { e.preventDefault(); toast('El buscador de jurisprudencia se conecta más adelante.'); } });
 $('#q').addEventListener('input', (e) => { S.q = e.target.value; render(); });
 $('#fEstado').addEventListener('change', (e) => { S.estado = e.target.value; render(); });
 $('#fNom').addEventListener('change', (e) => { S.nom = e.target.value; render(); });
@@ -2324,7 +2237,6 @@ movil.addEventListener('change', () => render());
 alCambiar((que, detalle) => {
   if (que === 'sesion') { if (detalle !== S.pantalla) mostrar(detalle); else if (detalle === 'listo') render(); return; }
   if (S.pantalla !== 'listo') return;
-  if (que === 'juris') { if (S.view === 'juris') refrescarJuris(); return; } // solo la lista: lo que se está escribiendo no se toca
   if (que === 'estado') { renderFranja(); if (D.cargado && S.view === 'lista') subtitulo(`${filtered().length} de ${D.causas.length} causas`); if (S.menu) renderMenu(); return; }
   render();
   seguirEnlace(); // un enlace que llegó antes de que estuvieran los datos

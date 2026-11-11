@@ -48,9 +48,6 @@ export const D = {
   enVivo: false, // canal de tiempo real conectado
 };
 
-/** Pedidos de jurisprudencia (tabla opcional, migración 0021): si la base no la tiene, la solapa avisa y la app sigue andando. */
-export const J = { pedidos: [], disponible: true, cargado: false };
-
 const oyentes = new Set();
 /** fn(que, detalle): que = 'datos' | 'estado' | 'sesion' (detalle = pantalla a mostrar). */
 export const alCambiar = (fn) => oyentes.add(fn);
@@ -264,7 +261,6 @@ function conectar() {
     try {
       canal = sb.channel('gestor');
       for (const t of TABLAS) canal.on('postgres_changes', { event: '*', schema: 'public', table: t }, () => pedirSinc(t));
-      canal.on('postgres_changes', { event: '*', schema: 'public', table: 'juris_pedidos' }, () => cargarJuris());
       canal.subscribe((estado) => {
         const vivo = estado === 'SUBSCRIBED';
         if (vivo === D.enVivo) return;
@@ -444,44 +440,6 @@ export const borrarCausa = (expte) => eliminar('causas', expte);
 export async function leerDeudor(id) {
   if (!sb) return null;
   return pedir(sb.from('deudores').select('*').eq('id', id).maybeSingle());
-}
-
-// ───────────────────────── Jurisprudencia ─────────────────────────
-// La persona deja el pedido; Claude lo busca en Jurisemia y deja las fichas (ver supabase/migrations/0021).
-// Va aparte de las tablas de arriba: no entra en la copia del dispositivo (son consultas del momento).
-
-/** Lee los pedidos. Nunca lanza: sin la tabla, J.disponible queda en false. */
-export async function cargarJuris() {
-  if (!sb || !D.usuario) return;
-  try {
-    const r = await sb.from('juris_pedidos').select('*').order('creado', { ascending: false }).limit(50);
-    if (r.error) {
-      if (r.error.code === 'PGRST205' || r.error.code === '42P01' || /juris_pedidos/.test(r.error.message || '')) { J.disponible = false; J.cargado = true; avisar('juris'); }
-      return;
-    }
-    J.disponible = true; J.cargado = true; J.pedidos = r.data;
-    avisar('juris');
-  } catch { /* sin red: se queda lo que había */ }
-}
-/** Un pedido nuevo. `ahora`: la persona tocó «Buscar ahora», así que va primero. */
-export async function pedirJuris({ pedido, filtros = {}, expte = '', ahora = false }) {
-  const fila = { pedido, filtros, expte, estado: 'pendiente', ahora: ahora ? new Date().toISOString() : null };
-  const nuevo = await pedir(sb.from('juris_pedidos').insert(fila).select().single());
-  J.pedidos = [nuevo, ...J.pedidos.filter((x) => x.id !== nuevo.id)];
-  avisar('juris');
-  return nuevo;
-}
-/** Cancela un pedido que nadie tomó todavía (con control de revisión). */
-export async function cancelarJuris(id, rev) {
-  const filas = await pedir(sb.from('juris_pedidos').update({ estado: 'cancelado' }).eq('id', id).eq('rev', rev).eq('estado', 'pendiente').select());
-  await cargarJuris();
-  return filas.length > 0;
-}
-/** Marca un pedido trabado («buscando» hace rato) como no resuelto, para poder repetirlo. */
-export async function soltarJuris(id, rev) {
-  const filas = await pedir(sb.from('juris_pedidos').update({ estado: 'error', resultado: 'No se terminó de buscar: pedilo de nuevo.' }).eq('id', id).eq('rev', rev).eq('estado', 'buscando').select());
-  await cargarJuris();
-  return filas.length > 0;
 }
 
 export const crearAcuerdo = (a) => agregar('acuerdos', a);
