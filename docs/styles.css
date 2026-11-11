@@ -678,6 +678,26 @@ label.f input.falta{border-color:var(--bad);box-shadow:0 0 0 1px var(--bad)}
 .juris{display:grid;gap:12px;max-width:860px}
 .juris-form{display:flex;gap:10px}
 .juris-form input{flex:1;min-width:0;padding:13px 16px;border-radius:999px;border:1px solid var(--line);background:var(--surface);font-size:16px}
+.jnuevo,.jpedido{background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--r);padding:20px;display:grid;gap:10px}
+.jnuevo h3{margin:0;font-size:18px}
+.jnuevo label{font-size:13px;color:var(--muted)}
+.jnuevo textarea,.jnuevo input,.jnuevo select{width:100%;box-sizing:border-box;padding:12px 14px;border-radius:14px;border:1px solid var(--line);background:var(--sunken);color:var(--fg);font:inherit;font-size:16px}
+.jnuevo textarea{resize:vertical;line-height:1.5}
+.jfiltros{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.jfiltros>div{display:grid;gap:6px}
+.javiso{margin:0;padding:10px 14px;border-radius:12px;background:var(--accent-soft);font-size:13px;line-height:1.5}
+.jbotones{display:flex;flex-wrap:wrap;gap:10px}
+.jlista{display:grid;gap:12px}
+.jpedido-top,.jficha-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.jpedido-top .pill,.jficha-top .pill{flex:none}
+.jdato{margin-top:4px;font:12.5px var(--f-mono);color:var(--muted)}
+.jnota{margin:0;padding:12px 14px;border-radius:14px;background:var(--sunken);color:var(--soft);line-height:1.55;font-size:14px}
+.jficha{border:1px solid var(--line);border-radius:16px;padding:16px;display:grid;gap:8px}
+.jficha p{margin:0;color:var(--soft);line-height:1.55;font-size:14px}
+.jacc{display:flex;flex-wrap:wrap;gap:10px}
+.jfuente{margin:0;font-size:12.5px;color:var(--muted);line-height:1.55}
+.pill.jok{background:var(--ok-soft);color:var(--ok)} .pill.jwarn{background:var(--warn-soft);color:var(--warn)}
+.pill.jinfo{background:var(--info-soft);color:var(--info)} .pill.jbad{background:var(--bad-soft);color:var(--bad)}
 .liqs{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
 .liqfila{padding:14px;background:var(--surface);border:1px solid var(--line);border-radius:16px;cursor:pointer}
 .liqfila:hover{border-color:var(--accent)}
