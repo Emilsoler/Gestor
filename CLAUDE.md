@@ -546,6 +546,11 @@ solo (como en Vehículo y Simulación), pero se puede **guardar como caso** (ver
   `select nombre, deudor, actualizado, actualizado_por from public.casos_refi order by actualizado desc;`
   Publicar: migración 0020 y después subir la app.
 
+- **Archivar un caso** (migración 0023, columna `casos_refi.archivado`, null = en curso): con un caso abierto, «Archivar (convenio
+  firmado)» lo saca de «Casos guardados» y limpia la pantalla, pero no lo borra: queda en la lista «Archivados», de donde se abre y
+  se «Desarchivar». Archivar solo cambia `archivado` (no pisa el formulario guardado) y `gestor.deshacer` lo restaura. Para leerlos:
+  `select nombre, archivado from public.casos_refi where archivado is not null;`
+
 - **Exportar la refinanciación** (`docs/cobranzas/acuerdo.js`; botones «Descargar convenio en Word» y «Descargar en Excel», visibles con el plan abierto):
   - **Excel**: dos hojas, «Refinanciación» (estado de deuda, entrega, saldo a financiar, cuota y total, con fórmulas) y «Cuotas» (cronograma con pagado, saldo y totales). `hojasRefinanciacion` las arma y `xlsx` de `excel.js` las escribe.
   - **Word**: el modelo del estudio es `docs/cobranzas/modelos/acuerdo-refinanciacion.docx`, un Word común con campos `{{así}}` (la lista y cómo se nombran cuando faltan, en `CAMPOS_ACUERDO`). `armarAcuerdo` lo lee (zip + `DecompressionStream`), reemplaza los campos en `word/*.xml` y lo vuelve a empaquetar con `zip` de `excel.js`; no hay librerías ni red. Lo que falta (DNI, domicilio, fecha del préstamo…) queda como «[DNI del deudor]» para completar a mano. **El deudor del convenio es el nombre del caso** (el campo «Nombre del caso», arriba; si no tiene, el de la ficha del deudor elegido) y su **DNI** es el campo «DNI del deudor», al lado (`R.dniDeudor`, se guarda con el caso). El domicilio, la ciudad y las fechas se escriben en «Datos para el convenio»; con un deudor de la app, lo que no se escriba sale de su ficha.

@@ -3,7 +3,7 @@
 import {
   D, iniciar, reconectar, entrar, salir, cambiarClave, alCambiar, mensaje, ajustes, ESTADOS,
   crearDeudor, cambiarDeudor, borrarDeudor, crearModelo, guardarModelo, borrarModelo, guardarAjustes,
-  consultarInfoAuto, consultarBCRA, detalleConsulta, detalleGuardado, borrarConsulta, consultarCheque, entidadesCheques, borrarConsultaCheque, crearCasoRefi, actualizarCasoRefi, borrarCasoRefi,
+  consultarInfoAuto, consultarBCRA, detalleConsulta, detalleGuardado, borrarConsulta, consultarCheque, entidadesCheques, borrarConsultaCheque, crearCasoRefi, actualizarCasoRefi, borrarCasoRefi, archivarCasoRefi,
 } from './datos.js';
 import {
   avisoCuit, soloDigitos, fichaConsulta, filaConsulta, textoConsulta, deudoresDelCuit,
@@ -699,15 +699,22 @@ document.addEventListener('toggle', (e) => { if (e.target.matches?.('details[dat
 function bloqueCasos(guardar) {
   if (!D.casos) return `<p class="hint m0">Falta activar el guardado de casos: la base todavía no tiene dónde guardarlos. Pedile a Claude que lo active.</p>`;
   const C = S.cred.caso, abierto = D.casos_refi.find((x) => x.id === C.id);
-  const lista = D.casos_refi.length ? `<details class="rf-casos"${abierto || D.casos_refi.length > 6 ? '' : ' open'}><summary>Casos guardados <b class="mono">${D.casos_refi.length}</b></summary>
-    <div class="cr-lista">${D.casos_refi.map((x) => `<button type="button" class="cr-fila${x.id === C.id ? ' elegida' : ''}" data-caso="${esc(x.id)}">
+  // Los archivados (convenio ya firmado) no se mezclan con los que están en curso: van en su propia lista.
+  const enCurso = D.casos_refi.filter((x) => !x.archivado), archivados = D.casos_refi.filter((x) => x.archivado);
+  const filas = (xs) => xs.map((x) => `<button type="button" class="cr-fila${x.id === C.id ? ' elegida' : ''}" data-caso="${esc(x.id)}">
       <span class="mono">${x.deudor ? 'Deudor' : 'A mano'}</span>
-      <span class="cr-fila-t"><b>${esc(x.nombre)}</b><span class="sub">${esc(subCaso(x))}</span></span></button>`).join('')}</div></details>` : '';
+      <span class="cr-fila-t"><b>${esc(x.nombre)}</b><span class="sub">${esc(subCaso(x))}</span></span></button>`).join('');
+  const lista = (enCurso.length ? `<details class="rf-casos"${abierto || enCurso.length > 6 ? '' : ' open'}><summary>Casos guardados <b class="mono">${enCurso.length}</b></summary>
+    <div class="cr-lista">${filas(enCurso)}</div></details>` : '')
+    + (archivados.length ? `<details class="rf-casos"${abierto?.archivado ? ' open' : ''}><summary>Archivados <b class="mono">${archivados.length}</b></summary>
+    <div class="cr-lista">${filas(archivados)}</div></details>` : '');
   if (!guardar) return `<div class="rf-caso">${lista}</div>`;
   const acciones = abierto
     ? (C.confirmar
       ? `<span class="hint">¿Eliminar “${esc(abierto.nombre)}”? No se puede deshacer desde la app.</span><button class="btn danger small" type="button" data-a="rf-caso-borrar">Sí, eliminar</button><button class="btn small" type="button" data-a="rf-caso-no">No</button>`
-      : `<button class="btn primary small" type="button" data-a="rf-caso-guardar">Guardar cambios</button><button class="btn small" type="button" data-a="rf-caso-nuevo">Guardar como caso nuevo</button><button class="btn small" type="button" data-a="rf-caso-cerrar">Cerrar caso</button><button class="btn small" type="button" data-a="rf-caso-confirmar">Eliminar</button>`)
+      : `<button class="btn primary small" type="button" data-a="rf-caso-guardar">Guardar cambios</button><button class="btn small" type="button" data-a="rf-caso-nuevo">Guardar como caso nuevo</button><button class="btn small" type="button" data-a="rf-caso-cerrar">Cerrar caso</button>${abierto.archivado
+        ? '<button class="btn small" type="button" data-a="rf-caso-desarchivar">Desarchivar</button>'
+        : '<button class="btn small" type="button" data-a="rf-caso-archivar">Archivar (convenio firmado)</button>'}<button class="btn small" type="button" data-a="rf-caso-confirmar">Eliminar</button>`)
     : `<button class="btn primary small" type="button" data-a="rf-caso-nuevo">Guardar caso</button>`;
   return `<div class="rf-caso">
     <div class="sim-form"><label class="f">${abierto ? 'Caso abierto' : 'Nombre del caso'} (es el deudor del convenio)<input id="rf_nombreCaso" ${atar('cred.caso.nombre')} maxlength="200" placeholder="ej.: Juan Pérez" autocomplete="off"></label>
@@ -752,6 +759,17 @@ async function accionCaso(act) {
   const C = S.cred.caso, abierto = D.casos_refi.find((x) => x.id === C.id);
   if (act === 'rf-caso-confirmar' || act === 'rf-caso-no') { C.confirmar = act === 'rf-caso-confirmar'; render(); return; }
   if (act === 'rf-caso-cerrar') { S.cred.caso = { id: '', nombre: '', confirmar: false }; render(); return; }
+  if (act === 'rf-caso-archivar' || act === 'rf-caso-desarchivar') {
+    if (!abierto) return;
+    const archivar = act === 'rf-caso-archivar';
+    try {
+      const r = await archivarCasoRefi(abierto.id, abierto.rev, archivar);
+      if (r.conflicto) { toast(r.actual ? 'Este caso cambió desde otro lugar. Abrilo de nuevo para ver la última versión.' : 'Este caso fue eliminado desde otro lugar.'); if (!r.actual) S.cred.caso = { id: '', nombre: '', confirmar: false }; }
+      else if (archivar) { S.cred.caso = { id: '', nombre: '', confirmar: false }; S.cred.refi = nuevaRefi(String(ajustes().tasa)); toast('Caso archivado: lo encontrás en Archivados'); }
+      else toast('Caso desarchivado');
+    } catch (e) { toast(mensaje(e, 'no se archivó')); }
+    render(); return;
+  }
   const nombre = C.nombre.trim();
   if (act !== 'rf-caso-borrar' && !nombre) { toast('Escribí un nombre para el caso'); $('#rf_nombreCaso')?.focus(); return; }
   const R = S.cred.refi, datos = datosCaso(R);

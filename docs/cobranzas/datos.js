@@ -131,7 +131,7 @@ const DE = {
   modelos_mensaje: (f) => ({ ...f }),
   ajustes_cobranzas: (f) => ({ ...f, tasa: +f.tasa, contado_pct: +f.contado_pct }),
   consultas_bcra: ({ resultado, ...f }) => ({ ...f, deuda_total: +f.deuda_total || 0, motivos: lista(f.motivos) }),
-  casos_refi: (f) => ({ ...f, nombre: String(f.nombre ?? ''), deudor: f.deudor || '', datos: f.datos && typeof f.datos === 'object' && !Array.isArray(f.datos) ? f.datos : {} }),
+  casos_refi: (f) => ({ ...f, nombre: String(f.nombre ?? ''), deudor: f.deudor || '', archivado: f.archivado || '', datos: f.datos && typeof f.datos === 'object' && !Array.isArray(f.datos) ? f.datos : {} }),
   consultas_cheques: (f) => ({ ...f, numero: String(f.numero ?? ''), resultado: f.resultado && typeof f.resultado === 'object' ? f.resultado : {} }),
 };
 export const ESTADOS = ['En gestión', 'En juicio', 'Cancelado', 'Incobrable', 'Archivado'];
@@ -537,6 +537,8 @@ export const crearCasoRefi = (nombre, deudor, datos) =>
 /** Pisa un caso existente con lo que hay en pantalla (y, si viene, le cambia el nombre). */
 export const actualizarCasoRefi = (id, rev, campos) => modificar('casos_refi', id, rev, campos);
 export const borrarCasoRefi = (id) => eliminar('casos_refi', id);
+/** Archiva un caso (convenio ya firmado) o lo vuelve a poner en curso. No toca el formulario guardado. */
+export const archivarCasoRefi = (id, rev, archivar) => modificar('casos_refi', id, rev, { archivado: archivar ? new Date().toISOString() : null });
 
 /** Lo que respondió el BCRA en una consulta (se lee una vez y queda en memoria). */
 export async function detalleConsulta(id) {
