@@ -655,7 +655,7 @@ label.f input.falta{border-color:var(--bad);box-shadow:0 0 0 1px var(--bad)}
 .tile span{position:absolute;z-index:1;inset:0;display:grid;place-items:center;padding:8px;text-align:center;font:700 clamp(15px,1.45vw,20px)/1.15 var(--f-foto);text-shadow:0 2px 12px rgba(0,0,0,.8);overflow-wrap:break-word}
 .t-causas img{object-position:50% 60%} .t-agenda img{object-position:45% 50%} .t-acuerdos img{object-position:70% 40%}
 .t-plantillas img{object-position:50% 30%} .t-liquidaciones img{object-position:50% 35%} .t-cobros img{object-position:50% 30%}
-.t-jurisprudencia img{object-position:50% 50%} .t-sac img{object-position:45% 35%}
+.t-jurisprudencia img{object-position:50% 50%} .t-sac img{object-position:45% 35%} .t-planillas img{object-position:78% 18%}
 
 /* Bandas de las pantallas */
 .banda{position:relative;overflow:hidden;border-radius:16px;border:1px solid var(--line);height:clamp(96px,14vw,150px);background:#0b121c}

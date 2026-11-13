@@ -369,17 +369,19 @@ const FRASES = [
 ];
 const FRASE = FRASES[Math.floor(Math.random() * FRASES.length)];
 
+// Portal de planillas de cálculos judiciales del Poder Judicial de Córdoba (es el enlace del botón de arriba).
+const PLANILLAS = $('#btnPlanillas').getAttribute('href');
 const TILES = [
   { k: 'causas', t: 'Causas', ir: 'lista' }, { k: 'agenda', t: 'Agenda', ir: 'agenda' },
   { k: 'acuerdos', t: 'Acuerdos', ir: 'acuerdos' }, { k: 'plantillas', t: 'Plantillas', ir: 'plantillas' },
   { k: 'liquidaciones', t: 'Liquidaciones', ir: 'liq' }, { k: 'cobros', t: 'Créditos y Cobros', href: COBRANZAS },
-  { k: 'jurisprudencia', t: 'Jurisprudencia', ir: 'juris' }, { k: 'sac', t: 'SAC', sac: true },
+  { k: 'jurisprudencia', t: 'Jurisprudencia', ir: 'juris' }, { k: 'sac', t: 'SAC', sac: true }, { k: 'planillas', t: 'Planillas Judiciales', img: 'justicia', href: PLANILLAS },
 ];
 const BANDAS = { lista: ['justicia', 'Causas'], agenda: ['agenda', 'Agenda'], acuerdos: ['acuerdos', 'Acuerdos'], juris: ['jurisprudencia', 'Jurisprudencia'], liq: ['liquidaciones', 'Liquidaciones'] };
 
 function vistaInicio() {
   const tile = (x) => {
-    const img = `<img src="img/${x.k}.jpg" alt="" loading="lazy" decoding="async"><span>${esc(x.t)}</span>`;
+    const img = `<img src="img/${x.img || x.k}.jpg" alt="" loading="lazy" decoding="async"><span>${esc(x.t)}</span>`;
     if (x.sac) { const a = $('#btnSac'); return `<a class="tile t-${x.k}" href="${esc(a.getAttribute('href'))}"${a.getAttribute('target') ? ' target="_blank" rel="noopener"' : ''}>${img}</a>`; }
     if (x.href) return `<a class="tile t-${x.k}" href="${esc(x.href)}" target="_blank" rel="noopener">${img}</a>`;
     return `<button type="button" class="tile t-${x.k}" data-ir="${x.ir}">${img}</button>`;

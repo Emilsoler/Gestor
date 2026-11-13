@@ -136,7 +136,7 @@ test('inicio: nombre, frase con busto, acciones rápidas y las fotos; la app abr
   assert.ok((await p.textContent('.frase p')).length > 10);
   assert.match(await p.getAttribute('.busto', 'src'), /^img\/(socrates|platon|aristoteles)\.jpg$/);
   assert.deepEqual(await p.locator('.acciones-rapidas .btn').allTextContents(), ['+Nueva causa', '+Nuevo escrito para el SAC', '+Nuevo acuerdo de pago']);
-  assert.deepEqual(await p.locator('.tile span').allTextContents(), ['Causas', 'Agenda', 'Acuerdos', 'Plantillas', 'Liquidaciones', 'Créditos y Cobros', 'Jurisprudencia', 'SAC']);
+  assert.deepEqual(await p.locator('.tile span').allTextContents(), ['Causas', 'Agenda', 'Acuerdos', 'Plantillas', 'Liquidaciones', 'Créditos y Cobros', 'Jurisprudencia', 'SAC', 'Planillas Judiciales']);
   assert.equal(await p.getAttribute('.t-cobros', 'href'), 'cobranzas/');
   assert.match(await p.getAttribute('.t-sac', 'href'), /justiciacordoba\.gob\.ar/);
   assert.equal(await p.locator('#stats, #toolbar').evaluateAll((es) => es.every((e) => e.offsetParent === null)), true, 'sin resumen ni buscador en el inicio');
@@ -756,6 +756,14 @@ test('botón SAC: en el iPhone abre Chrome; en la PC y desde Chrome, otra pesta�
     userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_6_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/155.0.8059.37 Mobile/15E148 Safari/604.1' }),
   [SAC, '_blank']);
   assert.deepEqual(await enlace({ nombre: 'sac-pc' }), [SAC, '_blank']);
+});
+
+test('botón Planillas Judiciales: lleva al portal de planillas de cálculos judiciales, en otra pestaña', async () => {
+  const PLANILLAS = 'https://www.justiciacordoba.gob.ar/planillacalculosjudiciales';
+  const { c, p } = await nuevoContexto({ nombre: 'planillas-pc' });
+  await p.goto(BASE); await p.waitForSelector('#fIngreso');
+  assert.deepEqual(await p.$eval('#btnPlanillas', (a) => [a.textContent, a.getAttribute('href'), a.getAttribute('target')]), ['Planillas Judiciales', PLANILLAS, '_blank']);
+  await c.close();
 });
 
 test('acceso a Cobranzas: al pie de la barra y en el menú de la cuenta; abre la app ya adentro', async () => {
