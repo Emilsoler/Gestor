@@ -301,7 +301,7 @@ completo en castellano). No hay datos de causas ni de personas.
   actualizado = now()`. Un bloque de unos 10.000 caracteres pasa bien por `execute_sql`.
 - **Huecos conocidos**: los arts. 1, 2, 6, 83, 130, 339 y 436 del CPCC estaban dañados (OCR) y se cargaron con el texto oficial
   (`cpcc-cba:txt-001`); queda por verificar el 384 (casación en el ejecutivo). No está la ley 10.555 (oralidad), a pedido de la
-  persona. De Gómez Leo están cargados todos los capítulos (I a XVIII); los I a XI y el XVIII como resumen por apartado (`gomez-leo:resumen-b01` a `b25`, el texto del libro no es literal y es de 2004, anterior al CCyC), no las 955 páginas enteras. Tampoco está cargado el art. 340 (cómputo de la perención).
+  persona. De Gómez Leo están cargados todos los capítulos (I a XVIII); los I a XI y el XVIII como resumen por apartado (`gomez-leo:resumen-b01` a `b25`, el texto del libro no es literal y es de 2004, anterior al CCyC), no las 955 páginas enteras. El art. 340 (cómputo de la perención) sí está, dentro de `cpcc-cba:txt-309`.
 - Las cuentas de usuario no ven la tabla ni sus estadísticas: no hace falta `gestor.sin_estadisticas()` (no hay datos del estudio).
 
 ## Acciones cautelares (botón de la ficha)
