@@ -299,8 +299,10 @@ completo en castellano). No hay datos de causas ni de personas.
   Solo para el gestor: el chat de cobranzas no las tiene.
 - **Cargar o corregir** (con el conector): `insert … on conflict (id) do update set contenido = excluded.contenido,
   actualizado = now()`. Un bloque de unos 10.000 caracteres pasa bien por `execute_sql`.
-- **Huecos conocidos**: del CPCC faltan o están dañados (OCR) los arts. 1, 2, 6, 83, 130, 339 y 436 y hay que verificar el
-  384 (casación en el ejecutivo); no está la ley 10.555 (oralidad). De Gómez Leo no se cargaron los capítulos I a XI y XVIII.
+- **Huecos conocidos**: los arts. 1, 2, 6, 83, 130, 339 y 436 del CPCC estaban dañados (OCR) y se cargaron con el texto oficial
+  (`cpcc-cba:txt-001`); queda por verificar el 384 (casación en el ejecutivo). No está la ley 10.555 (oralidad), a pedido de la
+  persona. De Gómez Leo no se cargaron los capítulos I a XI y XVIII. (`instrucciones.ts` todavía dice que aquellos siete artículos
+  pueden estar dañados: corregirlo en el próximo despliegue de `chat`.)
 - Las cuentas de usuario no ven la tabla ni sus estadísticas: no hace falta `gestor.sin_estadisticas()` (no hay datos del estudio).
 
 ## Acciones cautelares (botón de la ficha)
