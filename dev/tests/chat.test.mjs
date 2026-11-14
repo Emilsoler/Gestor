@@ -86,7 +86,8 @@ test('un mensaje: lo que se manda a Claude y lo que vuelve a la app', async () =
   assert.doesNotMatch(p.cuerpo.system, /\d{2}\/\d{2}\/\d{4}/, 'sin fecha en las instrucciones: tienen que ser siempre iguales');
   const nombres = p.cuerpo.tools.map((t) => t.name);
   assert.deepEqual(nombres, ['buscar_causas', 'ver_causa', 'listar_pendientes', 'editar_causa', 'registrar_movimiento', 'marcar_realizada',
-    'listar_plantillas', 'preparar_presentacion', 'ver_agenda', 'cancelar_presentacion', 'reprogramar_presentacion']);
+    'listar_plantillas', 'preparar_presentacion', 'ver_agenda', 'cancelar_presentacion', 'reprogramar_presentacion',
+    'consultar_archivero', 'leer_archivero']);
   assert.ok(!nombres.some((n) => /elimin|borrar|presentar_en|sql/.test(n)), 'nada para eliminar ni para presentar directo');
 });
 

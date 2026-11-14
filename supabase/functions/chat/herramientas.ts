@@ -130,6 +130,32 @@ export const HERRAMIENTAS = [
       required: ['id', 'fecha'],
     },
   },
+  {
+    name: 'consultar_archivero',
+    description: 'Busca en el archivero de conocimientos jurídicos del estudio (CPCC de Córdoba ley 8465, Falcón, Gómez Leo, Busetto, Ley de Prenda, pagaré de consumo, modelos). Usala ANTES de afirmar un plazo, un artículo o un criterio legal, y al redactar o analizar un escrito. Devuelve extractos con su id y su jerarquía: lo de Córdoba (cpcc-cba) rige; lo demás es criterio de fondo. Si el extracto no alcanza, leé el texto con leer_archivero.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        texto: { type: 'string', description: 'Qué buscar, con palabras del tema o el número de artículo. Ej: "caducidad medida cautelar", "art. 809 excepciones", "prenda secuestro subasta".' },
+        fuente: { type: 'string', enum: ['cpcc-cba', 'falcon', 'gomez-leo', 'busetto', 'ley-prenda', 'pagare-consumo', 'modelos'], description: 'Limitar a una sola fuente (opcional).' },
+        limite: { type: 'integer', description: 'Cuántos resultados (1 a 10, por defecto 6).' },
+      },
+      required: ['texto'],
+    },
+  },
+  {
+    name: 'leer_archivero',
+    description: 'Lee el texto de un documento del archivero por su id (el que devuelve consultar_archivero), de a tramos de hasta 16000 caracteres. Si hay_mas es true, pedí el siguiente con desde.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'Por ejemplo "cpcc-cba:txt-434".' },
+        desde: { type: 'integer', description: 'Carácter desde el que leer (por defecto 1).' },
+        largo: { type: 'integer', description: 'Cuántos caracteres (500 a 16000, por defecto 12000).' },
+      },
+      required: ['id'],
+    },
+  },
 ];
 
 // ───────────────────────── Lectura ─────────────────────────
@@ -214,6 +240,16 @@ function validar(campo: string, valor: unknown) {
 type Entrada = Record<string, any>;
 
 const acciones: Record<string, (e: Entrada, ctx: Contexto) => Promise<unknown>> = {
+  async consultar_archivero(e, { db }) {
+    const texto = String(e.texto ?? '').trim();
+    if (!texto) throw new Problema('Decime qué buscar en el archivero.');
+    return await db.rpc('buscar_conocimientos', { p_texto: texto, p_fuente: e.fuente || null, p_limite: Number(e.limite) || 6 });
+  },
+  async leer_archivero(e, { db }) {
+    const id = String(e.id ?? '').trim();
+    if (!id) throw new Problema('Falta el id del documento.');
+    return await db.rpc('leer_conocimiento', { p_id: id, p_desde: Number(e.desde) || 1, p_largo: Number(e.largo) || 12000 });
+  },
   async buscar_causas(e, { db }) {
     const texto = String(e.texto ?? '').trim();
     const palabras = norm(texto).split(/[\s,.;:]+/).filter(Boolean);

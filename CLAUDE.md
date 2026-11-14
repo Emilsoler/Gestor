@@ -280,6 +280,29 @@ aplicarla con `apply_migration` y pasar `get_advisors` (seguridad).
   La anterior (`trig_01EX9sLZMbvqDtgqTNJFGTg5`) se había creado sin ese requisito: corría en la
   nube y no llegaba al Chrome. Quedó desactivada.
 
+## Archivero legal (`public.conocimientos`, migración 0024)
+
+Material de consulta jurídico del estudio, cargado con el conector de Supabase (`execute_sql`): el
+CPCC de Córdoba ley 8465 (fuente `cpcc-cba`: el texto de los arts. 3 a 894 en bloques `txt-NNN` y 35
+artículos sueltos `art-N` con comentario de González Castro), Falcón, Gómez Leo, Busetto, Ley de Prenda,
+pagaré de consumo y los modelos de escritos. Una fila por documento: `id` (`fuente:clave`), `fuente`, `tipo`
+(fichas, resumen, texto, articulo, modelos, mapa), `titulo`, `orden`, `contenido` y `tsv` (búsqueda de texto
+completo en castellano). No hay datos de causas ni de personas.
+
+- **Regla de oro: Córdoba primero, sin excepción.** Rige el CPCC de Córdoba; los demás libros dan solo
+  criterio de fondo. En un escrito de Córdoba no se citan artículos del CPCCN, de Corrientes ni de Buenos Aires;
+  si no hay un criterio verificado para Córdoba, se escribe «verificar en Córdoba». Está en `instrucciones.ts`
+  y la búsqueda marca la jerarquía de cada resultado.
+- **Acceso**: la tabla no tiene políticas ni permisos para `anon`/`authenticated` (nadie la lee por la API).
+  El chat la consulta con las herramientas `consultar_archivero` y `leer_archivero`, que llaman a
+  `public.buscar_conocimientos` y `public.leer_conocimiento` (`SECURITY DEFINER`, solo para miembros de `gestor.miembros`).
+  Solo para el gestor: el chat de cobranzas no las tiene.
+- **Cargar o corregir** (con el conector): `insert … on conflict (id) do update set contenido = excluded.contenido,
+  actualizado = now()`. Un bloque de unos 10.000 caracteres pasa bien por `execute_sql`.
+- **Huecos conocidos**: del CPCC faltan o están dañados (OCR) los arts. 1, 2, 6, 83, 130, 339 y 436 y hay que verificar el
+  384 (casación en el ejecutivo); no está la ley 10.555 (oralidad). De Gómez Leo no se cargaron los capítulos I a XI y XVIII.
+- Las cuentas de usuario no ven la tabla ni sus estadísticas: no hace falta `gestor.sin_estadisticas()` (no hay datos del estudio).
+
 ## Acciones cautelares (botón de la ficha)
 
 En la ficha, "Acción cautelar" pregunta "¿Solicitar embargo de haberes?" o "¿Solicitar oficio de
