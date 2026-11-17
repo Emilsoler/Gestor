@@ -12,7 +12,7 @@ import {
   avisoCheque, numeroCheque, bancosRecientes, opcionesBancos, bancoEnLista, fichaCheque, textoCheque, filaCheque,
 } from './creditos.js';
 import { nuevaRefi, vto1Efectivo, estadoRefi, htmlEstadoRefi, htmlPlanRefi, datosCaso, restaurarCaso } from './refinanciacion.js';
-import { modeloSimple, filaModelo, fichaVehiculo, preciosPorAnio, htmlSimulador, htmlSimuladorManual, estadoSimuladorManual, htmlSimulacion, estadoSimulador, GASTOS_DEFECTO } from './vehiculos.js';
+import { modeloSimple, preciosPorAnio, rangoAnios, enPesos, valorDeReferencia, htmlSimulador, htmlSimuladorManual, estadoSimuladorManual, htmlSimulacion, estadoSimulador, GASTOS_DEFECTO } from './vehiculos.js';
 import {
   liquidar, resumen, armarPlan, estadoPlan, planVigente, sumarMeses, totalPago, TRAMOS, tramoDe, CADAS, nombrePropio, detalleCuotas, ES_FECHA,
 } from './calculo.js';
@@ -54,7 +54,7 @@ const S = {
     entidad: '', numero: '', chAbierta: null, chConsultando: false, chConfirmar: false, chError: '', chFiltro: '',
     bancos: null, bancosCargando: false, bancosError: '',
     // Vehículo (InfoAuto): lo que se escribe, las marcas, los modelos encontrados y el elegido con sus precios.
-    veh: { q: '', marca: '', marcas: null, marcasCargando: false, marcasError: '', buscando: false, error: '', lista: null, sel: null, precios: null, cero: null, cargando: false, errorPrecios: '', anio: '',
+    veh: { q: '', fm: '', fv: '', fab: '', grupo: '', grupos: null, gruposCargando: false, texto: false, pedido: 0, marca: '', marcas: null, marcasCargando: false, marcasError: '', buscando: false, error: '', lista: null, sel: null, precios: null, cero: null, cargando: false, errorPrecios: '', anio: '',
       // Simulador de crédito: valor elegido ('' = el año más nuevo), capital (propuesto salvo que se escriba), cuotas y gestoría.
       sim: nuevaSim() },
     // Simulación a mano (sin vehículo): su propio capital, cuotas, tasa y gastos; `simOrigen` dice cuál de las dos se ve.
@@ -664,38 +664,89 @@ async function consultarChequeDe(entidad, numero) {
 }
 
 // ───────────────────────── Cotización de vehículos (InfoAuto) ─────────────────────────
-// Se busca por marca o por texto (la función `infoauto` pregunta a InfoAuto); al elegir un modelo se piden
-// su precio 0km y sus precios usados por año. No se guarda nada: es una consulta de referencia.
+// Búsqueda asistida, como la de la página de InfoAuto: columnas Marca → Modelo → Año → Versión → Precio. Cada
+// elección pide a InfoAuto (función `infoauto`) solo la lista siguiente: los modelos (grupos) de la marca y las
+// versiones del modelo; al elegir una versión, su precio 0km y sus precios usados por año. El año solo filtra las
+// versiones que se fabricaron ese año y queda marcado en el precio. También se puede buscar por nombre: los
+// resultados van a la columna Versión. No se guarda nada: es una consulta de referencia.
+
+const sinTildes = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+const coincide = (texto, filtro) => { const f = sinTildes(filtro).trim(); return !f || f.split(/\s+/).every((p) => sinTildes(texto).includes(p)); };
+
+/** Los años de fabricación de las versiones de la lista (del más nuevo al más viejo), con «0km» arriba si alguna lo tiene. */
+function aniosDeFabricacion(lista) {
+  const xs = new Set();
+  for (const m of lista || []) if (m.desde && m.hasta && m.hasta - m.desde < 80) for (let y = m.desde; y <= m.hasta; y++) xs.add(y);
+  const anios = [...xs].sort((a, b) => b - a).map(String);
+  return (lista || []).some((m) => m.tiene0km) ? ['0km', ...anios] : anios;
+}
+const fabricadaEn = (m, fab) => !fab || (fab === '0km' ? m.tiene0km : m.desde && m.hasta && m.desde <= +fab && +fab <= m.hasta);
+const versionesVistas = (V) => (V.lista || []).filter((m) => fabricadaEn(m, V.fab) && coincide(`${m.descripcion} ${m.marca} ${m.grupo}`, V.fv));
 
 function vistaVehiculo() {
   const V = S.cred.veh;
   subtitulo('Cotización de vehículos de InfoAuto');
   if (!V.marcas && !V.marcasCargando && !V.marcasError) setTimeout(pedirMarcas, 0);
-  const marcas = V.marcas || [];
-  const form = `<section class="card cr-consulta">
-    <div class="card-cab"><h3>Cotizar un vehículo</h3></div>
-    <form id="fVehiculo" class="cr-form" novalidate>
-      <label class="f">Marca<select id="ve_marca" data-k="cred.veh.marca" ${marcas.length ? '' : 'disabled'}><option value="">${V.marcasCargando ? 'Cargando marcas…' : 'Elegí una marca'}</option>${marcas.map((m) => `<option value="${m.id}"${String(m.id) === String(V.marca) ? ' selected' : ''}>${esc(m.name)}</option>`).join('')}</select></label>
-      <label class="f">O buscá por modelo<input id="ve_q" ${atar('cred.veh.q')} autocomplete="off" placeholder="Ej.: onix" maxlength="60"></label>
-      <button class="btn primary" type="submit" id="ve_ir" ${V.buscando ? 'disabled' : ''}>${V.buscando ? 'Buscando…' : 'Buscar'}</button>
-    </form>
+  setTimeout(mostrarElegidas, 0);
+  const item = (sel, datos, cuerpo) => `<button type="button" class="va-item${sel ? ' elegida' : ''}" ${datos} aria-pressed="${!!sel}">${cuerpo}</button>`;
+  const nada = (t) => `<p class="hint va-nada">${esc(t)}</p>`;
+  const col = (titulo, cuerpo, { filtro = '', id = '', ancho = false } = {}) => `<div class="va-col${ancho ? ' va-ancha' : ''}"${id ? ` id="${id}"` : ''}><h4>${titulo}</h4>${filtro}<div class="va-lista">${cuerpo}</div></div>`;
+  const filtro = (k, ph, rotulo) => `<input type="search" class="va-filtro" ${atar(k)} placeholder="${esc(ph)}" aria-label="${esc(rotulo)}" autocomplete="off">`;
+
+  const marcas = (V.marcas || []).filter((m) => coincide(m.name, V.fm));
+  const cMarca = col('Marca', V.marcasCargando ? nada('Cargando marcas…') : V.marcas
+    ? (marcas.length ? marcas.map((m) => item(String(m.id) === String(V.marca), `data-ve-marca="${m.id}"`, esc(m.name))).join('') : nada('Ninguna marca coincide.'))
+    : nada('No se pudieron traer las marcas.'), { filtro: filtro('cred.veh.fm', 'Escribí la marca', 'Buscar una marca') });
+
+  const cModelo = col('Modelo', V.gruposCargando ? nada('Cargando modelos…') : V.grupos
+    ? (V.grupos.length ? V.grupos.map((g) => item(String(g.id) === String(V.grupo), `data-ve-grupo="${g.id}"`, esc(g.nombre))).join('') : nada('Esta marca no tiene modelos con precio.'))
+    : nada(V.texto ? 'Buscaste por nombre.' : 'Elegí una marca.'));
+
+  const anios = V.buscando ? [] : aniosDeFabricacion(V.lista);
+  const cAnio = col('Año', V.lista && anios.length
+    ? item(!V.fab, 'data-ve-fab=""', 'Todos') + anios.map((y) => item(V.fab === y, `data-ve-fab="${y}"`, `<span class="mono">${y}</span>`)).join('')
+    : nada(V.lista ? 'Sin años informados.' : '—'));
+
+  const versiones = versionesVistas(V);
+  const cVersion = col('Versión', V.buscando ? nada('Buscando…') : V.lista
+    ? (versiones.length ? versiones.map((m) => item(V.sel?.codia === m.codia, `data-vehiculo="${m.codia}"`,
+        `<b>${esc(m.descripcion || 'Sin descripción')}</b><span class="sub">${esc([V.texto ? [m.marca, m.grupo].filter(Boolean).join(' · ') : '', rangoAnios(m)].filter(Boolean).join(' · '))}</span>`)).join('')
+      + (V.incompleta ? nada('Hay más versiones: escribí algo más preciso para achicar la búsqueda.') : '')
+      : nada(V.lista.length ? 'Ninguna versión coincide.' : 'No se encontraron versiones.'))
+    : nada('Elegí el modelo.'), { filtro: V.lista && V.lista.length > 8 ? filtro('cred.veh.fv', 'Buscar versión', 'Buscar una versión') : '', ancho: true });
+
+  let precio;
+  if (!V.sel) precio = nada('Elegí la versión.');
+  else if (V.cargando) precio = nada('Buscando el precio…');
+  else if (V.errorPrecios) precio = `<div class="aviso-chico cr-reintentar" role="alert"><span>${esc(V.errorPrecios)}</span><button class="btn small" type="button" data-a="ve-reintentar">Reintentar</button></div>`;
+  else {
+    const ref = valorDeReferencia(V.precios, V.cero, V.sim.valor), cero = enPesos(V.cero?.list_price);
+    const filas = [...(cero ? [['cero', '0km', cero]] : []), ...preciosPorAnio(V.precios).map((p) => [String(p.anio), String(p.anio), p.pesos])];
+    precio = filas.length
+      ? filas.map(([k, t, pesos]) => item(ref?.clave === k, `data-ve-precio="${k}"`, `<span class="mono">${t}</span><span class="mono va-plata">${esc(plata(pesos))}</span>`)).join('')
+      : nada('InfoAuto no informa precios para esta versión.');
+  }
+  const cPrecio = col('Precio', precio, { id: 'crResultado' });
+
+  const listo = V.sel && !V.cargando && !V.errorPrecios && valorDeReferencia(V.precios, V.cero, V.sim.valor);
+  return `<section class="card cr-asistida">
+    <div class="card-cab"><h3>Búsqueda asistida</h3>
+      <form id="fVehiculo" class="va-buscar" novalidate role="search"><input type="search" class="cr-filtro" id="ve_q" ${atar('cred.veh.q')} autocomplete="off" placeholder="O buscá por nombre: amarok, onix…" maxlength="60" aria-label="Buscar un vehículo por nombre"><button class="btn small" type="submit" id="ve_ir" ${V.buscando ? 'disabled' : ''}>${V.buscando ? 'Buscando…' : 'Buscar'}</button></form></div>
     ${V.marcasError ? `<div class="aviso-chico cr-reintentar"><span>${esc(V.marcasError)}</span><button class="btn small" type="button" data-a="ve-marcas">Reintentar</button></div>` : ''}
     ${V.error ? `<div class="aviso-chico" role="alert">${esc(V.error)}</div>` : ''}
-    <p class="hint m0">Elegí la marca para ver sus modelos, o escribí parte del nombre del modelo.</p>
+    <div class="va-cols">${cMarca}${cModelo}${cAnio}${cVersion}${cPrecio}</div>
+    ${V.sel ? `<div class="va-pie">${listo ? '<button class="btn small primary" type="button" data-cr-modo="simulacion">Simular un crédito con este vehículo →</button>' : ''}
+      <span class="hint">${esc(V.sel.descripcion)}${listo ? ` · ${esc(listo.etiqueta)}: <b class="mono">${esc(plata(listo.pesos))}</b>` : ''}</span></div>` : ''}
+    <p class="hint m0">Precios de referencia de InfoAuto, en pesos. Los usados son los de mercado del año en curso.</p>
   </section>`;
-  let resultado = '';
-  if (V.cargando) resultado = `<section class="card cr-resultado" id="crResultado"><p class="hint m0">Buscando el precio…</p></section>`;
-  else if (V.sel) resultado = V.errorPrecios
-    ? `<section class="card cr-resultado" id="crResultado"><div class="aviso-chico cr-reintentar" role="alert"><span>${esc(V.errorPrecios)}</span><button class="btn small" type="button" data-a="ve-reintentar">Reintentar</button></div></section>`
-    : fichaVehiculo(V.sel, V.precios, V.cero, V.anio)
-      + `<p class="hint m0 cr-ir-sim"><button class="btn small" type="button" data-cr-modo="simulacion">Simular un crédito con este vehículo →</button></p>`;
-  const lista = V.lista;
-  const historial = `<section class="card cr-historial">
-    <div class="card-cab"><h3>Modelos</h3>${lista ? `<span class="hint">${lista.length}</span>` : ''}</div>
-    ${lista && lista.length ? `<div class="cr-lista">${lista.slice(0, 1000).map((m) => filaModelo(m, V.sel?.codia === m.codia)).join('')}</div>${V.incompleta ? '<p class="hint m0">Hay más modelos: escribí algo más preciso (por ejemplo, la versión o el motor) para achicar la búsqueda.</p>' : ''}`
-      : `<p class="hint m0">${lista ? 'No se encontraron modelos. Probá con otra marca o con parte del nombre.' : 'Acá aparecen los modelos que encuentres.'}</p>`}
-  </section>`;
-  return `${form}${resultado}${historial}`;
+}
+
+/** Después de redibujar, cada lista muestra lo que está elegido (si no, una marca del fondo queda fuera de vista). */
+function mostrarElegidas() {
+  document.querySelectorAll('.va-lista').forEach((l) => {
+    const e = l.querySelector('.elegida'); if (!e) return;
+    if (e.offsetTop < l.scrollTop || e.offsetTop + e.offsetHeight > l.scrollTop + l.clientHeight) l.scrollTop = e.offsetTop - l.clientHeight / 3;
+  });
 }
 
 
@@ -938,35 +989,88 @@ function pedirMarcas() {
     .finally(() => { V.marcasCargando = false; if (S.vista === 'creditos' && S.cred.modo === 'vehiculo') render(); });
 }
 
-/** Busca modelos por marca o por texto. Guarda solo los datos mínimos de cada uno. */
-async function buscarVehiculos({ marca = '', q = '' } = {}) {
-  const V = S.cred.veh, texto = String(q).trim();
-  if (V.buscando) return;
-  if (!marca && !texto) { V.error = 'Elegí una marca o escribí parte del nombre del modelo.'; render(); return; }
-  V.buscando = true; V.error = ''; V.sel = null; V.precios = null; V.cero = null; V.errorPrecios = ''; render();
+// Cada elección invalida las respuestas que todavía no llegaron de la anterior (`V.pedido`).
+const limpiarVersion = (V) => Object.assign(V, { lista: null, incompleta: false, fab: '', fv: '', sel: null, precios: null, cero: null, errorPrecios: '', cargando: false });
+
+/** Elegir una marca: trae sus modelos (grupos de InfoAuto). */
+async function elegirMarca(id) {
+  const V = S.cred.veh, n = ++V.pedido;
+  Object.assign(V, { marca: String(id), grupo: '', grupos: null, gruposCargando: true, texto: false, error: '', buscando: false });
+  limpiarVersion(V); render();
   try {
-    const r = marca ? await consultarInfoAutoTodo(`/brands/${+marca}/models/`) : await consultarInfoAutoTodo('/search/', { query_string: texto }, 5);
+    const { lista: l } = await consultarInfoAutoTodo(`/brands/${+id}/groups/`);
+    if (n !== V.pedido) return;
+    V.grupos = (Array.isArray(l) ? l : []).filter((g) => g && Number.isFinite(+g.id) && g.name && (g.prices || g.list_price))
+      .map((g) => ({ id: +g.id, nombre: String(g.name).replace(/\s+/g, ' ').trim() })).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  } catch (e) {
+    if (n !== V.pedido) return;
+    V.grupos = null; V.error = e.sinSesion ? mensaje(e) : e.message || 'No se pudo consultar a InfoAuto';
+  } finally { if (n === V.pedido) { V.gruposCargando = false; render(); } }
+}
+
+/** Elegir un modelo: trae sus versiones. */
+async function elegirGrupo(id) {
+  const V = S.cred.veh, n = ++V.pedido;
+  if (!V.marca) return;
+  Object.assign(V, { grupo: String(id), error: '', buscando: true });
+  limpiarVersion(V); render();
+  const marca = (V.marcas || []).find((m) => String(m.id) === V.marca)?.name || '', grupo = (V.grupos || []).find((g) => String(g.id) === V.grupo)?.nombre || '';
+  try {
+    const r = await consultarInfoAutoTodo(`/brands/${+V.marca}/groups/${+id}/models/`);
+    if (n !== V.pedido) return;
+    V.lista = r.lista.map(modeloSimple).filter(Boolean).map((m) => ({ ...m, marca: m.marca || marca, grupo: m.grupo || grupo }))
+      .sort((a, b) => a.descripcion.localeCompare(b.descripcion, 'es'));
+    V.incompleta = !r.completa;
+  } catch (e) {
+    if (n !== V.pedido) return;
+    V.lista = null; V.error = e.sinSesion ? mensaje(e) : e.message || 'No se pudo consultar a InfoAuto';
+  } finally { if (n === V.pedido) { V.buscando = false; render(); } }
+}
+
+/** Elegir el año de fabricación: filtra las versiones; con una versión elegida, marca ese año en el precio. */
+function elegirFab(y) {
+  const V = S.cred.veh;
+  V.fab = y;
+  if (V.sel && !fabricadaEn(V.sel, y)) Object.assign(V, { sel: null, precios: null, cero: null, errorPrecios: '' });
+  else if (V.sel && y) V.sim.valor = y === '0km' ? 'cero' : y;
+  render();
+}
+
+/** Buscar por nombre: los resultados van a la columna Versión, sin marca ni modelo elegidos. */
+async function buscarVehiculos({ q = '' } = {}) {
+  const V = S.cred.veh, texto = String(q).trim();
+  if (!texto) { V.error = 'Escribí parte del nombre (por ejemplo, amarok) o elegí una marca.'; render(); return; }
+  const n = ++V.pedido;
+  Object.assign(V, { marca: '', grupo: '', grupos: null, gruposCargando: false, texto: true, error: '', buscando: true });
+  limpiarVersion(V); render();
+  try {
+    const r = await consultarInfoAutoTodo('/search/', { query_string: texto }, 5);
+    if (n !== V.pedido) return;
     V.lista = r.lista.map(modeloSimple).filter(Boolean);
     V.incompleta = !r.completa;
   } catch (e) {
+    if (n !== V.pedido) return;
     V.lista = null; V.error = e.sinSesion ? mensaje(e) : e.message || 'No se pudo consultar a InfoAuto';
-  } finally { V.buscando = false; render(); }
+  } finally { if (n === V.pedido) { V.buscando = false; render(); } }
 }
 
 async function elegirVehiculo(codia) {
   const V = S.cred.veh, m = (V.lista || []).find((x) => x.codia === +codia);
   if (!m || V.cargando) return;
-  Object.assign(V, { sel: m, precios: null, cero: null, errorPrecios: '', cargando: true, sim: nuevaSim() }); render(); verResultado();
+  const sim = nuevaSim();
+  if (V.fab) sim.valor = V.fab === '0km' ? 'cero' : V.fab; // el año elegido queda marcado en el precio
+  Object.assign(V, { sel: m, precios: null, cero: null, errorPrecios: '', cargando: true, sim }); render(); verResultado();
   try {
     const [precios, cero] = await Promise.all([
       consultarInfoAuto(`/models/${m.codia}/prices/`),
       m.tiene0km ? consultarInfoAuto(`/models/${m.codia}/list_price`) : Promise.resolve(null),
     ]);
+    if (V.sel !== m) return;
     V.precios = precios; V.cero = cero;
-    if (!V.anio || !preciosPorAnio(precios).some((p) => String(p.anio) === String(V.anio))) V.anio = '';
+    V.anio = valorDeReferencia(precios, cero, V.sim.valor)?.clave || '';
   } catch (e) {
-    V.errorPrecios = e.sinSesion ? mensaje(e) : e.message || 'No se pudo consultar a InfoAuto';
-  } finally { V.cargando = false; render(); verResultado(); }
+    if (V.sel === m) V.errorPrecios = e.sinSesion ? mensaje(e) : e.message || 'No se pudo consultar a InfoAuto';
+  } finally { if (V.sel === m) { V.cargando = false; render(); verResultado(); } }
 }
 
 /** Redibuja solo el resultado (y el capital propuesto) para no perder el foco al escribir. */
@@ -2207,6 +2311,10 @@ document.addEventListener('click', async (e) => {
   const cq = t.closest('[data-consulta]'); if (cq) { await abrirConsulta(cq.dataset.consulta); return; }
   const so = t.closest('[data-sim-origen]'); if (so) { S.cred.simOrigen = so.dataset.simOrigen === 'mano' ? 'mano' : 'vehiculo'; try { localStorage.setItem('cb.simOrigen', S.cred.simOrigen); } catch { /* sin almacenamiento */ } render(); return; }
   const cm = t.closest('[data-cr-modo]'); if (cm) { cambiarModo(cm.dataset.crModo); return; }
+  const vm = t.closest('[data-ve-marca]'); if (vm) { await elegirMarca(vm.dataset.veMarca); return; }
+  const vg = t.closest('[data-ve-grupo]'); if (vg) { await elegirGrupo(vg.dataset.veGrupo); return; }
+  const vf = t.closest('[data-ve-fab]'); if (vf) { elegirFab(vf.dataset.veFab); return; }
+  const vp = t.closest('[data-ve-precio]'); if (vp) { S.cred.veh.sim.valor = S.cred.veh.anio = vp.dataset.vePrecio; render(); return; }
   const veh = t.closest('[data-vehiculo]'); if (veh) { await elegirVehiculo(veh.dataset.vehiculo); return; }
   const rf = t.closest('[data-refi]'); if (rf) { elegirRefi(rf.dataset.refi); return; }
   const dpd = t.closest('[data-dp-deudor]'); if (dpd) { elegirDemanda(dpd.dataset.dpDeudor); return; }
@@ -2252,7 +2360,7 @@ document.addEventListener('input', (e) => {
   if (k.startsWith('cred.refi.')) { actualizarRefi(k); return; }
   if (k === 'cred.cuit') { actualizarCuit(); return; }
   if (k === 'cred.numero' || k === 'cred.entidad') { actualizarCheque(); return; }
-  if (k === 'cred.filtro' || k === 'cred.chFiltro') { render(); return; }
+  if (k === 'cred.filtro' || k === 'cred.chFiltro' || k === 'cred.veh.fm' || k === 'cred.veh.fv') { render(); return; }
   if (el.dataset.re) return; // fechas, casillas y listas: se redibuja con "change"
   if (k.startsWith('f.pago.')) actualizarPie();
   else if (k.startsWith('f.plan.')) {
@@ -2273,7 +2381,6 @@ document.addEventListener('change', (e) => {
   if (k === 'cred.refi.moraTipo') { S.cred.refi.mora = ''; render(); return; } // la fecha y el N° de cuota son campos distintos
   if (k.startsWith('cred.refi.') && k !== 'cred.refi.q') { actualizarRefi(k); return; }
   if (k.startsWith('cred.dp.') && k !== 'cred.dp.q') { actualizarDemanda(); return; }
-  if (k === 'cred.veh.marca') { S.cred.veh.q = ''; if (el.value) buscarVehiculos({ marca: el.value }); return; }
   if (k === 'cred.entidad') { actualizarCheque(); return; } // por si el navegador no avisa con "input"
   if (k === 'f.msg.modelo') { const d = deudor(S.abierto); S.f.msg.propuesta = S.f.msg.propuesta && el.value === 'plan'; S.f.msg.texto = S.f.msg.base = generar(d, S.f.msg); renderFicha(); return; }
   if (k === 'f.msg.numero') { actualizarEnlace(); return; }

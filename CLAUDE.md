@@ -629,6 +629,16 @@ siempre editable) o se toman de un deudor ya cargado: "Tomar los datos de un deu
 - **Lo que falta se avisa en pantalla**, arriba del botón de descarga: `faltanDemanda` (en `demanda.js`) lista por su nombre todo dato que va a salir entre corchetes, y `htmlEstadoDemanda` lo muestra y se actualiza al escribir. Salió de que el ejemplo en gris del Registro («Bell Ville N°1») se leía como un dato ya cargado y la demanda se bajó sin él; ahora el ejemplo dice «Ej.: …». **No poner valores por defecto** en el Registro ni en nada del contrato: cambian según la prenda y un dato equivocado va a un escrito judicial.
 - Lo que falte queda como `[nombre del dato]` en el Word. Pruebas: `node --test tests/demanda.test.mjs` (sin stack).
 
+### Vehículo (pestaña de «Créditos»): búsqueda asistida
+
+Como la de la página de InfoAuto (pedido de la persona, nov 2026: con la lista anterior, angosta, no se leían los modelos):
+una tarjeta a todo el ancho con cinco columnas, Marca (con buscador) → Modelo (los grupos de la marca, `/brands/{id}/groups/`)
+→ Año → Versión (`/brands/{id}/groups/{g}/models/`, el nombre entero, sin cortar) → Precio (0km y usados por año; el año
+elegido queda resaltado y es el valor que toma la Simulación). El año solo filtra las versiones fabricadas ese año
+(`prices_from`–`prices_to`). «O buscá por nombre» manda los resultados de `/search/` a la columna Versión. En el celular las
+columnas se apilan. Código: `vistaVehiculo`, `elegirMarca`, `elegirGrupo`, `elegirFab`, `elegirVehiculo` en `app.js`
+(`V.pedido` descarta respuestas viejas si se elige otra cosa antes de que lleguen); estilos `.va-*` en `styles.css`.
+
 **Sin fondos de video ni de fotos**: en nov 2026 se probó un video de fondo (en el ingreso y después en Inicio) y una foto por
 vista; a la persona no le gustó (las fotos se veían pixeladas) y pidió volver a como estaba. No volver a sumarlos sin que los pida.
 

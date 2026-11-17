@@ -302,6 +302,33 @@ table.lista{width:100%;border-collapse:collapse;min-width:900px}
 .cr-fila-f{display:grid;justify-items:end;gap:1px}
 .cr-fila-f .mono{font-size:12px;color:var(--soft)}
 .cr-fila-f small{font-size:11.5px;color:var(--muted)}
+/* Búsqueda asistida de vehículos (pestaña Vehículo), como la de InfoAuto: Marca, Modelo, Año, Versión y Precio en
+   columnas, cada una con su lista que se desplaza sola. En el celular las columnas se apilan; la versión se lee entera. */
+.cr-asistida{order:1}
+.va-buscar{display:flex;gap:8px;align-items:center;flex:1 1 280px;max-width:440px}
+.va-buscar .cr-filtro{flex:1}
+.va-cols{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+.va-col{display:flex;flex-direction:column;gap:6px;min-width:0;background:var(--sunken);border:1px solid var(--line-soft);border-radius:var(--r-s);padding:10px 8px}
+.va-col h4{margin:0 4px;font-size:15px}
+.va-filtro{width:100%;padding:7px 10px;border:1px solid var(--line-soft);border-radius:var(--r-s);background:var(--surface);color:var(--fg)}
+.va-filtro:focus{border-color:var(--accent);outline:none}
+.va-lista{display:grid;align-content:start;gap:1px;max-height:260px;overflow-y:auto;position:relative}
+.va-item{display:grid;gap:1px;border:0;background:none;color:var(--fg);padding:7px 8px;border-radius:6px;cursor:pointer;text-align:left;width:100%;font:inherit;font-size:13.5px;overflow-wrap:anywhere}
+.va-item:hover{background:var(--hover)}
+.va-item.elegida{background:var(--accent-soft);color:var(--accent-txt);font-weight:600}
+.va-item b{font-weight:500}
+.va-item.elegida b{font-weight:600}
+.va-item .sub{font-size:12px;color:var(--muted);font-weight:400}
+.va-item[data-ve-precio]{grid-template-columns:auto 1fr;gap:10px}
+.va-plata{text-align:right;white-space:nowrap}
+.va-item[data-ve-precio] .mono{white-space:nowrap}
+.va-nada{margin:4px;font-size:13px}
+.va-pie{display:flex;gap:6px 14px;align-items:center;flex-wrap:wrap}  /* el botón a la izquierda: a la derecha lo tapa el botón flotante de Claude */
+@media (min-width:900px){
+  .va-cols{grid-template-columns:minmax(0,.9fr) minmax(0,.9fr) minmax(64px,.5fr) minmax(0,1.6fr) minmax(178px,1.1fr)}
+  .va-lista{max-height:min(62vh,520px)}
+}
+@media (min-width:1140px){ .cr-asistida{grid-column:1 / -1;grid-row:2} }
 /* La ayuda plegable, en bloque: como grilla, cerrada dejaba un hueco abajo. */
 .cr-resultado details.ayuda{display:block}
 .cr-resultado details.ayuda[open]>:not(summary){margin-top:10px}
