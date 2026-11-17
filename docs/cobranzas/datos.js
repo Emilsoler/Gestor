@@ -527,6 +527,11 @@ export async function documentosSolicitud(id) {
   return (await invocarBCRA({ accion: 'archivos', id }, 'agencias')).archivos || [];
 }
 
+/** Elimina una solicitud de agencia y sus documentos (lo hace la función `agencias`: los archivos solo los toca ella). */
+export async function eliminarSolicitud(id) {
+  await invocarBCRA({ accion: 'eliminar', id }, 'agencias');
+}
+
 /**
  * Una consulta a InfoAuto (cotización de vehículos) por la función `infoauto`: la función guarda el
  * usuario y el token, acá solo se dice qué ruta pedir (/search/, /brands/, /models/{codia}/prices/…).

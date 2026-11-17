@@ -16,7 +16,7 @@
 // Pedido: { accion, ... }. Acciones: yo, clave_definida, marcas, modelos {marca}, versiones {marca, grupo},
 // anios {ref}, cotizar {ref, anio, cuotas, monto?, vehiculo?}, bcra {cuit}, solicitar {consulta, ref, anio,
 // cuotas, monto?, vehiculo?, ingresos, ingreso, categoria, datos, consentimiento}, archivo (multipart: id, slot,
-// archivo), enviar {id}, solicitudes; y para la Mutual, archivos {id}.
+// archivo), enviar {id}, solicitudes; y para la Mutual, archivos {id} y eliminar {id}.
 //
 // BCRA: la agencia consulta el CUIT de su cliente en la Central de Deudores (API pública). La consulta queda
 // guardada entera en consultas_bcra para la Mutual; a la agencia se le devuelve solo el color y el nombre.
@@ -493,6 +493,15 @@ export async function manejar(req: Request): Promise<Response> {
         slot: String(x.slot || ''), nombre: String(x.nombre || ''), tipo: String(x.tipo || ''), tamano: Number(x.tamano) || 0, url: await enlace(String(x.path || '')),
       })));
       return responder({ archivos }, 200, cors);
+    }
+    if (accion === 'eliminar') {
+      // Solo para la Mutual: borra la solicitud y sus documentos del almacenamiento (los documentos no se recuperan).
+      if (!ag.miembro) throw new Falla('Pedido desconocido.', 400, 'accion');
+      if (!esUuid(pedido.id)) throw new Falla('Falta la solicitud.', 400, 'pedido');
+      const g = await rpc('solicitud_eliminar', { p_user: uid, p_id: pedido.id });
+      await borrarArchivos(Array.isArray(g?.borrar) ? g.borrar : []);
+      if (!g?.ok) throw new Falla('No se pudo eliminar la solicitud. Probá de nuevo.', 502, 'base');
+      return responder({ ok: true }, 200, cors);
     }
     if (accion === 'solicitudes') {
       return responder({ solicitudes: ag.miembro ? [] : await rpc('agencia_solicitudes', { p_user: uid }) }, 200, cors);

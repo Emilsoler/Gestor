@@ -4,7 +4,7 @@ import {
   D, iniciar, reconectar, entrar, salir, cambiarClave, alCambiar, mensaje, ajustes, ESTADOS,
   crearDeudor, cambiarDeudor, borrarDeudor, crearModelo, guardarModelo, borrarModelo, guardarAjustes,
   consultarInfoAuto, consultarInfoAutoTodo, consultarBCRA, detalleConsulta, detalleGuardado, borrarConsulta, consultarCheque, entidadesCheques, borrarConsultaCheque, crearCasoRefi, actualizarCasoRefi, borrarCasoRefi, archivarCasoRefi,
-  leerAgencias, contarSolicitudes, guardarAjustesAgencias, altaAgencia, activarAgencia, resolverSolicitud, documentosSolicitud,
+  leerAgencias, contarSolicitudes, guardarAjustesAgencias, altaAgencia, activarAgencia, resolverSolicitud, documentosSolicitud, eliminarSolicitud,
 } from './datos.js';
 import { htmlAgencias, avisoInicio, parametrosEnTexto, leerParametros, TABS_AGENCIAS } from './agencias.js';
 import {
@@ -67,7 +67,7 @@ const S = {
   },
   // Agencias (el cotizador para agencias): lo leído, la pestaña, los enlaces a documentos ya pedidos, lo que se escribe
   // (notas para la agencia, parámetros y alta, atados con data-k) y cuántas solicitudes esperan respuesta.
-  ag: { datos: null, cargando: false, error: '', tab: 'solicitudes', msg: '', docs: new Map(), notas: {}, p: {}, alta: {}, pend: 0 },
+  ag: { datos: null, cargando: false, error: '', tab: 'solicitudes', msg: '', docs: new Map(), notas: {}, p: {}, alta: {}, pend: 0, borrar: '' },
 };
 try { S.vista = VISTAS[localStorage.getItem('cb.vista')] ? localStorage.getItem('cb.vista') : 'inicio'; } catch { /* sin almacenamiento */ }
 try { if (localStorage.getItem('cb.simOrigen') === 'mano') S.cred.simOrigen = 'mano'; } catch { /* sin almacenamiento */ }
@@ -535,6 +535,13 @@ async function accionAgencias(act, b) {
     render(); return;
   }
   if (act === 'ag-pdf') { await pdfDeSolicitud(id); return; }
+  if (act === 'ag-borrar-preguntar' || act === 'ag-borrar-no') { G.borrar = act === 'ag-borrar-preguntar' ? id : ''; render(); return; }
+  if (act === 'ag-borrar') {
+    try { await eliminarSolicitud(id); } catch (e) { toast(mensaje(e, 'no se pudo eliminar la solicitud')); return; }
+    G.borrar = ''; G.docs.delete(id); delete G.notas[id];
+    toast('Solicitud eliminada');
+    await cargarAgencias(); return;
+  }
   if (act === 'ag-resolver') {
     const estado = b.dataset.estado;
     try { await resolverSolicitud(id, estado, String(G.notas[id] || '').trim()); } catch (e) { toast(mensaje(e)); return; }

@@ -165,9 +165,13 @@ function solicitud(x, A, est, notas) {
     ${documentos(x, est.docs)}
     ${pend ? `<label class="f">Nota para la agencia (opcional)<input data-k="ag.notas.${esc(x.id)}" value="${esc(notas[x.id] || '')}" maxlength="500" autocomplete="off"></label>
       <div class="actions"><button class="btn primary" data-a="ag-resolver" data-id="${esc(x.id)}" data-estado="aprobada">Aprobar</button>
-        <button class="btn" data-a="ag-resolver" data-id="${esc(x.id)}" data-estado="rechazada">Rechazar</button></div>`
+        <button class="btn" data-a="ag-resolver" data-id="${esc(x.id)}" data-estado="rechazada">Rechazar</button>
+        ${est.borrar === x.id ? '' : `<button class="btn" data-a="ag-borrar-preguntar" data-id="${esc(x.id)}">Eliminar</button>`}</div>`
       : `<p class="hint m0">${esc(x.resuelto_por || '')} · ${esc(fechaHora(x.resuelto))}${x.nota ? ` · «${esc(x.nota)}»` : ''}
-        <button class="btn small" data-a="ag-resolver" data-id="${esc(x.id)}" data-estado="pendiente">Volver a pendiente</button></p>`}
+        <button class="btn small" data-a="ag-resolver" data-id="${esc(x.id)}" data-estado="pendiente">Volver a pendiente</button>
+        ${est.borrar === x.id ? '' : `<button class="btn small" data-a="ag-borrar-preguntar" data-id="${esc(x.id)}">Eliminar</button>`}</p>`}
+    ${est.borrar === x.id ? `<div class="aviso-chico ag-borrar" role="alert"><span>¿Eliminar la solicitud de ${esc(x.denominacion || cuitLindo(x.cuit))}? Se borran también sus documentos y no se puede deshacer desde la app.</span>
+      <div class="actions"><button class="btn danger small" data-a="ag-borrar" data-id="${esc(x.id)}">Sí, eliminar</button><button class="btn small" data-a="ag-borrar-no" data-id="${esc(x.id)}">No</button></div></div>` : ''}
   </section>`;
 }
 
