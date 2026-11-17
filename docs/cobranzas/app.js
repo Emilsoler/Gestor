@@ -3,7 +3,7 @@
 import {
   D, iniciar, reconectar, entrar, salir, cambiarClave, alCambiar, mensaje, ajustes, ESTADOS,
   crearDeudor, cambiarDeudor, borrarDeudor, crearModelo, guardarModelo, borrarModelo, guardarAjustes,
-  consultarInfoAuto, consultarBCRA, detalleConsulta, detalleGuardado, borrarConsulta, consultarCheque, entidadesCheques, borrarConsultaCheque, crearCasoRefi, actualizarCasoRefi, borrarCasoRefi, archivarCasoRefi,
+  consultarInfoAuto, consultarInfoAutoTodo, consultarBCRA, detalleConsulta, detalleGuardado, borrarConsulta, consultarCheque, entidadesCheques, borrarConsultaCheque, crearCasoRefi, actualizarCasoRefi, borrarCasoRefi, archivarCasoRefi,
 } from './datos.js';
 import {
   avisoCuit, soloDigitos, fichaConsulta, filaConsulta, textoConsulta, deudoresDelCuit,
@@ -601,7 +601,7 @@ function vistaVehiculo() {
   const lista = V.lista;
   const historial = `<section class="card cr-historial">
     <div class="card-cab"><h3>Modelos</h3>${lista ? `<span class="hint">${lista.length}</span>` : ''}</div>
-    ${lista && lista.length ? `<div class="cr-lista">${lista.slice(0, 200).map((m) => filaModelo(m, V.sel?.codia === m.codia)).join('')}</div>`
+    ${lista && lista.length ? `<div class="cr-lista">${lista.slice(0, 1000).map((m) => filaModelo(m, V.sel?.codia === m.codia)).join('')}</div>${V.incompleta ? '<p class="hint m0">Hay más modelos: escribí algo más preciso (por ejemplo, la versión o el motor) para achicar la búsqueda.</p>' : ''}`
       : `<p class="hint m0">${lista ? 'No se encontraron modelos. Probá con otra marca o con parte del nombre.' : 'Acá aparecen los modelos que encuentres.'}</p>`}
   </section>`;
   return `${form}${resultado}${historial}`;
@@ -841,8 +841,8 @@ function pedirMarcas() {
   const V = S.cred.veh;
   if (V.marcas || V.marcasCargando) return;
   V.marcasCargando = true; V.marcasError = '';
-  consultarInfoAuto('/brands/')
-    .then((l) => { V.marcas = (Array.isArray(l) ? l : []).filter((m) => m && Number.isFinite(+m.id) && m.name).map((m) => ({ id: +m.id, name: String(m.name) })).sort((a, b) => a.name.localeCompare(b.name, 'es')); })
+  consultarInfoAutoTodo('/brands/')
+    .then(({ lista: l }) => { V.marcas = (Array.isArray(l) ? l : []).filter((m) => m && Number.isFinite(+m.id) && m.name).map((m) => ({ id: +m.id, name: String(m.name) })).sort((a, b) => a.name.localeCompare(b.name, 'es')); })
     .catch((e) => { V.marcasError = e.sinSesion ? mensaje(e) : `No se pudieron traer las marcas. ${e.message || ''}`.trim(); })
     .finally(() => { V.marcasCargando = false; if (S.vista === 'creditos' && S.cred.modo === 'vehiculo') render(); });
 }
@@ -854,8 +854,9 @@ async function buscarVehiculos({ marca = '', q = '' } = {}) {
   if (!marca && !texto) { V.error = 'Elegí una marca o escribí parte del nombre del modelo.'; render(); return; }
   V.buscando = true; V.error = ''; V.sel = null; V.precios = null; V.cero = null; V.errorPrecios = ''; render();
   try {
-    const r = marca ? await consultarInfoAuto(`/brands/${+marca}/models/`) : await consultarInfoAuto('/search/', { query_string: texto });
-    V.lista = (Array.isArray(r) ? r : []).map(modeloSimple).filter(Boolean);
+    const r = marca ? await consultarInfoAutoTodo(`/brands/${+marca}/models/`) : await consultarInfoAutoTodo('/search/', { query_string: texto }, 5);
+    V.lista = r.lista.map(modeloSimple).filter(Boolean);
+    V.incompleta = !r.completa;
   } catch (e) {
     V.lista = null; V.error = e.sinSesion ? mensaje(e) : e.message || 'No se pudo consultar a InfoAuto';
   } finally { V.buscando = false; render(); }

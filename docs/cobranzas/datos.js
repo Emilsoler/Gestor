@@ -495,6 +495,32 @@ export async function consultarInfoAuto(ruta, params = {}) {
   return (await invocarBCRA({ ruta, params }, 'infoauto')).resultado;
 }
 
+/**
+ * Una lista de InfoAuto que viene por páginas (búsqueda, modelos de una marca): pide página tras página
+ * hasta completar la búsqueda, con un tope de `maxPaginas` para no recorrer el catálogo (InfoAuto lo
+ * considera mal uso). Saca repetidos por CODIA. Devuelve { lista, completa }.
+ */
+export async function consultarInfoAutoTodo(ruta, params = {}, maxPaginas = 10) {
+  const lista = [], vistos = new Set();
+  let completa = false;
+  for (let pagina = 1; pagina <= maxPaginas; pagina++) {
+    const r = await invocarBCRA({ ruta, params: { ...params, page: pagina, page_size: 100 } }, 'infoauto');
+    const items = Array.isArray(r.resultado) ? r.resultado : [];
+    let nuevos = 0;
+    for (const m of items) {
+      const k = m?.codia ?? (m?.id != null ? `id${m.id}` : JSON.stringify(m));
+      if (vistos.has(k)) continue;
+      vistos.add(k); lista.push(m); nuevos++;
+    }
+    const pg = r.paginacion || {};
+    const totalPaginas = Number(pg.total_pages ?? pg.pages ?? pg.last_page);
+    if (!items.length || !nuevos) { completa = true; break; }
+    if (Number.isFinite(totalPaginas) && totalPaginas > 0) { if (pagina >= totalPaginas) { completa = true; break; } }
+    else if (items.length < 100) { completa = true; break; }
+  }
+  return { lista, completa };
+}
+
 /** Consulta un CUIT en la Central de Deudores. Devuelve la consulta guardada, con su detalle. */
 export async function consultarBCRA(cuit) {
   const c = (await invocarBCRA({ cuit })).consulta;

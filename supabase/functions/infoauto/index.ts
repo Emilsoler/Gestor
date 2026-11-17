@@ -5,13 +5,13 @@
 //   /datetime   /current_year   /brands/   /search/   /models/{codia}   /models/{codia}/prices/   /models/{codia}/list_price
 //
 // Usuario y contraseña NO están en el código: se cargan como secretos en Supabase
-//   INFOAUTO_USER, INFOAUTO_PASS (y opcional INFOAUTO_API, por defecto el entorno de prueba).
+//   INFOAUTO_USER, INFOAUTO_PASS (y opcional INFOAUTO_API, por defecto el servicio real de producción).
 // El token se guarda en public.infoauto_token y se reutiliza (dura 1 hora; se renueva con el refresh token
 // de 24 horas). Pedir un token nuevo en cada consulta se considera mal uso de la API.
 // No se permiten las rutas que bajan el catálogo completo (/batch/, /brands/download/).
 const URL_BASE = Deno.env.get('SUPABASE_URL') || '';
 const CLAVE_SERVICIO = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
-const API = (Deno.env.get('INFOAUTO_API') || 'https://demo.api.infoauto.com.ar').replace(/\/+$/, '');
+const API = (Deno.env.get('INFOAUTO_API') || 'https://api.infoauto.com.ar').replace(/\/+$/, '');
 const ORIGENES = (Deno.env.get('GESTOR_ORIGENES') || 'https://emilsoler.github.io,http://127.0.0.1:8080').split(',').map((s) => s.trim());
 
 function clavePublica() {
@@ -122,7 +122,7 @@ async function accessToken(): Promise<string> {
   return t.access;
 }
 
-async function consulta(ruta: string, params: Record<string, unknown>): Promise<{ status: number; cuerpo: unknown }> {
+async function consulta(ruta: string, params: Record<string, unknown>): Promise<{ status: number; cuerpo: unknown; paginacion: unknown }> {
   const url = new URL(`${API}/cars/pub${ruta}`);
   for (const [k, v] of Object.entries(params || {})) {
     if (v === null || v === undefined || typeof v === 'object') continue;
@@ -137,7 +137,11 @@ async function consulta(ruta: string, params: Record<string, unknown>): Promise<
   const texto = await r.text();
   let cuerpo: unknown = texto;
   try { cuerpo = texto ? JSON.parse(texto) : null; } catch { /* queda el texto */ }
-  return { status: r.status, cuerpo };
+  // InfoAuto devuelve las listas por páginas y cuenta cuántas hay en la cabecera X-Pagination.
+  let paginacion: unknown = null;
+  const cab = r.headers.get('x-pagination');
+  if (cab) { try { paginacion = JSON.parse(cab); } catch { paginacion = null; } }
+  return { status: r.status, cuerpo, paginacion };
 }
 
 export async function manejar(req: Request): Promise<Response> {
@@ -164,7 +168,7 @@ export async function manejar(req: Request): Promise<Response> {
       console.error(JSON.stringify({ infoauto: 'error', ruta, status: r.status }));
       return responder({ error: 'infoauto', status: r.status, mensaje: `InfoAuto respondió ${r.status}.`, detalle: r.cuerpo }, r.status === 429 ? 429 : 502, cors);
     }
-    return responder({ ruta, resultado: r.cuerpo }, 200, cors);
+    return responder({ ruta, resultado: r.cuerpo, paginacion: r.paginacion }, 200, cors);
   } catch (e) {
     if (e instanceof ErrorInfoAuto) {
       console.error(JSON.stringify({ infoauto: 'error', codigo: e.codigo }));
