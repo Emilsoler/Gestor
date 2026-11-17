@@ -59,6 +59,9 @@ const copias = [
   ['@fontsource/eb-garamond/LICENSE', 'fonts/LICENCIA-EB-Garamond.txt'],
   ['@fontsource/caladea/LICENSE', 'fonts/LICENCIA-Caladea.txt'],
   ['@supabase/supabase-js/LICENSE', 'vendor/LICENCIA-supabase-js.txt'],
+  // pdf-lib (MIT): «Descargar todo en un PDF» de las solicitudes de agencias (docs/cobranzas/unirpdf.js), que la carga recién ahí
+  ['pdf-lib/dist/pdf-lib.esm.min.js', 'vendor/pdf-lib.js'],
+  ['pdf-lib/LICENSE.md', 'vendor/LICENCIA-pdf-lib.txt'],
 ];
 
 let total = 0;
@@ -75,6 +78,10 @@ for (const [de, a] of oficio) {
   total += statSync(destino).size;
   console.log(String(statSync(destino).size).padStart(8), a);
 }
+// Sin el aviso del mapa de fuentes, que no se copia (el navegador lo pediría y daría 404).
+const pdfLib = join(docs, 'vendor/pdf-lib.js');
+writeFileSync(pdfLib, readFileSync(pdfLib, 'utf8').replace(/\n\/\/# sourceMappingURL=.*\s*$/, '\n'));
 const v = JSON.parse(readFileSync(join(nm, '@supabase/supabase-js/package.json'), 'utf8')).version;
-writeFileSync(join(docs, 'vendor/VERSIONES.txt'), `@supabase/supabase-js ${v} (dist/umd/supabase.js)\n`);
+const vp = JSON.parse(readFileSync(join(nm, 'pdf-lib/package.json'), 'utf8')).version;
+writeFileSync(join(docs, 'vendor/VERSIONES.txt'), `@supabase/supabase-js ${v} (dist/umd/supabase.js)\npdf-lib ${vp} (dist/pdf-lib.esm.min.js)\n`);
 console.log(String(total).padStart(8), 'bytes en total · supabase-js', v);

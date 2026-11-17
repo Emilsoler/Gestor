@@ -112,15 +112,17 @@ function documentos(x, docs) {
   const sin = vacios.length ? `<p class="aviso-chico" role="status"><b>Sin adjuntar:</b> ${esc(vacios.map((k) => DOCS[k]?.titulo || k).join('; '))}.</p>` : '';
   if (!n) return sin;
   const D = docs.get(x.id);
+  const pdf = `<button class="btn" data-a="ag-pdf" data-id="${esc(x.id)}">Descargar todo en un PDF</button>`;
   if (!D || D.error) {
     return `${sin}${D?.error ? `<p class="aviso-chico" role="alert">${esc(D.error)}</p>` : ''}
-      <div class="actions"><button class="btn" data-a="ag-docs" data-id="${esc(x.id)}">Ver documentos (${n})</button></div>`;
+      <div class="actions"><button class="btn" data-a="ag-docs" data-id="${esc(x.id)}">Ver documentos (${n})</button>${pdf}</div>`;
   }
   if (D.cargando) return '<p class="hint m0">Buscando los documentos…</p>';
   const grupos = Object.keys(DOCS).map((k) => [k, D.lista.filter((a) => a.slot === k)]).filter(([, xs]) => xs.length);
   return `${sin}<div class="ag-docs"><b>Documentos</b>${grupos.map(([k, xs]) => `<div><span class="hint">${esc(DOCS[k].titulo)}</span><ul>${xs.map((a) =>
     `<li>${a.url ? `<a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.nombre)}</a>` : esc(a.nombre)} <span class="hint">${tamano(a.tamano)}</span></li>`).join('')}</ul></div>`).join('')}
-    <p class="hint m0">Los enlaces vencen a los 15 minutos. Si uno vence, <button class="btn small" data-a="ag-docs" data-id="${esc(x.id)}">pedilos de nuevo</button>.</p></div>`;
+    <p class="hint m0">Los enlaces vencen a los 15 minutos. Si uno vence, <button class="btn small" data-a="ag-docs" data-id="${esc(x.id)}">pedilos de nuevo</button>.</p>
+    <div class="actions">${pdf}</div></div>`;
 }
 
 function solicitud(x, A, est, notas) {

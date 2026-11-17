@@ -790,7 +790,11 @@ Mutual y no nombra a InfoAuto.
   (`agencia_solicitar`, `agencia_archivo`, `agencia_enviar`, clave de servicio). La Mutual las ve en Créditos y Cobros →
   Agencias → **Solicitudes**: el BCRA con su detalle, el crédito, los ingresos, los datos (avisa si el DNI no
   coincide con el CUIL) y «Ver documentos», que pide a la función (acción `archivos`, solo miembros) enlaces que vencen a los
-  15 minutos. Las aprueba o rechaza con una nota: los miembros solo pueden cambiar `estado` y `nota`; quién y cuándo resolvió
+  15 minutos. **«Descargar todo en un PDF»** (`docs/cobranzas/unirpdf.js`, pedido de la persona del 17/11/2026) pide esos enlaces,
+  baja cada archivo y arma en el navegador un solo PDF: carátula (cliente, agencia, crédito, documentos y «Sin adjuntar»), y
+  después cada documento por casillero, con un rótulo arriba (los PDF con sus páginas; cada foto en una A4); lo que no se pueda
+  leer queda como una hoja «No se pudo incluir». Usa pdf-lib (MIT; `docs/vendor/pdf-lib.js`, copiada por `dev/vendor.mjs`),
+  que se carga recién al tocar el botón. Las aprueba o rechaza con una nota: los miembros solo pueden cambiar `estado` y `nota`; quién y cuándo resolvió
   lo pone la base. La agencia ve en «Mis solicitudes» en qué quedó cada una. No hay aviso por mail ni WhatsApp de una solicitud
   nueva: se ve en Créditos y Cobros (la insignia de la solapa y el aviso de Inicio). Son datos personales y documentos de identidad e ingresos: no salen de ahí y no se
   copian al repositorio. El almacenamiento del plan gratuito es de 1 GB (una solicitud con fotos ocupa unos pocos MB).

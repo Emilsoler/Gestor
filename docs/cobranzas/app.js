@@ -499,6 +499,28 @@ async function contarPendientes() {
   if (S.vista === 'agencias') cargarAgencias(); else render();
 }
 
+/** «Descargar todo en un PDF»: los documentos de la solicitud, con enlaces recién pedidos, en un solo archivo. */
+async function pdfDeSolicitud(id) {
+  const sol = S.ag.datos?.solicitudes.find((x) => x.id === id);
+  if (!sol) return;
+  toast('Armando el PDF con los documentos…');
+  try {
+    const archivos = await documentosSolicitud(id);
+    const bajarArchivo = async (url) => {
+      if (!url) throw new Error('sin enlace');
+      const r = await fetch(url);
+      if (!r.ok) throw new Error('archivo ' + r.status);
+      return new Uint8Array(await r.arrayBuffer());
+    };
+    const { pdfSolicitud } = await import('./unirpdf.js');
+    const { bytes, problemas } = await pdfSolicitud(sol, archivos, bajarArchivo, { hoy: hoy() });
+    const nombre = String(sol.denominacion || sol.cuit || 'cliente').replace(/[\\/:*?"<>|]+/g, ' ').trim();
+    const archivo = `${hoy().slice(2).replace(/-/g, '')} - Solicitud de crédito - ${nombre}.pdf`;
+    if (!(await entregar(new Blob([bytes], { type: 'application/pdf' }), archivo))) return;
+    toast(problemas.length ? `PDF listo, pero no se pudo incluir: ${problemas.join(', ')}` : `PDF listo: ${archivo}`);
+  } catch (e) { console.error(e); toast(mensaje(e, 'no se pudo armar el PDF')); }
+}
+
 async function accionAgencias(act, b) {
   const G = S.ag, id = b.dataset.id;
   if (act === 'ag-recargar') { G.error = ''; await cargarAgencias(); return; }
@@ -512,6 +534,7 @@ async function accionAgencias(act, b) {
     try { G.docs.set(id, { lista: await documentosSolicitud(id) }); } catch (e) { G.docs.set(id, { error: mensaje(e, 'no se pudieron buscar los documentos') }); }
     render(); return;
   }
+  if (act === 'ag-pdf') { await pdfDeSolicitud(id); return; }
   if (act === 'ag-resolver') {
     const estado = b.dataset.estado;
     try { await resolverSolicitud(id, estado, String(G.notas[id] || '').trim()); } catch (e) { toast(mensaje(e)); return; }
