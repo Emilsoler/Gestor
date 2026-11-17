@@ -3,7 +3,7 @@
 //
 // Lo usan la app (docs/agencias/solicitud.js) y la función `agencias` (supabase/functions/agencias/solicitud.js,
 // copia exacta: las pruebas comparan los dos archivos; si se cambia uno, copiar el otro). La base repite la
-// lista de casilleros obligatorios en gestor.docs_requeridos (migración 0028): también la comparan las pruebas.
+// lista de casilleros obligatorios en gestor.docs_requeridos (migraciones 0028 y 0029): también la comparan las pruebas.
 // Sin nada del navegador ni de Deno.
 
 export const CATEGORIAS = {
@@ -21,17 +21,19 @@ export const DOCS = {
   ganancias: { titulo: 'Última declaración jurada de Ganancias', max: 3, esperados: 1 },
   dni: { titulo: 'Foto del DNI, de los dos lados', max: 2, esperados: 2 },
   titulo: { titulo: 'Título del automotor', max: 4, esperados: 1 },
+  factura: { titulo: 'Factura del vehículo 0 km', max: 4, esperados: 1 },
   servicio: { titulo: 'Impuesto o servicio a su nombre, con ese domicilio', max: 2, esperados: 1 },
   cbu: { titulo: 'Constancia de CBU y de titularidad de la cuenta', max: 2, esperados: 1 },
 };
 
 export const DOCS_INGRESOS = { dependencia: ['recibos'], monotributo: ['constancia', 'pagos'], inscripto: ['constancia', 'iva', 'ganancias'] };
 
-/** Los casilleros que tienen que tener al menos un archivo. Un 0 km todavía no tiene título: ahí es opcional. */
+/** Los casilleros que tienen que tener al menos un archivo. Un 0 km todavía no tiene título: va la factura. */
 export function docsRequeridos(categoria, anio) {
-  return [...(DOCS_INGRESOS[categoria] || []), 'dni', ...(anio === '0km' ? [] : ['titulo']), 'servicio', 'cbu'];
+  return [...(DOCS_INGRESOS[categoria] || []), 'dni', anio === '0km' ? 'factura' : 'titulo', 'servicio', 'cbu'];
 }
-export const docsPermitidos = (categoria, anio) => [...new Set([...docsRequeridos(categoria, anio), 'titulo'])];
+/** Los que admiten archivos: los mismos (no hay casilleros opcionales). */
+export const docsPermitidos = (categoria, anio) => docsRequeridos(categoria, anio);
 
 export const MAX_BYTES = 10 * 1024 * 1024; // por archivo (igual que el límite de la carpeta del almacenamiento)
 export const MAX_ARCHIVOS = 40; // por solicitud
@@ -50,6 +52,16 @@ export function cbuValido(s) {
   const dv = (digitos, pesos) => (10 - (pesos.reduce((a, p, i) => a + p * Number(digitos[i]), 0) % 10)) % 10;
   return dv(c.slice(0, 7), [7, 1, 3, 9, 7, 1, 3]) === Number(c[7])
     && dv(c.slice(8, 21), [3, 9, 7, 1, 3, 9, 7, 1, 3, 9, 7, 1, 3]) === Number(c[21]);
+}
+
+/** CUIT, CUIL o CDI: 11 números y el último, el dígito verificador (módulo 11). Igual que en bcra.ts. */
+export function cuitValido(s) {
+  const c = String(s ?? '').replace(/\D/g, '');
+  if (c.length !== 11) return false;
+  const pesos = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
+  let dv = 11 - (pesos.reduce((a, p, i) => a + p * Number(c[i]), 0) % 11);
+  if (dv === 11) dv = 0;
+  return dv !== 10 && dv === Number(c[10]);
 }
 
 /** El DNI que lleva un CUIL o CUIT de persona (las 8 cifras del medio, sin ceros adelante); '' si no es de persona. */
@@ -87,8 +99,18 @@ export function revisarDatos(d, hoy) {
   if (celular.length < 8 || celular.length > 15) errores.push('El celular tiene que tener entre 8 y 15 números, con la característica.');
   const cbu = String(d?.cbu ?? '').replace(/\D/g, '');
   if (!cbuValido(cbu)) errores.push(cbu.length === 22 ? 'Ese CBU o CVU no es válido: revisá los números.' : 'El CBU o CVU tiene que tener 22 números.');
+  // La cuenta donde se deposita el crédito: del cliente o de un tercero (con quién es el titular).
+  const cuenta = d?.cuenta;
+  let tercero = {};
+  if (!['propia', 'terceros'].includes(cuenta)) errores.push('Elegí si la cuenta es del cliente o de un tercero.');
+  if (cuenta === 'terceros') {
+    const titular = txt(d?.cuenta_titular, 200), cuit = String(d?.cuenta_cuit ?? '').replace(/\D/g, '');
+    if (titular.length < 3) errores.push('Escribí el nombre o la razón social del titular de la cuenta.');
+    if (!cuitValido(cuit)) errores.push('El CUIT o CUIL del titular de la cuenta no es válido: revisá los números.');
+    tercero = { cuenta_titular: titular, cuenta_cuit: cuit, ...(txt(d?.cuenta_relacion, 120) ? { cuenta_relacion: txt(d?.cuenta_relacion, 120) } : {}) };
+  }
   if (errores.length) return { errores };
   return {
-    datos: { dni, domicilio, estado_civil: estado, ...(estado === 'casado' ? { matrimonio_lugar: lugar, matrimonio_fecha: fecha } : {}), celular, cbu },
+    datos: { dni, domicilio, estado_civil: estado, ...(estado === 'casado' ? { matrimonio_lugar: lugar, matrimonio_fecha: fecha } : {}), celular, cbu, cuenta, ...tercero },
   };
 }

@@ -334,7 +334,7 @@ const objetos = async () => (await fetch(`${ALMACEN}/__objetos`)).json();
 const PDF = (texto = 'hola') => new TextEncoder().encode(`%PDF-1.4\n% ${texto}\n%%EOF\n`);
 const JPG = (n = 1) => new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, n, 0xff, 0xd9]);
 const CBU = '2850590940090418135201'; // válido (dígitos verificadores)
-const DATOS = { dni: '11111111', domicilio: 'Bv. Colón 135, Bell Ville', estado_civil: 'casado', matrimonio_lugar: 'Bell Ville', matrimonio_fecha: '2015-03-20', celular: '3534 123456', cbu: CBU };
+const DATOS = { dni: '11111111', domicilio: 'Bv. Colón 135, Bell Ville', estado_civil: 'casado', matrimonio_lugar: 'Bell Ville', matrimonio_fecha: '2015-03-20', celular: '3534 123456', cbu: CBU, cuenta: 'propia' };
 
 async function subir(jwt, id, slot, bytes, nombre = `${slot}.pdf`) {
   const fd = new FormData();
@@ -353,7 +353,7 @@ test('las reglas de la solicitud: copia igual en la función, casilleros como en
   }
   for (const [k, d] of Object.entries(SOL.DOCS)) assert.equal(Number(sql(`select gestor.docs_maximo('${k}')`)), d.max, k);
   assert.deepEqual(SOL.docsRequeridos('dependencia', '2020'), ['recibos', 'dni', 'titulo', 'servicio', 'cbu']);
-  assert.deepEqual(SOL.docsRequeridos('monotributo', '0km'), ['constancia', 'pagos', 'dni', 'servicio', 'cbu']);
+  assert.deepEqual(SOL.docsRequeridos('monotributo', '0km'), ['constancia', 'pagos', 'dni', 'factura', 'servicio', 'cbu'], 'un 0 km lleva la factura');
   assert.deepEqual(SOL.docsRequeridos('inscripto', '2019'), ['constancia', 'iva', 'ganancias', 'dni', 'titulo', 'servicio', 'cbu']);
   assert.ok(SOL.cbuValido(CBU));
   assert.ok(SOL.cbuValido('285 0590 9 4009041813520 1'.replace(/ /g, '')));
@@ -365,8 +365,15 @@ test('las reglas de la solicitud: copia igual en la función, casilleros como en
   assert.equal(SOL.relacionCuota(1, 0), null);
   assert.deepEqual(SOL.revisarDatos(DATOS, '2026-11-17').datos, { ...DATOS, celular: '3534123456' });
   const { errores } = SOL.revisarDatos({ dni: '12', domicilio: 'x', estado_civil: 'casado', matrimonio_fecha: '2030-01-01', celular: '12', cbu: CBU.slice(0, 21) + '9' }, '2026-11-17');
-  assert.equal(errores.length, 6);
+  assert.equal(errores.length, 7, errores.join(' | '));
   assert.deepEqual(SOL.revisarDatos({ ...DATOS, estado_civil: 'soltero' }, '2026-11-17').datos.matrimonio_lugar, undefined);
+  // Cuenta de un tercero: titular y su CUIT (válido); la relación es opcional.
+  const tercero = { ...DATOS, cuenta: 'terceros', cuenta_titular: 'Autos del Sur SA', cuenta_cuit: '30-44444444-0', cuenta_relacion: 'Agencia vendedora' };
+  assert.deepEqual(SOL.revisarDatos(tercero, '2026-11-17').datos, { ...tercero, celular: '3534123456', cuenta_cuit: '30444444440' });
+  assert.equal(SOL.revisarDatos({ ...tercero, cuenta_cuit: '30444444441' }, '2026-11-17').errores.length, 1);
+  assert.equal(SOL.revisarDatos({ ...tercero, cuenta_titular: '' }, '2026-11-17').errores.length, 1);
+  assert.equal(SOL.revisarDatos({ ...DATOS, cuenta: '' }, '2026-11-17').errores.length, 1, 'hay que elegir de quién es la cuenta');
+  assert.equal(SOL.revisarDatos({ ...DATOS, cuenta: 'propia', cuenta_titular: 'X' }, '2026-11-17').datos.cuenta_titular, undefined);
   assert.deepEqual(SOL.tipoArchivo(PDF()), { tipo: 'application/pdf', ext: 'pdf' });
   assert.deepEqual(SOL.tipoArchivo(JPG()), { tipo: 'image/jpeg', ext: 'jpg' });
   assert.equal(SOL.tipoArchivo(new TextEncoder().encode('<html>')), null);
@@ -393,6 +400,7 @@ test('semáforo: rojo no apto; amarillo y sin antecedentes siguen, sujetos a rev
 
 test('solicitud completa: ingresos, 45 %, datos, documentos a la carpeta privada y la Mutual los abre', async () => {
   sql(PARAMS_MUTUAL + "; delete from public.solicitudes_credito");
+  await fetch(`${ALMACEN}/__objetos`, { method: 'DELETE' });
   await cargarCasosBCRA();
   const verde = (await pedir(agencia, { accion: 'bcra', cuit: CUIT.verde })).datos.consulta;
   const ref = (await pedir(agencia, { accion: 'versiones', marca: 1, grupo: 10 })).datos.versiones[0].ref;
@@ -451,6 +459,8 @@ test('solicitud completa: ingresos, 45 %, datos, documentos a la carpeta privada
   assert.equal(r.status, 415);
   r = await subir(agencia, id, 'recibos', PDF());
   assert.equal(r.status, 400, 'recibos no es de monotributo');
+  r = await subir(agencia, id, 'factura', PDF());
+  assert.equal(r.status, 400, 'la factura es solo para un 0 km');
   assert.equal((await objetos()).length, 0, 'lo rechazado no queda guardado');
   const otra = (await entrar('salon3@test.local', 'Agencia-123456').catch(() => null))?.sesion?.access_token
     || await cuentaAgencia('salon3@test.local', 'Salón Tres');

@@ -4,7 +4,7 @@
 //   DELETE /object/{carpeta}   {prefixes:[…]}    borrar
 //   POST   /object/sign/{carpeta}/{ruta}         enlace firmado → {signedURL: "/object/sign/…?token=…"}
 //   GET    /object/sign/{carpeta}/{ruta}?token=  bajar con el enlace (sin clave, como el real)
-// Todo en memoria. GET /__objetos lista lo guardado (para las pruebas).
+// Todo en memoria. GET /__objetos lista lo guardado y DELETE /__objetos lo vacía (para las pruebas).
 import http from 'node:http';
 import { randomBytes } from 'node:crypto';
 
@@ -30,6 +30,7 @@ http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   const ruta = decodeURIComponent(url.pathname);
   try {
+    if (ruta === '/__objetos' && req.method === 'DELETE') { objetos.clear(); firmas.clear(); return json(res, 200, []); }
     if (ruta === '/__objetos') return json(res, 200, [...objetos.entries()].map(([k, v]) => ({ clave: k, tipo: v.tipo, tamano: v.bytes.length })));
     let m = ruta.match(/^\/object\/sign\/(.+)$/);
     if (m && req.method === 'GET') {

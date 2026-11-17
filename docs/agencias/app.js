@@ -56,6 +56,7 @@ function nuevaSol() {
   return {
     abierta: false, ingresos: null, ingreso: '', categoria: '', docs: {},
     dni: '', domicilio: '', estado_civil: '', matrimonio_lugar: '', matrimonio_fecha: '', celular: '', cbu: '', conformidad: false,
+    cuenta: '', cuenta_titular: '', cuenta_cuit: '', cuenta_relacion: '',
     errores: [], error: '', enviando: false, progreso: '', preparando: 0, enviada: false, envio: null,
   };
 }
@@ -241,7 +242,8 @@ function quitarArchivo(slot, i) {
 
 function revisarSolicitud() {
   const L = S.sol, errores = [];
-  const rd = revisarDatos({ dni: L.dni, domicilio: L.domicilio, estado_civil: L.estado_civil, matrimonio_lugar: L.matrimonio_lugar, matrimonio_fecha: L.matrimonio_fecha, celular: L.celular, cbu: L.cbu }, hoy());
+  const rd = revisarDatos({ dni: L.dni, domicilio: L.domicilio, estado_civil: L.estado_civil, matrimonio_lugar: L.matrimonio_lugar, matrimonio_fecha: L.matrimonio_fecha,
+    celular: L.celular, cbu: L.cbu, cuenta: L.cuenta, cuenta_titular: L.cuenta_titular, cuenta_cuit: L.cuenta_cuit, cuenta_relacion: L.cuenta_relacion }, hoy());
   if (rd.errores) errores.push(...rd.errores);
   for (const k of docsRequeridos(L.categoria, S.res.anio)) if (!L.docs[k]?.length) errores.push(`Adjuntá: ${DOCS[k].titulo}.`);
   if (!L.conformidad) errores.push('Marcá que el cliente está de acuerdo con enviar sus datos y documentos a la Mutual.');
@@ -560,7 +562,7 @@ function casillero(slot) {
   const L = S.sol, d = DOCS[slot], xs = L.docs[slot] || [];
   const requerido = docsRequeridos(L.categoria, S.res.anio).includes(slot);
   const etq = xs.length ? (xs.length < d.esperados ? `<span class="etq">${xs.length} de ${d.esperados}</span>` : '<span class="etq ok">Listo</span>')
-    : requerido ? '<span class="etq no">Falta</span>' : '<span class="etq">Opcional</span>';
+    : requerido ? '<span class="etq no">Falta</span>' : '';
   return `<div class="doc" id="doc-${slot}">
     <div class="card-cab"><b>${esc(d.titulo)}</b>${etq}</div>
     ${xs.length ? `<ul class="doc-lista">${xs.map((x, i) => `<li><span class="doc-nombre">${esc(x.nombre)}</span><span class="hint">${tamano(x.file.size)}</span><button class="btn chico" type="button" data-quitar="${slot}" data-i="${i}" ${L.enviando ? 'disabled' : ''}>Quitar</button></li>`).join('')}</ul>` : ''}
@@ -595,7 +597,7 @@ function vistaSolicitud() {
       ${dniCuit && dni && dni !== dniCuit ? '<p class="aviso suave m0">No coincide con el CUIL que se consultó en el BCRA.</p>' : ''}
       ${casillero('dni')}</div>
     <div class="bloque"><div class="f">Vehículo cotizado<div class="dato">${esc(r.vehiculo)} · ${esc(etiquetaAnio(r.anio))}</div></div>
-      ${casillero('titulo')}${r.anio === '0km' ? '<p class="hint m0">Es 0 km: todavía no tiene título, así que es opcional.</p>' : ''}</div>
+      ${casillero(r.anio === '0km' ? 'factura' : 'titulo')}</div>
     <div class="bloque"><label class="f">Domicilio real<input data-campo="domicilio" autocomplete="off" maxlength="300" placeholder="Calle, número y localidad" value="${v('domicilio')}"></label>
       ${casillero('servicio')}</div>
     <div class="bloque"><div class="f">Estado civil<div class="opciones2" role="radiogroup" aria-label="Estado civil">
@@ -606,7 +608,15 @@ function vistaSolicitud() {
         <label class="f">Fecha del matrimonio<input data-campo="matrimonio_fecha" type="date" max="${hoy()}" value="${v('matrimonio_fecha')}"></label></div>` : ''}</div>
     <div class="bloque"><label class="f">Celular, con característica<input data-campo="celular" type="tel" inputmode="tel" autocomplete="off" maxlength="25" placeholder="Ej.: 3534 123456" value="${v('celular')}"></label></div>
     <div class="bloque"><label class="f">CBU o CVU donde se deposita el crédito<input data-campo="cbu" inputmode="numeric" autocomplete="off" maxlength="30" value="${v('cbu')}"></label>
-      ${casillero('cbu')}</div>
+      <div class="f">¿De quién es la cuenta?<div class="opciones2" role="radiogroup" aria-label="Titular de la cuenta">
+        <button type="button" role="radio" data-cuenta="propia" aria-checked="${L.cuenta === 'propia'}">Cuenta propia</button>
+        <button type="button" role="radio" data-cuenta="terceros" aria-checked="${L.cuenta === 'terceros'}">De un tercero</button></div></div>
+      ${L.cuenta === 'terceros' ? `<div class="grilla">
+        <label class="f">Titular de la cuenta (nombre o razón social)<input data-campo="cuenta_titular" autocomplete="off" maxlength="200" value="${v('cuenta_titular')}"></label>
+        <label class="f">CUIT o CUIL del titular<input data-campo="cuenta_cuit" inputmode="numeric" autocomplete="off" maxlength="20" value="${v('cuenta_cuit')}"></label>
+        <label class="f ancho">Relación con el cliente (opcional)<input data-campo="cuenta_relacion" autocomplete="off" maxlength="120" placeholder="Ej.: agencia vendedora, cónyuge" value="${v('cuenta_relacion')}"></label></div>` : ''}
+      ${casillero('cbu')}
+      ${L.cuenta === 'terceros' ? '<p class="hint m0">La constancia tiene que mostrar el CBU y quién es el titular.</p>' : ''}</div>
     <label class="check"><input type="checkbox" id="chkConformidad" ${L.conformidad ? 'checked' : ''}> El cliente está de acuerdo con enviar estos datos y documentos a la Asociación Mutual Bell para que evalúe el crédito.</label>
     ${L.errores.length ? `<div class="aviso m0" role="alert" id="erroresSol"><b>Antes de enviar, falta:</b><ul>${L.errores.map((e) => `<li>${esc(e)}</li>`).join('')}</ul></div>` : ''}
     ${L.error ? `<p class="aviso m0" role="alert">${esc(L.error)}</p>` : ''}
@@ -711,6 +721,8 @@ function vistaAdmin() {
           ${d.estado_civil ? fila('Estado civil', d.estado_civil === 'casado' ? `Casado/a · ${esc(d.matrimonio_lugar || '')}, ${esc(d.matrimonio_fecha ? d.matrimonio_fecha.split('-').reverse().join('/') : '')}` : 'Soltero/a') : ''}
           ${x.cliente ? fila('Celular', esc(x.cliente)) : ''}
           ${d.cbu ? fila('CBU o CVU', `<span class="mono">${esc(d.cbu)}</span>`) : ''}
+          ${d.cuenta === 'propia' ? fila('Cuenta', 'Propia del cliente') : ''}
+          ${d.cuenta === 'terceros' ? fila('Cuenta', `<span class="etq rev">De un tercero</span> ${esc(d.cuenta_titular || '')} · ${esc(cuitLindo(d.cuenta_cuit || ''))}${d.cuenta_relacion ? ` · ${esc(d.cuenta_relacion)}` : ''}`) : ''}
         </tbody></table>
         ${motivos.length ? `<p class="hint m0">BCRA: ${esc(motivos.join(' · '))}</p>` : ''}
         ${docs(x)}
@@ -866,6 +878,7 @@ document.addEventListener('click', (e) => {
   else if (t.dataset.ingresos) { S.sol.ingresos = t.dataset.ingresos === 'si'; render(); if (S.sol.ingresos) $('#inIngreso')?.focus(); }
   else if (t.dataset.categoria) { S.sol.categoria = t.dataset.categoria; render(); }
   else if (t.dataset.civil) { S.sol.estado_civil = t.dataset.civil; render(); }
+  else if (t.dataset.cuenta) { S.sol.cuenta = t.dataset.cuenta; render(); }
   else if (t.dataset.quitar) quitarArchivo(t.dataset.quitar, Number(t.dataset.i));
   else if (t.id === 'btnEnviarSol') enviarSolicitud();
   else if (t.dataset.docs) verDocumentos(t.dataset.docs);

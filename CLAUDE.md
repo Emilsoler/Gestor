@@ -747,12 +747,14 @@ Mutual y no nombra a InfoAuto.
      `ajustes_agencias.relacion_max` % (45) del ingreso; recién ahí elige cómo los obtiene (relación de dependencia,
      monotributo o responsable inscripto).
   4. **Documentación de ingresos** según esa categoría y 5. **datos del cliente** con la suya: DNI y foto de los dos lados, el
-     vehículo cotizado y el título (opcional en 0 km), domicilio real e impuesto o servicio a su nombre, estado civil (casado:
-     lugar y fecha del matrimonio), celular, y CBU o CVU (con sus dígitos verificadores) y la constancia de la cuenta. Más la
-     conformidad del cliente para mandar sus datos a la Mutual.
+     vehículo cotizado con el título (usado) o la **factura** (0 km; migración 0029), domicilio real e impuesto o servicio a su
+     nombre, estado civil (casado: lugar y fecha del matrimonio), celular, y CBU o CVU (con sus dígitos verificadores), si la
+     cuenta es **propia o de un tercero** (de un tercero: titular, su CUIT o CUIL —validado— y la relación con el cliente,
+     opcional) y la constancia de la cuenta. Más la conformidad del cliente para mandar sus datos a la Mutual. Todos los
+     casilleros son obligatorios.
   Los casilleros, sus topes de archivos y los controles de los datos están en `docs/agencias/solicitud.js`, con **copia exacta**
   en `supabase/functions/agencias/solicitud.js`; los obligatorios también en `gestor.docs_requeridos` (las pruebas comparan los
-  tres). Si se cambia la documentación que se pide, cambiar los tres y `gestor.docs_maximo`.
+  tres). Si se cambia la documentación que se pide, cambiar los tres y `gestor.docs_maximo` (migración nueva).
 - **Envío** (acciones `solicitar`, `archivo`, `enviar`): `solicitar` recalcula el crédito (no confía en el navegador), controla
   ingresos, relación, datos y conformidad, y crea la solicitud en estado `cargando` (exige una consulta al BCRA no roja de esa
   agencia, de los últimos 3 días, y no deja dos pendientes para el mismo CUIT; las que quedaron a medio cargar de ese cliente, o
@@ -762,9 +764,10 @@ Mutual y no nombra a InfoAuto.
   **no tiene políticas**: solo la usa la función, con la clave de servicio. La app achica las fotos antes de subirlas (2000 px,
   JPEG) y pasa a JPG las PNG o las del iPhone. `enviar` controla que estén todos los casilleros obligatorios y la deja `pendiente`.
   Mientras está `cargando` no la ve nadie y la Mutual no la puede resolver.
-- **Solicitudes** (`public.solicitudes_credito`, migraciones 0027 y 0028): agencia, CUIT, nombre, color del BCRA, vehículo,
+- **Solicitudes** (`public.solicitudes_credito`, migraciones 0027 a 0029): agencia, CUIT, nombre, color del BCRA, vehículo,
   año, monto, cuotas, cuota, total, tasa, CFT, `ingreso`, `relacion`, `categoria`, `datos` (DNI, domicilio, estado civil,
-  matrimonio, celular, CBU), `archivos` y `cliente` (el celular); sin valor del vehículo ni CODIA. Las crea solo la función
+  matrimonio, celular, CBU, `cuenta` propia|terceros y, de un tercero, `cuenta_titular`, `cuenta_cuit`, `cuenta_relacion`),
+  `archivos` y `cliente` (el celular); sin valor del vehículo ni CODIA. Las crea solo la función
   (`agencia_solicitar`, `agencia_archivo`, `agencia_enviar`, clave de servicio). La Mutual las ve en Administración →
   **Solicitudes** (la pestaña de arranque): el BCRA con su detalle, el crédito, los ingresos, los datos (avisa si el DNI no
   coincide con el CUIL) y «Ver documentos», que pide a la función (acción `archivos`, solo miembros) enlaces que vencen a los
