@@ -463,7 +463,7 @@ export const guardarAjustes = (rev, campos) => modificar('ajustes_cobranzas', 1,
 
 /** Un pedido a la función `bcra`. Los errores salen con el mensaje en palabras que manda la función. */
 async function invocarBCRA(cuerpo, fn = 'bcra') {
-  const quien = fn === 'bcra' ? 'al BCRA' : 'a InfoAuto';
+  const quien = fn === 'bcra' ? 'al BCRA' : fn === 'agencias' ? 'al cotizador de agencias' : 'a InfoAuto';
   if (!sb) throw Object.assign(new Error('La app no está conectada a su base de datos'), { codigo: 'sin_configurar' });
   let r;
   try { r = await sb.functions.invoke(fn, { body: cuerpo }); } catch (e) { throw marcar(e); }
@@ -484,6 +484,47 @@ async function invocarBCRA(cuerpo, fn = 'bcra') {
   }
   ponerEnLinea(true);
   return r.data;
+}
+
+// ───────────────────────── Agencias (cotizador docs/agencias/) ─────────────────────────
+// Lo que la Mutual administra del cotizador para agencias: las solicitudes de aprobación de crédito, los
+// parámetros, las agencias habilitadas y sus cotizaciones (tablas de las migraciones 0025 a 0029, con las
+// mismas barreras que el resto). Los documentos de cada solicitud están en una carpeta privada del
+// almacenamiento que solo lee la función `agencias`: acá se le piden enlaces que vencen a los 15 minutos.
+
+/** Todo lo de la vista Agencias. Con cada solicitud, el detalle del BCRA de su consulta (por qué dio ese color). */
+export async function leerAgencias() {
+  if (!sb) throw Object.assign(new Error('La app no está conectada a su base de datos'), { codigo: 'sin_configurar' });
+  const [ajustes, agencias, cotizaciones, solicitudes] = await Promise.all([
+    pedir(sb.from('ajustes_agencias').select('*').eq('id', 1).maybeSingle()),
+    pedir(sb.from('agencias').select('*').order('nombre')),
+    pedir(sb.from('cotizaciones_agencia').select('*').order('momento', { ascending: false }).limit(200)),
+    // Las que la agencia todavía está cargando (subiendo archivos) no se muestran.
+    pedir(sb.from('solicitudes_credito').select('*').neq('estado', 'cargando').order('momento', { ascending: false }).limit(200)),
+  ]);
+  const ids = [...new Set(solicitudes.map((x) => x.consulta).filter(Boolean))];
+  const bcra = ids.length ? await pedir(sb.from('consultas_bcra').select('id,semaforo,motivos,deuda_total,entidades,peor_situacion,periodo').in('id', ids)) : [];
+  return { ajustes, agencias, cotizaciones, solicitudes, bcra: new Map(bcra.map((x) => [x.id, x])) };
+}
+
+/** Cuántas solicitudes esperan respuesta (para el aviso de la solapa). 0 si no se pudo saber. */
+export async function contarSolicitudes() {
+  if (!sb) return 0;
+  try {
+    const r = await sb.from('solicitudes_credito').select('id', { count: 'exact', head: true }).eq('estado', 'pendiente');
+    return r.error ? 0 : r.count || 0;
+  } catch { return 0; }
+}
+
+export const guardarAjustesAgencias = (fila) => pedir(sb.from('ajustes_agencias').update(fila).eq('id', 1));
+export const altaAgencia = (email, nombre, informada, notas) =>
+  pedir(sb.rpc('alta_agencia', { p_email: email, p_nombre: nombre, p_informada: informada, p_notas: notas }));
+export const activarAgencia = (id, activa) => pedir(sb.from('agencias').update({ activa }).eq('id', id));
+/** La Mutual solo cambia el estado y la nota; quién y cuándo resolvió lo pone la base. */
+export const resolverSolicitud = (id, estado, nota) => pedir(sb.from('solicitudes_credito').update({ estado, nota }).eq('id', id));
+/** Los documentos de una solicitud: [{slot, nombre, tipo, tamano, url}], con enlaces que vencen a los 15 minutos. */
+export async function documentosSolicitud(id) {
+  return (await invocarBCRA({ accion: 'archivos', id }, 'agencias')).archivos || [];
 }
 
 /**

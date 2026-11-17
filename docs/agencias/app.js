@@ -5,8 +5,8 @@
 // los devuelve: acá no llega ni el valor ni el código del vehículo (licencia de la guía de precios), solo
 // el monto máximo, las cuotas y las tasas. La app no lee la base: a las agencias la API les está cerrada.
 //
-// Un usuario de la Mutual (miembro del gestor) entra en «vista previa» y además ve «Administración»:
-// solicitudes, parámetros del crédito, agencias y cotizaciones (eso sí, por la API de la base, con sus permisos).
+// Un usuario de la Mutual (miembro del gestor) entra en «vista previa», sin enviar nada. La administración
+// (solicitudes, parámetros, agencias y cotizaciones) está en Créditos y Cobros → Agencias.
 //
 // El recorrido de la agencia: 1) CUIT del cliente → BCRA (verde «Continuar»; amarillo o sin antecedentes
 // «Continuar – Sujeto a revisión»; rojo «No apto»); 2) vehículo y crédito; 3) si quieren avanzar: ingresos
@@ -15,8 +15,10 @@
 import { CATEGORIAS, DOCS, DOCS_INGRESOS, MAX_BYTES, docsPermitidos, docsRequeridos, dniDelCuit, relacionCuota, revisarDatos, tipoArchivo } from './solicitud.js';
 
 const cfg = window.GESTOR_CONFIG || {};
+// Sesión propia, no la del gestor ('gestor.sesion', que comparten el gestor, Cobranzas y Prenda): así entrar acá
+// con la cuenta de una agencia no saca a la persona de sus apps en ese mismo navegador, ni al revés.
 const sb = window.supabase && cfg.url && cfg.key && window.top === window.self
-  ? window.supabase.createClient(cfg.url, cfg.key, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: 'gestor.sesion' } })
+  ? window.supabase.createClient(cfg.url, cfg.key, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: 'agencias.sesion' } })
   : null;
 
 const $ = (s) => document.querySelector(s);
@@ -24,18 +26,6 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const plata = (n) => `$ ${Math.round(Number(n) || 0).toLocaleString('es-AR')}`;
 const pct = (n) => `${(Number(n) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} %`;
 const soloNumero = (s) => Number(String(s ?? '').replace(/[^\d]/g, '')) || 0;
-/** "1,2" o "1.2" → 1.2; "13.000" o "13000" → 13000; vacío → null. Con coma, los puntos son de miles; sin coma, un
- *  punto seguido de exactamente 3 cifras también (13.000), y si no es el decimal (1.2, 0.1). */
-const numero = (s) => {
-  let t = String(s ?? '').trim().replace(/\s|\$/g, '');
-  if (t === '') return null;
-  if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
-  else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');
-  const n = Number(t);
-  return Number.isFinite(n) ? n : NaN;
-};
-/** Para mostrar en un campo: decimales con coma, sin separador de miles. */
-const enCampo = (v) => (v === null || v === undefined || v === '' ? '' : String(v).replace('.', ','));
 const fechaHora = (s) => { const d = new Date(s); return isNaN(d) ? '' : d.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }); };
 
 const S = {
@@ -47,7 +37,6 @@ const S = {
   plazo: 0, monto: '', cargando: '', res: null,
   cuit: '', bcra: null, bcraError: '', continuo: false, confirmarOtro: false, sols: null,
   sol: null, // la solicitud que se está armando (nuevaSol)
-  adm: null, admTab: 'solicitudes', admMsg: '',
 };
 
 /** Lo que la agencia va cargando de la solicitud. `docs`: casillero → [{file, nombre}] (los archivos quedan en el
@@ -133,7 +122,7 @@ async function cambiarClave(a, b) {
 
 async function salir() {
   try { await sb?.auth.signOut(); } catch { /* igual se limpia */ }
-  Object.assign(S, { fase: 'ingreso', yo: null, error: '', marcas: null, marca: '', modelos: null, modelo: '', versiones: null, version: '', anios: null, anio: '', res: null, adm: null, vista: 'cotizar', cuit: '', bcra: null, bcraError: '', continuo: false, confirmarOtro: false, sols: null, sol: nuevaSol() });
+  Object.assign(S, { fase: 'ingreso', yo: null, error: '', marcas: null, marca: '', modelos: null, modelo: '', versiones: null, version: '', anios: null, anio: '', res: null, vista: 'cotizar', cuit: '', bcra: null, bcraError: '', continuo: false, confirmarOtro: false, sols: null, sol: nuevaSol() });
   render();
 }
 
@@ -352,95 +341,6 @@ function textoParaComprador(r) {
     + (r.leyenda ? `${r.leyenda}\n` : '') + (r.contacto ? `${r.contacto}\n` : '') + (S.yo?.agencia && !S.yo.miembro ? `\nAtentamente, ${S.yo.agencia}` : '');
 }
 
-// ───────────────────────── Administración (solo la Mutual) ─────────────────────────
-async function cargarAdmin() {
-  S.adm = { cargando: true }; render();
-  try {
-    const [aj, ag, co, so] = await Promise.all([
-      sb.from('ajustes_agencias').select('*').eq('id', 1).maybeSingle(),
-      sb.from('agencias').select('*').order('nombre'),
-      sb.from('cotizaciones_agencia').select('*').order('momento', { ascending: false }).limit(200),
-      sb.from('solicitudes_credito').select('*').neq('estado', 'cargando').order('momento', { ascending: false }).limit(200),
-    ]);
-    const err = aj.error || ag.error || co.error || so.error;
-    if (err) throw err;
-    // El detalle del BCRA de cada solicitud (por qué dio ese color), de las consultas guardadas.
-    const ids = [...new Set((so.data || []).map((x) => x.consulta).filter(Boolean))];
-    const bc = ids.length ? await sb.from('consultas_bcra').select('id,semaforo,motivos,deuda_total,entidades,peor_situacion,periodo').in('id', ids) : { data: [] };
-    S.adm = { ajustes: aj.data, agencias: ag.data || [], cotizaciones: co.data || [], solicitudes: so.data || [], bcra: new Map((bc.data || []).map((x) => [x.id, x])), docs: new Map() };
-  } catch (e) {
-    S.adm = { error: /relation|PGRST205|does not exist/i.test(`${e.code} ${e.message}`) ? 'Falta activar el cotizador en la base.' : 'No se pudo leer la administración.' };
-  }
-  render();
-}
-
-async function guardarParametros(form) {
-  const v = (n) => form.elements[n]?.value ?? '';
-  // Plazos: "12, 18, 24" o un rango "1-24" (o "1 a 24").
-  const plazos = [];
-  for (const parte of v('plazos').split(/[,;]+/)) {
-    const m = parte.trim().match(/^(\d+)\s*(?:-|a|al)\s*(\d+)$/i);
-    if (m) { for (let n = Math.min(+m[1], +m[2]); n <= Math.max(+m[1], +m[2]) && plazos.length < 200; n++) plazos.push(n); }
-    else for (const n of parte.split(/[^\d]+/).filter(Boolean).map(Number)) plazos.push(n);
-  }
-  // Tasas por modelo: "2021=5; 2018=6; 2014=7" (desde ese año, esa tasa).
-  const tasas = [];
-  let tasasMal = false;
-  for (const parte of v('tasas').split(/[;\n]+/).map((x) => x.trim()).filter(Boolean)) {
-    const m = parte.match(/^(\d{4})\s*[=:]\s*([\d.,]+)\s*%?$/);
-    const t = m ? numero(m[2]) : NaN;
-    if (!m || !(t >= 0)) { tasasMal = true; break; }
-    tasas.push({ desde: +m[1], tasa: t });
-  }
-  if (tasasMal) { S.admMsg = 'Las tasas por modelo van así: 2021=5; 2018=6; 2014=7 (desde ese año, esa tasa).'; render(); return; }
-  const g = {};
-  for (const k of ['sellado', 'arancel', 'arancelMin', 'contratos', 'envio', 'gestoria', 'seguro', 'administrativos', 'cuotaSocial', 'igr']) g[k] = numero(v(`g_${k}`)) ?? 0;
-  g.redondeo = numero(v('g_redondeo'));
-  const fila = {
-    habilitado: form.elements.habilitado.checked,
-    pct_financiable: numero(v('pct_financiable')), tasa_mensual: numero(v('tasa_mensual')), plazos: [...new Set(plazos.filter((n) => n >= 1 && n <= 120))].sort((a, b) => a - b),
-    anio_minimo: numero(v('anio_minimo')), tasas: tasas.sort((x, y) => y.desde - x.desde),
-    antiguedad_max: numero(v('antiguedad_max')), monto_minimo: numero(v('monto_minimo')) ?? 0, monto_maximo: numero(v('monto_maximo')),
-    relacion_max: numero(v('relacion_max')) ?? 45,
-    redondeo: numero(v('redondeo')) || 1, tope_diario: numero(v('tope_diario')) || 300, leyenda: v('leyenda').trim(), contacto: v('contacto').trim(), gastos: g,
-  };
-  if (!fila.plazos.length) { S.admMsg = 'Escribí al menos un plazo (por ejemplo: 12, 18, 24 o 1-24).'; render(); return; }
-  const malos = Object.entries({ ...fila, ...g }).filter(([, x]) => typeof x === 'number' && Number.isNaN(x)).map(([k]) => k);
-  if (malos.length || fila.pct_financiable == null || fila.tasa_mensual == null) { S.admMsg = 'Hay un número mal escrito: revisá los campos (usá coma para los decimales).'; render(); return; }
-  const { error } = await sb.from('ajustes_agencias').update(fila).eq('id', 1);
-  S.admMsg = error ? `No se guardó: ${error.message}` : 'Parámetros guardados.';
-  await cargarAdmin();
-  if (!error) await cargarYo();
-}
-
-async function altaAgencia(form) {
-  const v = (n) => form.elements[n].value.trim();
-  if (!v('email') || !v('nombre') || !v('informada')) { S.admMsg = 'Completá nombre, email y la fecha en que se informó a la guía de precios.'; render(); return; }
-  const { error } = await sb.rpc('alta_agencia', { p_email: v('email'), p_nombre: v('nombre'), p_informada: v('informada'), p_notas: v('notas') });
-  S.admMsg = error ? error.message : 'Agencia habilitada.';
-  await cargarAdmin();
-}
-
-/** Los documentos de una solicitud: enlaces que da la función y vencen a los 15 minutos. */
-async function verDocumentos(id) {
-  S.adm.docs.set(id, { cargando: true }); render();
-  try { S.adm.docs.set(id, { lista: (await fn({ accion: 'archivos', id })).archivos || [], hora: Date.now() }); } catch (e) { S.adm.docs.set(id, { error: e.message }); }
-  render();
-}
-
-async function resolverSolicitud(id, estado) {
-  const nota = document.querySelector(`[data-nota="${CSS.escape(id)}"]`)?.value.trim() || '';
-  const { error } = await sb.from('solicitudes_credito').update({ estado, nota }).eq('id', id);
-  S.admMsg = error ? `No se guardó: ${error.message}` : estado === 'aprobada' ? 'Solicitud aprobada.' : estado === 'rechazada' ? 'Solicitud rechazada.' : 'La solicitud volvió a pendiente.';
-  await cargarAdmin();
-}
-
-async function cambiarActiva(id, activa) {
-  const { error } = await sb.from('agencias').update({ activa }).eq('id', id);
-  S.admMsg = error ? error.message : (activa ? 'Agencia activada.' : 'Agencia pausada: ya no puede cotizar.');
-  await cargarAdmin();
-}
-
 // ───────────────────────── Pantallas ─────────────────────────
 function vistaIngreso() {
   return `<section class="card ingreso">
@@ -501,7 +401,8 @@ function vistaCliente() {
 function vistaCotizar() {
   const Y = S.yo;
   if (!Y.habilitado && !Y.miembro) return `<section class="card"><h2>El cotizador todavía no está habilitado</h2><p class="hint m0">Consultá con la Asociación Mutual Bell.</p></section>`;
-  const aviso = !Y.habilitado ? '<p class="aviso suave m0 no-imprimir">Las agencias todavía no pueden usarlo: habilitalo en Administración → Parámetros cuando los revises.</p>' : '';
+  const aviso = Y.miembro ? `<p class="aviso suave m0 no-imprimir">Vista previa de la Mutual: probás el recorrido sin enviar nada.${Y.habilitado ? '' : ' Las agencias todavía no pueden usarlo.'}
+      Las solicitudes, los parámetros y las agencias se manejan en <a href="../cobranzas/#agencias">Créditos y Cobros → Agencias</a>.</p>` : '';
   if (!S.bcra || !S.continuo) return aviso + vistaCliente();
   const c = S.cargando;
   const anios = S.anios ? S.anios.map((a) => ({ id: a, nombre: etiquetaAnio(a) })) : null;
@@ -666,140 +567,6 @@ function vistaSolicitudes() {
     </div>`).join('')}</section>`;
 }
 
-/** [1,2,3,…,24] → "1-24"; [12,18,24] → "12, 18, 24". */
-function plazosTexto(xs) {
-  const v = [...new Set((xs || []).map(Number))].sort((a, b) => a - b), out = [];
-  for (let i = 0; i < v.length; i++) {
-    let j = i;
-    while (j + 1 < v.length && v[j + 1] === v[j] + 1) j++;
-    out.push(j - i >= 2 ? `${v[i]}-${v[j]}` : v.slice(i, j + 1).join(', '));
-    i = j;
-  }
-  return out.join(', ');
-}
-
-function vistaAdmin() {
-  const A = S.adm;
-  if (!A || A.cargando) return '<section class="card"><p class="hint m0">Cargando…</p></section>';
-  if (A.error) return `<section class="card"><p class="aviso m0">${esc(A.error)}</p></section>`;
-  const tabs = `<nav class="tabs" role="tablist">${[['solicitudes', `Solicitudes${A.solicitudes.some((x) => x.estado === 'pendiente') ? ` (${A.solicitudes.filter((x) => x.estado === 'pendiente').length})` : ''}`], ['parametros', 'Parámetros'], ['agencias', `Agencias (${A.agencias.filter((x) => x.activa).length}/20)`], ['cotizaciones', 'Cotizaciones']]
-    .map(([k, t]) => `<button role="tab" data-adm="${k}" aria-selected="${S.admTab === k}">${esc(t)}</button>`).join('')}</nav>`;
-  const msg = S.admMsg ? `<p class="aviso suave m0" role="status">${esc(S.admMsg)}</p>` : '';
-  let cuerpo = '';
-  if (S.admTab === 'solicitudes') {
-    const SEM = { verde: ['Verde · Continuar', 'ok'], amarillo: ['Amarillo · Sujeto a revisión', 'rev'], sin_datos: ['Sin antecedentes · Sujeto a revisión', 'rev'], rojo: ['Rojo · No apto', 'no'] };
-    const fila = (t, v) => `<tr><td>${t}</td><td class="num">${v}</td></tr>`;
-    const docs = (x) => {
-      const n = Array.isArray(x.archivos) ? x.archivos.length : 0;
-      if (!n) return '';
-      const D = A.docs.get(x.id);
-      if (!D || D.error) return `${D?.error ? `<p class="aviso m0">${esc(D.error)}</p>` : ''}<div class="acciones"><button class="btn" type="button" data-docs="${esc(x.id)}">Ver documentos (${n})</button></div>`;
-      if (D.cargando) return '<p class="hint m0">Buscando los documentos…</p>';
-      const grupos = Object.keys(DOCS).map((k) => [k, D.lista.filter((a) => a.slot === k)]).filter(([, xs]) => xs.length);
-      return `<div class="docs-adm"><b>Documentos</b>${grupos.map(([k, xs]) => `<div><span class="hint">${esc(DOCS[k].titulo)}</span><ul class="doc-lista">${xs.map((a) =>
-        `<li>${a.url ? `<a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.nombre)}</a>` : esc(a.nombre)}<span class="hint">${tamano(a.tamano)}</span></li>`).join('')}</ul></div>`).join('')}
-        <p class="hint m0">Los enlaces vencen a los 15 minutos: si vence uno, tocá <button class="btn chico" type="button" data-docs="${esc(x.id)}">Ver documentos</button> de nuevo.</p></div>`;
-    };
-    const una = (x) => {
-      const b = A.bcra.get(x.consulta), motivos = Array.isArray(b?.motivos) ? b.motivos : [];
-      const pend = x.estado === 'pendiente', d = x.datos || {}, [semT, semC] = SEM[x.semaforo] || [x.semaforo, ''];
-      const dniCuit = dniDelCuit(x.cuit);
-      return `<div class="sol">
-        <div class="card-cab"><b>${esc(x.denominacion || cuitLindo(x.cuit))}</b>${etqEstado(x.estado)}</div>
-        <div class="hint">${esc(fechaHora(x.enviada || x.momento))} · pide <b>${esc(x.agencia)}</b></div>
-        <table><tbody>
-          ${fila('CUIT', esc(cuitLindo(x.cuit)))}
-          ${fila('BCRA', `<span class="etq ${semC}">${esc(semT)}</span>`)}
-          ${b ? fila('Deuda informada · entidades', `${plata(b.deuda_total)} · ${esc(b.entidades)}`) : ''}
-          ${fila('Vehículo', `${esc(x.vehiculo)} (${esc(etiquetaAnio(x.anio))})`)}
-          ${fila('Crédito', `${plata(x.monto)} en ${x.cuotas} × ${plata(x.cuota)}`)}
-          ${fila('Total · tasa mensual · CFT', `${plata(x.total)} · ${pct(x.tasa)} · ${pct(x.cft)}`)}
-          ${x.ingreso ? fila('Ingreso mensual declarado', `${plata(x.ingreso)} · la cuota es el ${porcentaje(x.relacion)} %`) : ''}
-          ${x.categoria ? fila('Ingresos', esc(CATEGORIAS[x.categoria] || x.categoria)) : ''}
-          ${d.dni ? fila('DNI', `${esc(Number(d.dni).toLocaleString('es-AR'))}${dniCuit && dniCuit !== d.dni ? ' <span class="etq no">no coincide con el CUIL</span>' : ''}`) : ''}
-          ${d.domicilio ? fila('Domicilio real', esc(d.domicilio)) : ''}
-          ${d.estado_civil ? fila('Estado civil', d.estado_civil === 'casado' ? `Casado/a · ${esc(d.matrimonio_lugar || '')}, ${esc(d.matrimonio_fecha ? d.matrimonio_fecha.split('-').reverse().join('/') : '')}` : 'Soltero/a') : ''}
-          ${x.cliente ? fila('Celular', esc(x.cliente)) : ''}
-          ${d.cbu ? fila('CBU o CVU', `<span class="mono">${esc(d.cbu)}</span>`) : ''}
-          ${d.cuenta === 'propia' ? fila('Cuenta', 'Propia del cliente') : ''}
-          ${d.cuenta === 'terceros' ? fila('Cuenta', `<span class="etq rev">De un tercero</span> ${esc(d.cuenta_titular || '')} · ${esc(cuitLindo(d.cuenta_cuit || ''))}${d.cuenta_relacion ? ` · ${esc(d.cuenta_relacion)}` : ''}`) : ''}
-        </tbody></table>
-        ${motivos.length ? `<p class="hint m0">BCRA: ${esc(motivos.join(' · '))}</p>` : ''}
-        ${docs(x)}
-        ${pend ? `<label class="f">Nota para la agencia (opcional)<input data-nota="${esc(x.id)}" maxlength="500" autocomplete="off"></label>
-          <div class="acciones"><button class="btn primario" type="button" data-resolver="${esc(x.id)}" data-estado="aprobada">Aprobar</button><button class="btn" type="button" data-resolver="${esc(x.id)}" data-estado="rechazada">Rechazar</button></div>`
-          : `<p class="hint m0">${esc(x.resuelto_por)} · ${esc(fechaHora(x.resuelto))}${x.nota ? ` · ${esc(x.nota)}` : ''} <button class="btn chico" type="button" data-resolver="${esc(x.id)}" data-estado="pendiente">Volver a pendiente</button></p>`}
-      </div>`;
-    };
-    const pend = A.solicitudes.filter((x) => x.estado === 'pendiente'), resto = A.solicitudes.filter((x) => x.estado !== 'pendiente');
-    cuerpo = `<section class="card"><h2>Solicitudes de aprobación de crédito</h2>${msg}
-      ${pend.length ? pend.map(una).join('') : '<p class="hint m0">No hay solicitudes pendientes.</p>'}
-      <p class="hint m0">El detalle completo del BCRA de cada cliente está en Créditos y Cobros → Créditos → Deudas por CUIT (la consulta figura hecha por la agencia).</p></section>
-      ${resto.length ? `<section class="card"><h2>Resueltas</h2>${resto.map(una).join('')}</section>` : ''}`;
-  } else if (S.admTab === 'parametros') {
-    const j = A.ajustes || {}, g = j.gastos || {};
-    const campo = (n, t, val, extra = '') => `<label class="f">${esc(t)}<input name="${n}" inputmode="decimal" autocomplete="off" value="${esc(typeof val === 'number' || /^-?\d+(\.\d+)?$/.test(String(val ?? '')) ? enCampo(val) : (val ?? ''))}" ${extra}></label>`;
-    cuerpo = `<form id="fParametros" class="card" novalidate>
-      <h2>Parámetros del crédito</h2>
-      <label class="check"><input type="checkbox" name="habilitado" ${j.habilitado ? 'checked' : ''}> Cotizador habilitado para las agencias</label>
-      <div class="grilla">
-        ${campo('pct_financiable', '% del valor del vehículo que se financia', j.pct_financiable)}
-        ${campo('tasa_mensual', 'Tasa mensual (%) si el modelo no entra en ningún tramo', j.tasa_mensual)}
-        ${campo('plazos', 'Plazos en cuotas (ej.: 12, 18, 24 o un rango: 1-24)', plazosTexto(j.plazos), 'inputmode="text"')}
-        ${campo('tasas', 'Tasa mensual según el modelo (desde el año = tasa %)', (j.tasas || []).map((t) => `${t.desde}=${enCampo(t.tasa)}`).join('; '), 'inputmode="text" placeholder="2021=5; 2018=6; 2014=7"')}
-        ${campo('anio_minimo', 'Modelo más viejo que se financia (año; vacío = sin tope)', j.anio_minimo, 'inputmode="numeric"')}
-        ${campo('antiguedad_max', 'Antigüedad máxima del vehículo (años; vacío = sin tope)', j.antiguedad_max)}
-        ${campo('monto_minimo', 'Monto mínimo ($)', j.monto_minimo)}
-        ${campo('monto_maximo', 'Monto máximo ($; vacío = sin tope)', j.monto_maximo)}
-        ${campo('redondeo', 'Redondear el máximo hacia abajo a ($)', j.redondeo)}
-        ${campo('tope_diario', 'Tope de cotizaciones por agencia y por día', j.tope_diario)}
-        ${campo('relacion_max', 'Relación cuota / ingreso máxima (%)', j.relacion_max ?? 45)}
-      </div>
-      <h3>Gastos (como el simulador interno)</h3>
-      <div class="grilla">
-        ${campo('g_sellado', 'Sellado (% del total del crédito)', g.sellado)}${campo('g_arancel', 'Arancel (% del total del crédito)', g.arancel)}
-        ${campo('g_arancelMin', 'Arancel mínimo ($)', g.arancelMin)}${campo('g_contratos', 'Contratos y administrativos ($)', g.contratos)}
-        ${campo('g_envio', 'Envío de documentación ($)', g.envio)}${campo('g_gestoria', 'Gestoría ($)', g.gestoria)}
-        ${campo('g_redondeo', 'Redondeo de gastos ($; vacío = automático)', g.redondeo)}${campo('g_seguro', 'Seguro de vida (% del capital por cuota)', g.seguro)}
-        ${campo('g_administrativos', 'Gastos administrativos ($ por cuota)', g.administrativos)}${campo('g_cuotaSocial', 'Cuota social ($ por cuota)', g.cuotaSocial)}
-        ${campo('g_igr', 'IGR (% de los intereses)', g.igr)}
-      </div>
-      <label class="f">Leyenda al pie de cada cotización<textarea name="leyenda" maxlength="1000">${esc(j.leyenda || '')}</textarea></label>
-      <label class="f">Contacto de la Mutual (opcional; sale en la cotización)<input name="contacto" maxlength="300" value="${esc(j.contacto || '')}" inputmode="text"></label>
-      ${msg}
-      <div class="acciones"><button class="btn primario" type="submit">Guardar parámetros</button></div>
-    </form>`;
-  } else if (S.admTab === 'agencias') {
-    const filas = A.agencias.map((x) => `<tr><td><b>${esc(x.nombre)}</b><br><span class="hint">${esc(x.email)}</span></td>
-      <td>${x.activa ? '<span class="etq ok">Activa</span>' : '<span class="etq no">Pausada</span>'}<br><span class="hint">Informada: ${esc(x.informada_infoauto || '—')}</span></td>
-      <td><button class="btn chico" type="button" data-activa="${esc(x.id)}" data-valor="${x.activa ? '0' : '1'}">${x.activa ? 'Pausar' : 'Activar'}</button></td></tr>`).join('');
-    cuerpo = `<section class="card"><h2>Agencias</h2>
-      ${A.agencias.length ? `<div class="scroll"><table><tbody>${filas}</tbody></table></div>` : '<p class="hint m0">Todavía no hay agencias.</p>'}
-      ${msg}</section>
-      <form id="fAlta" class="card" novalidate>
-        <h2>Agregar una agencia</h2>
-        <p class="hint m0">1) Avisale por escrito a la guía de precios que vas a sumar esta agencia (lo exige la licencia; tope: 20).
-          2) Creá su cuenta en el panel de Supabase (Authentication → Users → Add user, con «Auto Confirm User») con una contraseña provisoria.
-          3) Completá esto: al entrar, la agencia va a tener que elegir su propia contraseña.</p>
-        <div class="grilla">
-          <label class="f">Nombre de la agencia<input name="nombre" maxlength="120" autocomplete="off"></label>
-          <label class="f">Email de la cuenta<input name="email" type="email" autocomplete="off"></label>
-          <label class="f">Fecha en que se informó a la guía de precios<input name="informada" type="date"></label>
-          <label class="f">Notas<input name="notas" maxlength="500" autocomplete="off"></label>
-        </div>
-        <div class="acciones"><button class="btn primario" type="submit">Habilitar agencia</button></div>
-      </form>`;
-  } else {
-    const filas = A.cotizaciones.map((x) => `<tr><td>${esc(fechaHora(x.momento))}</td><td>${esc(x.agencia)}</td><td>${esc(x.vehiculo)} <span class="hint">${esc(etiquetaAnio(x.anio))}</span></td>
-      <td class="num">${plata(x.monto)}</td><td class="num">${x.cuotas} × ${plata(x.cuota)}</td></tr>`).join('');
-    cuerpo = `<section class="card"><h2>Cotizaciones de las agencias</h2>
-      ${A.cotizaciones.length ? `<div class="scroll"><table><thead><tr><th>Fecha</th><th>Agencia</th><th>Vehículo</th><th class="num">Monto</th><th class="num">Cuotas</th></tr></thead><tbody>${filas}</tbody></table></div>`
-        : '<p class="hint m0">Todavía no hay cotizaciones.</p>'}
-      <p class="hint m0">Se muestran las últimas 200. No se guarda el valor del vehículo.</p></section>`;
-  }
-  return tabs + cuerpo;
-}
-
 function render() {
   const der = $('#cabDer');
   if (S.fase === 'app' || S.fase === 'clave' || S.fase === 'sinacceso') {
@@ -811,9 +578,8 @@ function render() {
   else if (S.fase === 'clave') m.innerHTML = vistaClave();
   else if (S.fase === 'sinacceso') m.innerHTML = '<section class="card ingreso"><h2>Esta cuenta no está habilitada</h2><p class="hint m0">Consultá con la Asociación Mutual Bell.</p></section>';
   else {
-    const otra = S.yo.miembro ? ['admin', 'Administración'] : ['solicitudes', 'Mis solicitudes'];
-    const tabs = S.yo.habilitado || S.yo.miembro ? `<nav class="tabs no-imprimir" role="tablist"><button role="tab" data-vista="cotizar" aria-selected="${S.vista === 'cotizar'}">Cotizar</button><button role="tab" data-vista="${otra[0]}" aria-selected="${S.vista === otra[0]}">${otra[1]}</button></nav>` : '';
-    m.innerHTML = tabs + (S.vista === 'admin' && S.yo.miembro ? vistaAdmin() : S.vista === 'solicitudes' && !S.yo.miembro ? vistaSolicitudes() : vistaCotizar());
+    const tabs = S.yo.habilitado && !S.yo.miembro ? `<nav class="tabs no-imprimir" role="tablist"><button role="tab" data-vista="cotizar" aria-selected="${S.vista === 'cotizar'}">Cotizar</button><button role="tab" data-vista="solicitudes" aria-selected="${S.vista === 'solicitudes'}">Mis solicitudes</button></nav>` : '';
+    m.innerHTML = tabs + (S.vista === 'solicitudes' && !S.yo.miembro ? vistaSolicitudes() : vistaCotizar());
   }
   $('#pie').textContent = S.fase === 'app' ? 'Simulación de referencia sujeta a aprobación crediticia de la Asociación Mutual Bell.' : '';
 }
@@ -825,8 +591,6 @@ document.addEventListener('submit', (e) => {
   if (f.id === 'fIngreso') ingresar(f.elements.email.value, f.elements.clave.value);
   else if (f.id === 'fClave') cambiarClave(f.elements.a.value, f.elements.b.value);
   else if (f.id === 'fCliente') consultarCliente();
-  else if (f.id === 'fParametros') guardarParametros(f);
-  else if (f.id === 'fAlta') altaAgencia(f);
 });
 
 document.addEventListener('change', (e) => {
@@ -881,11 +645,8 @@ document.addEventListener('click', (e) => {
   else if (t.dataset.cuenta) { S.sol.cuenta = t.dataset.cuenta; render(); }
   else if (t.dataset.quitar) quitarArchivo(t.dataset.quitar, Number(t.dataset.i));
   else if (t.id === 'btnEnviarSol') enviarSolicitud();
-  else if (t.dataset.docs) verDocumentos(t.dataset.docs);
-  else if (t.dataset.resolver) resolverSolicitud(t.dataset.resolver, t.dataset.estado);
-  else if (t.dataset.vista) { S.vista = t.dataset.vista; S.admMsg = ''; if (S.vista === 'admin') cargarAdmin(); else if (S.vista === 'solicitudes') cargarSolicitudes(); else render(); }
-  else if (t.dataset.adm) { S.admTab = t.dataset.adm; S.admMsg = ''; render(); }
-  else if (t.dataset.activa) cambiarActiva(t.dataset.activa, t.dataset.valor === '1');
+
+  else if (t.dataset.vista) { S.vista = t.dataset.vista; if (S.vista === 'solicitudes') cargarSolicitudes(); else render(); }
 });
 
 sb?.auth.onAuthStateChange((ev) => { if (ev === 'SIGNED_OUT' && S.fase === 'app') { S.fase = 'ingreso'; render(); } });

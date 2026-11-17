@@ -634,6 +634,7 @@ vista; a la persona no le gustó (las fotos se veían pixeladas) y pidió volver
 
 **Cambiar la app**: `docs/cobranzas/` (`app.js` interfaz, `datos.js` la base, `calculo.js` cuentas,
 `textos.js` fechas, importes y mensajes, `creditos.js` lo que se muestra de una consulta al BCRA (por CUIT y por cheque),
+`agencias.js` la solapa «Agencias», que administra el cotizador para agencias —ver «Cotizador para agencias», al final—,
 `styles.css`). Si se toca una cuenta, también
 `gestor.liquidacion_deudor` (migración nueva). Probar con `npm run test:cobranzas` (y las del gestor);
 capturas en ancho de PC y de celular. Su service worker es `docs/cobranzas/sw.js` (`VERSION`
@@ -719,8 +720,14 @@ Mutual y no nombra a InfoAuto.
   contratada**: no abrir el cotizador sin usuario. No sumar nada que muestre valores o CODIA a una agencia.
 - **Las agencias no son miembros del gestor**: `gestor_puerta` les cierra toda la API de la base. Solo hablan con
   la función `agencias`, que las reconoce con `public.agencia_sesion` (clave de servicio). Un miembro que entra
-  a `/agencias/` ve una «vista previa» (sus cotizaciones no se registran, puede probar con el cotizador
-  deshabilitado) y la pestaña **Administración** (solicitudes, parámetros, agencias, cotizaciones), que usa la API con sus permisos.
+  a `/agencias/` ve solo una «vista previa» (sus cotizaciones no se registran, puede probar con el cotizador
+  deshabilitado) con un enlace a la administración, que está en **Créditos y Cobros → Agencias** (ver «Administración», más
+  abajo; nov 2026, la persona no quería entrar y salir del cotizador con dos cuentas para revisar las solicitudes).
+  **Sesión propia** (`storageKey: 'agencias.sesion'`, no la `gestor.sesion` de las otras tres apps): entrar al cotizador con una
+  cuenta de agencia no cierra la sesión del gestor en ese navegador, ni al revés; la persona entra al cotizador aparte.
+- **Agencia de prueba**: «PROPIO» (emiliano_soler@hotmail.com), cuenta de la persona para probar el recorrido de una agencia;
+  su `informada_infoauto` es la fecha del alta (17/11/2026), no un aviso real (lo dice su nota). Ocupa uno de los 20 lugares:
+  pausarla (`gestor.pausar_agencia`) cuando no se use.
 - **Tablas** (migración 0025): `public.agencias` (nombre, email, cuenta, `activa`, `informada_infoauto` —fecha
   del aviso por escrito a InfoAuto, obligatoria para activar—, `clave_temporal`; tope de 20 activas y una cuenta
   del gestor no puede ser agencia, lo controla `gestor.tg_agencias_reglas`), `public.ajustes_agencias` (una fila:
@@ -734,7 +741,7 @@ Mutual y no nombra a InfoAuto.
 - **Parámetros de la Mutual** (migración 0027, pedido de la persona del 17/11/2026): 40 % del valor, de 1 a 24 cuotas,
   modelos 2014 en adelante (`anio_minimo`), tasa mensual según el año del modelo (`tasas`: 2021 en adelante 5 %, 2018 a
   2020 6 %, 2014 a 2017 7 %; el 0 km cuenta como el año en curso; `tasaPara` en `credito.js`) y los gastos del simulador
-  interno **sin envío ni gestoría** (en 0). Se cambian en Administración → Parámetros (los plazos aceptan un rango, «1-24»,
+  interno **sin envío ni gestoría** (en 0). Se cambian en Créditos y Cobros → Agencias → Parámetros (los plazos aceptan un rango, «1-24»,
   y las tasas, «2021=5; 2018=6; 2014=7»).
 - **Flujo de la agencia** (pedido de la persona del 17/11/2026, migraciones 0027 y 0028):
   1. **El cliente**: CUIT → BCRA (acción `bcra`, con `bcra.ts`, **copia exacta** de `supabase/functions/bcra/bcra.ts`, mismo
@@ -768,12 +775,12 @@ Mutual y no nombra a InfoAuto.
   año, monto, cuotas, cuota, total, tasa, CFT, `ingreso`, `relacion`, `categoria`, `datos` (DNI, domicilio, estado civil,
   matrimonio, celular, CBU, `cuenta` propia|terceros y, de un tercero, `cuenta_titular`, `cuenta_cuit`, `cuenta_relacion`),
   `archivos` y `cliente` (el celular); sin valor del vehículo ni CODIA. Las crea solo la función
-  (`agencia_solicitar`, `agencia_archivo`, `agencia_enviar`, clave de servicio). La Mutual las ve en Administración →
-  **Solicitudes** (la pestaña de arranque): el BCRA con su detalle, el crédito, los ingresos, los datos (avisa si el DNI no
+  (`agencia_solicitar`, `agencia_archivo`, `agencia_enviar`, clave de servicio). La Mutual las ve en Créditos y Cobros →
+  Agencias → **Solicitudes**: el BCRA con su detalle, el crédito, los ingresos, los datos (avisa si el DNI no
   coincide con el CUIL) y «Ver documentos», que pide a la función (acción `archivos`, solo miembros) enlaces que vencen a los
   15 minutos. Las aprueba o rechaza con una nota: los miembros solo pueden cambiar `estado` y `nota`; quién y cuándo resolvió
   lo pone la base. La agencia ve en «Mis solicitudes» en qué quedó cada una. No hay aviso por mail ni WhatsApp de una solicitud
-  nueva: se ve al entrar a Administración. Son datos personales y documentos de identidad e ingresos: no salen de ahí y no se
+  nueva: se ve en Créditos y Cobros (la insignia de la solapa y el aviso de Inicio). Son datos personales y documentos de identidad e ingresos: no salen de ahí y no se
   copian al repositorio. El almacenamiento del plan gratuito es de 1 GB (una solicitud con fotos ocupa unos pocos MB).
 
 Para Claude, por el conector:
@@ -789,8 +796,17 @@ select momento, agencia, cuit, denominacion, vehiculo, anio, monto, cuotas, cuot
 update public.solicitudes_credito set estado = 'aprobada', nota = '…' where id = '<id>';   -- solo si la persona lo decide
 select name, metadata->>'size' tamano from storage.objects where bucket_id = 'solicitudes' order by created_at desc;  -- los archivos
 ```
-Desde SQL no se abren los documentos: los enlaces los da la función (botón «Ver documentos» de Administración).
+Desde SQL no se abren los documentos: los enlaces los da la función (botón «Ver documentos» de Créditos y Cobros → Agencias).
 
+- **Administración** (solapa «Agencias» de Créditos y Cobros, `vistaAgencias` en `docs/cobranzas/app.js`; el HTML y la lectura
+  de los parámetros en `docs/cobranzas/agencias.js`, que importa los casilleros de `../agencias/solicitud.js`; lo que habla con la
+  base y con la función en `docs/cobranzas/datos.js`: `leerAgencias`, `contarSolicitudes`, `guardarAjustesAgencias`, `altaAgencia`,
+  `activarAgencia`, `resolverSolicitud`, `documentosSolicitud`). Cuatro pestañas: Solicitudes (pendientes primero, con BCRA,
+  crédito, ingresos, datos, «Ver documentos», nota y Aprobar/Rechazar; abajo las resueltas), Parámetros, Agencias (alta con la
+  fecha del aviso a InfoAuto, pausar y activar) y Cotizaciones. Las solicitudes pendientes se cuentan al entrar, cada minuto y al
+  volver a la app: insignia en la solapa y aviso arriba de Inicio. `cobranzas/#agencias` abre la solapa. Usa la sesión de la
+  persona (las mismas barreras); los documentos los pide a la función `agencias`. Pruebas en el navegador:
+  `dev/tests/agencias-admin.test.mjs` (dentro de `npm run test:agencias`).
 - **Publicar la función**: `deploy_edge_function` con nombre `agencias`, `verify_jwt: true` y los cuatro archivos de
   `supabase/functions/agencias/` (`index.ts` de entrada, `credito.js`, `bcra.ts` y `solicitud.js`). Usa los secretos `INFOAUTO_USER` e `INFOAUTO_PASS`.
 - **Pruebas**: `npm run test:agencias` (función de punta a punta contra `dev/infoauto-falso.mjs`, con vehículos y

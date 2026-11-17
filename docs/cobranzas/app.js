@@ -4,7 +4,9 @@ import {
   D, iniciar, reconectar, entrar, salir, cambiarClave, alCambiar, mensaje, ajustes, ESTADOS,
   crearDeudor, cambiarDeudor, borrarDeudor, crearModelo, guardarModelo, borrarModelo, guardarAjustes,
   consultarInfoAuto, consultarInfoAutoTodo, consultarBCRA, detalleConsulta, detalleGuardado, borrarConsulta, consultarCheque, entidadesCheques, borrarConsultaCheque, crearCasoRefi, actualizarCasoRefi, borrarCasoRefi, archivarCasoRefi,
+  leerAgencias, contarSolicitudes, guardarAjustesAgencias, altaAgencia, activarAgencia, resolverSolicitud, documentosSolicitud,
 } from './datos.js';
+import { htmlAgencias, avisoInicio, parametrosEnTexto, leerParametros, TABS_AGENCIAS } from './agencias.js';
 import {
   avisoCuit, soloDigitos, fichaConsulta, filaConsulta, textoConsulta, deudoresDelCuit,
   avisoCheque, numeroCheque, bancosRecientes, opcionesBancos, bancoEnLista, fichaCheque, textoCheque, filaCheque,
@@ -24,7 +26,7 @@ import { datosAcuerdo, avisosAcuerdo, armarAcuerdo, hojasRefinanciacion, CAMPOS_
 import { nuevaDemanda, nuevoDemandado, demandaDesdeDeudor, estadoDemanda, datosDemanda, avisosDemanda, faltanDemanda, CAMPOS_DEMANDA } from './demanda.js';
 import { abrirChat } from './chat.js';
 
-const VERSION = '1.9.2';
+const VERSION = '1.10.0';
 const CLAVE_MIN = 10;
 const TIPOS_GESTION = ['Llamada', 'WhatsApp', 'Visita', 'Email', 'Carta documento', 'Promesa de pago', 'Nota'];
 const MEDIOS = ['Efectivo', 'Transferencia', 'Depósito', 'Cheque', 'Débito', 'Otro'];
@@ -32,7 +34,7 @@ const CONCEPTOS = ['Tasa de justicia', 'Aportes Caja de Abogados', 'Martillero',
 const TABS = [['resumen', 'Resumen'], ['liquidacion', 'Liquidación'], ['pagos', 'Pagos'], ['plan', 'Plan'], ['gestiones', 'Gestiones'], ['mensaje', 'WhatsApp'], ['datos', 'Datos']];
 const CLASE = { mora: 's-bad', plan: 's-ok', 'plan-atrasado': 's-warn', 'plan-caer': 's-bad', 'plan-cumplido': 's-ok', juicio: 's-violet', 'al-dia': 's-info' };
 const CHIPS = [['activos', 'Activos'], ['mora', 'En mora'], ['plan', 'Con plan'], ['atrasados', 'Planes atrasados'], ['promesas', 'Promesas'], ['juicio', 'En juicio'], ['cerrados', 'Cancelados y archivados']];
-const VISTAS = { inicio: 'Inicio', deudores: 'Deudores', planes: 'Planes', creditos: 'Aprobación de créditos' };
+const VISTAS = { inicio: 'Inicio', deudores: 'Deudores', planes: 'Planes', creditos: 'Aprobación de créditos', agencias: 'Agencias' };
 const AYUDA_CUIT = 'La situación en cada banco o financiera, los últimos 24 meses y los cheques rechazados.';
 const AYUDA_CHEQUE = 'Si el cheque fue denunciado como extraviado, robado o adulterado.';
 const MODOS_CREDITO = [['cuit', 'Deudas por CUIT'], ['cheque', 'Cheques denunciados'], ['vehiculo', 'Vehículo'], ['simulacion', 'Simulación'], ['refi', 'Estado de Deuda y Refinanciación'], ['dp', 'Demanda prendaria']];
@@ -63,11 +65,15 @@ const S = {
     caso: { id: '', nombre: '', confirmar: false }, // el caso guardado que está abierto (si hay) y el nombre con que se guarda
     gastosAbierto: false, // «Gastos y honorarios de juicio» empieza plegado; si se despliega, queda así al redibujar
   },
+  // Agencias (el cotizador para agencias): lo leído, la pestaña, los enlaces a documentos ya pedidos, lo que se escribe
+  // (notas para la agencia, parámetros y alta, atados con data-k) y cuántas solicitudes esperan respuesta.
+  ag: { datos: null, cargando: false, error: '', tab: 'solicitudes', msg: '', docs: new Map(), notas: {}, p: {}, alta: {}, pend: 0 },
 };
 try { S.vista = VISTAS[localStorage.getItem('cb.vista')] ? localStorage.getItem('cb.vista') : 'inicio'; } catch { /* sin almacenamiento */ }
 try { if (localStorage.getItem('cb.simOrigen') === 'mano') S.cred.simOrigen = 'mano'; } catch { /* sin almacenamiento */ }
 try { const m = localStorage.getItem('cb.credModo'); if (m === 'cheque' || m === 'vehiculo' || m === 'refi' || m === 'simulacion' || m === 'dp') S.cred.modo = m; } catch { /* sin almacenamiento */ }
 try { S.maxi = localStorage.getItem('cb.maxi') === '1'; } catch { /* sin almacenamiento */ }
+try { const t = localStorage.getItem('cb.agTab'); if (TABS_AGENCIAS.some(([k]) => k === t)) S.ag.tab = t; } catch { /* sin almacenamiento */ }
 
 // ───────────────────────── Utilidades ─────────────────────────
 
@@ -171,7 +177,8 @@ function mostrar(pantalla) {
   $('#vIngreso').hidden = enApp;
   if (enApp) { $('#ingresoCuerpo').innerHTML = ''; render(); seguirEnlace(); return; }
   cerrarFicha(); S.menu = false; renderMenu();
-  for (const k of ['#main', '#chips', '#franja', '#nPlanes', '#nDeudores']) $(k).innerHTML = '';
+  for (const k of ['#main', '#chips', '#franja', '#nPlanes', '#nDeudores', '#nAgencias']) $(k).innerHTML = '';
+  S.ag = { ...S.ag, datos: null, error: '', docs: new Map(), notas: {}, alta: {}, pend: 0 }; // al salir no queda nada de otra sesión
   $('#sub').textContent = ''; $('#q').value = ''; S.q = '';
   renderIngreso();
 }
@@ -273,9 +280,12 @@ function render() {
   insignia('#nPlanes', atrasados, 'urg', atrasados === 1 ? 'plan atrasado' : 'planes atrasados');
   const dia = hoy(), urgentes = todos.filter((x) => x.r.activo && pendientesDe(x.d, x.r).some((p) => p.tarde || (p.fecha && p.fecha <= dia))).length;
   insignia('#nDeudores', urgentes, 'pend', urgentes === 1 ? 'deudor con algo para hoy o atrasado' : 'deudores con algo para hoy o atrasado');
-  main.innerHTML = { inicio: vistaInicio, deudores: vistaDeudores, planes: vistaPlanes, creditos: vistaCreditos }[S.vista](todos);
+  insignia('#nAgencias', S.ag.pend, 'pend', S.ag.pend === 1 ? 'solicitud de agencia para revisar' : 'solicitudes de agencias para revisar');
+  main.innerHTML = {
+    inicio: (t) => avisoInicio(S.ag.pend) + vistaInicio(t), deudores: vistaDeudores, planes: vistaPlanes, creditos: vistaCreditos, agencias: vistaAgencias,
+  }[S.vista](todos);
   aplicarAnchos(main);
-  $('#fabNuevo').hidden = S.vista === 'creditos'; // en el celular taparía el resultado, y ahí no hace falta
+  $('#fabNuevo').hidden = S.vista === 'creditos' || S.vista === 'agencias'; // en el celular taparía el resultado, y ahí no hace falta
   // Los 24 meses se ven desde el más reciente: si no entran (celular), el corrimiento arranca a la derecha.
   main.querySelectorAll('.historia-caja').forEach((el) => { el.scrollLeft = el.scrollWidth; });
   devolverFoco(foco);
@@ -449,6 +459,87 @@ function vistaPlanes(todos) {
 // Dos consultas al BCRA, cada una en su pestaña: por CUIT (la función `bcra` pregunta a la Central de
 // Deudores, arma el semáforo y guarda la consulta) y por cheque (si fue denunciado como extraviado, robado
 // o adulterado). Las anteriores quedan en el historial de cada una, como constancia de ese día.
+
+// ───────────────────────── Agencias: lo que mandan las agencias desde el cotizador ─────────────────────────
+
+function vistaAgencias() {
+  const G = S.ag;
+  if (!G.datos && !G.cargando && !G.error) setTimeout(cargarAgencias); // fuera del dibujo: cargar vuelve a dibujar
+  if (!G.datos) {
+    subtitulo('Cotizador para agencias');
+    return G.error ? `${vacio('No se pudo abrir', G.error)}<div class="actions"><button class="btn" data-a="ag-recargar">Probar de nuevo</button></div>`
+      : vacio('Cargando las solicitudes…', 'Las solicitudes de crédito que mandan las agencias, con el informe del BCRA y los documentos.');
+  }
+  const pend = G.datos.solicitudes.filter((x) => x.estado === 'pendiente').length;
+  subtitulo(`${pend ? cuantos(pend, 'solicitud pendiente', 'solicitudes pendientes') : 'Sin solicitudes pendientes'} · el cotizador está ${G.datos.ajustes?.habilitado ? 'habilitado' : 'apagado'}`);
+  return htmlAgencias(G.datos, G);
+}
+
+async function cargarAgencias() {
+  const G = S.ag;
+  if (G.cargando) return;
+  G.cargando = true; G.error = '';
+  try {
+    G.datos = await leerAgencias();
+    G.p = parametrosEnTexto(G.datos.ajustes || {});
+    G.pend = G.datos.solicitudes.filter((x) => x.estado === 'pendiente').length;
+  } catch (e) {
+    G.error = /PGRST205|42P01|does not exist/i.test(`${e.code} ${e.message}`) ? 'Falta activar el cotizador de agencias en la base. Avisale a Claude.' : mensaje(e, 'no se pudo leer');
+  }
+  G.cargando = false;
+  render();
+}
+
+/** Cuántas solicitudes esperan respuesta: el aviso de la solapa y de Inicio. Si cambió, se redibuja. */
+async function contarPendientes() {
+  if (S.pantalla !== 'listo') return;
+  const n = await contarSolicitudes();
+  if (n === S.ag.pend) return;
+  S.ag.pend = n;
+  if (S.vista === 'agencias') cargarAgencias(); else render();
+}
+
+async function accionAgencias(act, b) {
+  const G = S.ag, id = b.dataset.id;
+  if (act === 'ag-recargar') { G.error = ''; await cargarAgencias(); return; }
+  if (act === 'ag-tab') {
+    G.tab = b.dataset.tab; G.msg = '';
+    try { localStorage.setItem('cb.agTab', G.tab); } catch { /* sin almacenamiento */ }
+    render(); return;
+  }
+  if (act === 'ag-docs') {
+    G.docs.set(id, { cargando: true }); render();
+    try { G.docs.set(id, { lista: await documentosSolicitud(id) }); } catch (e) { G.docs.set(id, { error: mensaje(e, 'no se pudieron buscar los documentos') }); }
+    render(); return;
+  }
+  if (act === 'ag-resolver') {
+    const estado = b.dataset.estado;
+    try { await resolverSolicitud(id, estado, String(G.notas[id] || '').trim()); } catch (e) { toast(mensaje(e)); return; }
+    delete G.notas[id];
+    toast(estado === 'aprobada' ? 'Solicitud aprobada' : estado === 'rechazada' ? 'Solicitud rechazada' : 'La solicitud volvió a pendiente');
+    await cargarAgencias(); return;
+  }
+  if (act === 'ag-activa') {
+    const activa = b.dataset.valor === '1';
+    try { await activarAgencia(id, activa); } catch (e) { G.msg = mensaje(e); render(); return; }
+    G.msg = ''; toast(activa ? 'Agencia activada' : 'Agencia pausada: ya no puede cotizar');
+    await cargarAgencias(); return;
+  }
+  if (act === 'ag-param-guardar') {
+    const r = leerParametros(G.p);
+    if (r.error) { G.msg = r.error; render(); return; }
+    try { await guardarAjustesAgencias(r.fila); } catch (e) { G.msg = mensaje(e); render(); return; }
+    G.msg = ''; toast('Parámetros guardados');
+    await cargarAgencias(); return;
+  }
+  if (act === 'ag-alta') {
+    const al = G.alta, email = String(al.email || '').trim(), nombre = String(al.nombre || '').trim();
+    if (!email || !nombre || !al.informada) { G.msg = 'Completá nombre, email y la fecha en que se informó a la guía de precios.'; render(); return; }
+    try { await altaAgencia(email, nombre, al.informada, String(al.notas || '').trim()); } catch (e) { G.msg = mensaje(e); render(); return; }
+    G.alta = {}; G.msg = ''; toast('Agencia habilitada');
+    await cargarAgencias();
+  }
+}
 
 function vistaCreditos() {
   const modos = `<nav class="tabs cr-modos" role="tablist" aria-label="Qué consultar">${MODOS_CREDITO.map(([k, l]) => `<button role="tab" data-cr-modo="${k}" aria-selected="${S.cred.modo === k}">${esc(l)}</button>`).join('')}</nav>`;
@@ -2092,7 +2183,12 @@ async function unaVez(boton, tarea) {
   boton.disabled = true;
   try { await tarea(boton); } finally { if (boton.isConnected) boton.disabled = false; }
 }
-const verVista = (v) => { S.vista = v; try { localStorage.setItem('cb.vista', v); } catch { /* sin almacenamiento */ } render(); window.scrollTo(0, 0); };
+const verVista = (v) => {
+  S.vista = v;
+  try { localStorage.setItem('cb.vista', v); } catch { /* sin almacenamiento */ }
+  if (v === 'agencias') { S.ag.msg = ''; setTimeout(cargarAgencias); } // al entrar, lo último que mandaron
+  render(); window.scrollTo(0, 0);
+};
 
 document.addEventListener('click', async (e) => {
   const t = e.target;
@@ -2124,6 +2220,7 @@ document.addEventListener('click', async (e) => {
     await unaVez(a, (b) => accionCredito(act, b)); return;
   }
   if (act.startsWith('rf-') && !S.panel && !S.abierto) { accionRefi(act, a); return; }
+  if (act.startsWith('ag-') && !S.panel && !S.abierto) { await unaVez(a, (b) => accionAgencias(act, b)); return; }
   if (act.startsWith('dp-') && !S.panel && !S.abierto) { accionDemanda(act, a); return; }
   if (act === 'ficha-dp') { demandaDeLaFicha(S.abierto); return; }
   if (act.startsWith('ve-') && !S.panel && !S.abierto) { await unaVez(a, () => accionVehiculo(act)); return; }
@@ -2208,7 +2305,7 @@ movil.addEventListener('change', () => render());
 
 // Cambios que llegan de la base: los propios, los de Claude o los de otro dispositivo.
 alCambiar((que, detalle) => {
-  if (que === 'sesion') { if (detalle !== S.pantalla) mostrar(detalle); else if (detalle === 'listo') render(); return; }
+  if (que === 'sesion') { if (detalle !== S.pantalla) mostrar(detalle); else if (detalle === 'listo') render(); if (detalle === 'listo') contarPendientes(); return; }
   if (S.pantalla !== 'listo') return;
   if (que === 'estado') { renderFranja(); if (S.menu) renderMenu(); return; }
   render();
@@ -2217,8 +2314,13 @@ alCambiar((que, detalle) => {
   seguirEnlace(); // un enlace que llegó antes de que estuvieran los datos
 });
 
-/** Enlace desde el gestor ("Ver en Cobranzas" de una causa): #deudor=<id> abre la ficha de ese deudor. */
+/** Enlace desde el gestor ("Ver en Cobranzas" de una causa): #deudor=<id> abre la ficha de ese deudor.
+ *  #agencias (desde el cotizador) abre la solapa Agencias. */
 function seguirEnlace() {
+  if (location.hash === '#agencias' && S.pantalla === 'listo') {
+    history.replaceState(null, '', location.pathname + location.search);
+    verVista('agencias'); return;
+  }
   const m = /^#deudor=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(location.hash || '');
   if (!m || S.pantalla !== 'listo' || !D.cargado) return;
   history.replaceState(null, '', location.pathname + location.search); // que no se repita al volver a cargar
@@ -2231,6 +2333,10 @@ window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); S.in
 window.addEventListener('appinstalled', () => { S.instalar = null; toast('App instalada'); });
 if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('sw.js').catch(() => { /* la app funciona igual sin él */ });
 
+// Las solicitudes de las agencias no llegan en vivo: se cuentan al abrir, al volver a la app y cada minuto.
+setInterval(() => { if (document.visibilityState === 'visible') contarPendientes(); }, 60_000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') contarPendientes(); });
+
 (async () => {
-  try { mostrar(await iniciar()); } catch (e) { console.error(e); S.falla = mensaje(e, 'no se pudo abrir'); mostrar('error'); }
+  try { mostrar(await iniciar()); contarPendientes(); } catch (e) { console.error(e); S.falla = mensaje(e, 'no se pudo abrir'); mostrar('error'); }
 })();

@@ -47,6 +47,7 @@
   --i-balanza:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4v16M8 20h8M5 7h14'/%3E%3Cpath d='M5 7 2.5 13a2.6 2.6 0 0 0 5 0zM19 7l-2.5 6a2.6 2.6 0 0 0 5 0z'/%3E%3C/svg%3E");
   --i-alarma:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='13' r='7.5'/%3E%3Cpath d='M12 9v4.2l2.6 1.6M4.5 4.8 2.8 6.5M19.5 4.8l1.7 1.7'/%3E%3C/svg%3E");
   --i-bandera:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5.5 21V4M5.5 4.5h11l-2.3 4 2.3 4h-11'/%3E%3C/svg%3E");
+  --i-auto:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 16.5V12l2-5.2A1.5 1.5 0 0 1 7.4 5.8h9.2a1.5 1.5 0 0 1 1.4 1L20 12v4.5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM4 12h16'/%3E%3Ccircle cx='7.8' cy='14.7' r='1.1'/%3E%3Ccircle cx='16.2' cy='14.7' r='1.1'/%3E%3Cpath d='M6 17.5v1.7M18 17.5v1.7'/%3E%3C/svg%3E");
   --i-semaforo:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='7.5' y='2.5' width='9' height='19' rx='4.5'/%3E%3Ccircle cx='12' cy='7.5' r='1.6'/%3E%3Ccircle cx='12' cy='12' r='1.6'/%3E%3Ccircle cx='12' cy='16.5' r='1.6'/%3E%3C/svg%3E");
   /* Estos dos van como imagen de fondo de los campos: ya traen su color (el de --muted). */
   --i-buscar:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238aa9a2' stroke-width='1.9' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='6.5'/%3E%3Cpath d='m20 20-4.2-4.2'/%3E%3C/svg%3E");
@@ -108,7 +109,7 @@ h1{font:600 20px/1.15 var(--f-body);margin:0;letter-spacing:.14em;text-transform
 .seg button{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;min-width:0;border:0;background:none;color:var(--muted);padding:8px 6px;border-radius:999px;cursor:pointer;font-weight:500}
 .seg button:hover{color:var(--fg)}
 .seg button[aria-pressed="true"]{background:var(--grad);color:#fff}
-#v_inicio{--i:var(--i-inicio)} #v_deudores{--i:var(--i-personas)} #v_planes{--i:var(--i-agenda)} #v_cobros{--i:var(--i-billete)} #v_creditos{--i:var(--i-semaforo)}
+#v_inicio{--i:var(--i-inicio)} #v_deudores{--i:var(--i-personas)} #v_planes{--i:var(--i-agenda)} #v_cobros{--i:var(--i-billete)} #v_creditos{--i:var(--i-semaforo)} #v_agencias{--i:var(--i-auto)}
 .badge{display:inline-grid;place-items:center;flex:none;width:8px;height:8px;padding:0;border-radius:999px;overflow:hidden;color:transparent;background:var(--accent);font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
 .badge.urg{background:var(--bad)} .badge.pend{background:var(--warn)}
 
@@ -683,3 +684,17 @@ body:has(#drawer:not([hidden])) #btnClaudeWeb,body:has(#menu:not([hidden])) #btn
   /* Arriba del botón «+ Nuevo deudor», que ocupa la esquina de abajo */
   #btnClaudeWeb{bottom:calc(var(--abajo) + 74px);right:16px;padding:12px 18px}
 }
+
+/* ───────── Agencias: lo que mandan las agencias desde el cotizador ───────── */
+.ag{display:grid;gap:14px;min-width:0}
+.ag-nombre{font-size:16px}
+.ag-tabla{overflow-x:auto}
+.ag-tabla .tabla{min-width:0}
+.ag-tabla .tabla td.num{white-space:normal;overflow-wrap:anywhere}
+.ag-docs{display:grid;gap:8px;background:var(--sunken);border:1px solid var(--line-soft);border-radius:var(--r-s);padding:12px}
+.ag-docs ul{margin:4px 0 0;padding-left:18px;display:grid;gap:4px}
+.ag-docs a{color:var(--accent-txt);overflow-wrap:anywhere}
+.ag-check{display:flex;gap:10px;align-items:center;font-size:14px;color:var(--fg)}
+.ag-check input{width:20px;height:20px;accent-color:var(--accent)}
+.ag-aviso{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;border-color:rgba(246,189,96,.45);box-shadow:inset 3px 0 0 var(--warn),var(--sombra)}
+.ag-resueltas{margin-top:6px}
