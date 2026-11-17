@@ -142,7 +142,7 @@ function solicitud(x, A, est, notas) {
       ${d.domicilio ? fila('Domicilio real', esc(d.domicilio)) : ''}
       ${d.estado_civil ? fila('Estado civil', d.estado_civil === 'casado' ? `Casado/a · ${esc(d.matrimonio_lugar || '')}, ${esc(String(d.matrimonio_fecha || '').split('-').reverse().join('/'))}` : 'Soltero/a') : ''}
       ${x.cliente ? fila('Celular', esc(x.cliente)) : ''}
-      ${d.cbu ? fila('CBU o CVU', `<span class="mono">${esc(d.cbu)}</span>`) : ''}
+      ${d.cbu ? fila('CBU o CVU', `<span class="mono">${esc(d.cbu)}</span>`) : fila('CBU o CVU', '<span class="hint">No lo informó la agencia</span>')}
       ${d.cuenta === 'propia' ? fila('Cuenta', 'Propia del cliente') : ''}
       ${d.cuenta === 'terceros' ? fila('Cuenta', `<span class="tag t-prom">De un tercero</span> ${esc(d.cuenta_titular || '')} · ${esc(cuitLindo(d.cuenta_cuit || ''))}${d.cuenta_relacion ? ` · ${esc(d.cuenta_relacion)}` : ''}`) : ''}
     </tbody></table></div>

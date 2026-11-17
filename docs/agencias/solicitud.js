@@ -101,12 +101,13 @@ export function revisarDatos(d, hoy) {
   }
   const celular = String(d?.celular ?? '').replace(/\D/g, '');
   if (celular.length < 8 || celular.length > 15) errores.push('El celular tiene que tener entre 8 y 15 números, con la característica.');
+  // El CBU no es obligatorio (nov 2026: a veces se pasa después, por otra vía). Si se escribe, se controla, y entonces
+  // también hay que decir de quién es la cuenta: del cliente o de un tercero (con quién es el titular).
   const cbu = String(d?.cbu ?? '').replace(/\D/g, '');
-  if (!cbuValido(cbu)) errores.push(cbu.length === 22 ? 'Ese CBU o CVU no es válido: revisá los números.' : 'El CBU o CVU tiene que tener 22 números.');
-  // La cuenta donde se deposita el crédito: del cliente o de un tercero (con quién es el titular).
-  const cuenta = d?.cuenta;
+  if (cbu && !cbuValido(cbu)) errores.push(cbu.length === 22 ? 'Ese CBU o CVU no es válido: revisá los números.' : 'El CBU o CVU tiene que tener 22 números.');
+  const cuenta = cbu ? d?.cuenta : undefined;
   let tercero = {};
-  if (!['propia', 'terceros'].includes(cuenta)) errores.push('Elegí si la cuenta es del cliente o de un tercero.');
+  if (cbu && !['propia', 'terceros'].includes(cuenta)) errores.push('Elegí si la cuenta es del cliente o de un tercero.');
   if (cuenta === 'terceros') {
     const titular = txt(d?.cuenta_titular, 200), cuit = String(d?.cuenta_cuit ?? '').replace(/\D/g, '');
     if (titular.length < 3) errores.push('Escribí el nombre o la razón social del titular de la cuenta.');
@@ -115,6 +116,6 @@ export function revisarDatos(d, hoy) {
   }
   if (errores.length) return { errores };
   return {
-    datos: { dni, domicilio, estado_civil: estado, ...(estado === 'casado' ? { matrimonio_lugar: lugar, matrimonio_fecha: fecha } : {}), celular, cbu, cuenta, ...tercero },
+    datos: { dni, domicilio, estado_civil: estado, ...(estado === 'casado' ? { matrimonio_lugar: lugar, matrimonio_fecha: fecha } : {}), celular, ...(cbu ? { cbu, cuenta } : {}), ...tercero },
   };
 }

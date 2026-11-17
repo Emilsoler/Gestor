@@ -715,7 +715,8 @@ Probar con `npm run test:prenda` (y las del gestor). Su service worker es `docs/
 App web para las agencias y concesionarias que ofrecen los créditos prendarios de la Asociación Mutual Bell.
 Publicada en https://emilsoler.github.io/Gestor/agencias/. El vendedor entra con su usuario, elige marca,
 modelo, versión y año, y ve **solo las condiciones del crédito**: monto máximo, cuota por plazo, total, y TNA,
-TEA y CFT en letra chica al pie (pedido de la persona, nov 2026); lo puede mandar por WhatsApp (lo envía él, con `wa.me`) o imprimir. La marca de la app es la de la
+TEA y CFT en letra chica al pie (pedido de la persona, nov 2026); lo puede mandar por WhatsApp (lo envía él, con `wa.me`; el
+mensaje lleva solo vehículo, monto y cuotas: sin total ni tasas, pedido de la persona) o imprimir. La marca de la app es la de la
 Mutual y no nombra a InfoAuto.
 
 - **Licencia de InfoAuto** (presupuesto 63.199 del 04/11/2026, "Licencia Agencias/Concesionarias", tope 20
@@ -765,9 +766,9 @@ Mutual y no nombra a InfoAuto.
      monotributo o responsable inscripto).
   4. **Documentación de ingresos** según esa categoría y 5. **datos del cliente** con la suya: DNI y foto de los dos lados, el
      vehículo cotizado con el título (usado) o la **factura** (0 km; migración 0029), domicilio real e impuesto o servicio a su
-     nombre, estado civil (casado: lugar y fecha del matrimonio), celular, y CBU o CVU (con sus dígitos verificadores), si la
-     cuenta es **propia o de un tercero** (de un tercero: titular, su CUIT o CUIL —validado— y la relación con el cliente,
-     opcional) y la constancia de la cuenta. Más la conformidad del cliente para mandar sus datos a la Mutual. Los datos son
+     nombre, estado civil (casado: lugar y fecha del matrimonio), celular, y CBU o CVU (**opcional** desde el 17/11/2026; si se
+     escribe, se controlan sus dígitos verificadores y hay que decir si la cuenta es **propia o de un tercero** (de un tercero: titular, su CUIT o CUIL —validado— y la relación con el cliente,
+     opcional) y la constancia de la cuenta. Más la conformidad del cliente para mandar sus datos a la Mutual. Los demás datos son
      obligatorios; **los documentos no** (migración 0030, pedido de la persona del 17/11/2026: a veces llegan por otra vía).
      La app avisa «Sin adjuntar: …» y deja enviar; la Mutual ve en la solicitud qué casilleros quedaron vacíos.
   Los casilleros, sus topes de archivos y los controles de los datos están en `docs/agencias/solicitud.js`, con **copia exacta**

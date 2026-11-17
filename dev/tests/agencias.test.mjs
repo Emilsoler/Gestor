@@ -373,6 +373,9 @@ test('las reglas de la solicitud: copia igual en la función, casilleros como en
   assert.equal(SOL.revisarDatos({ ...tercero, cuenta_cuit: '30444444441' }, '2026-11-17').errores.length, 1);
   assert.equal(SOL.revisarDatos({ ...tercero, cuenta_titular: '' }, '2026-11-17').errores.length, 1);
   assert.equal(SOL.revisarDatos({ ...DATOS, cuenta: '' }, '2026-11-17').errores.length, 1, 'hay que elegir de quién es la cuenta');
+  // Sin CBU no se pide la cuenta (el CBU es opcional desde nov 2026).
+  const { cbu: _c, cuenta: _q, ...sinCbu } = DATOS;
+  assert.deepEqual(SOL.revisarDatos({ ...sinCbu, cuenta: 'propia' }, '2026-11-17').datos, { ...sinCbu, celular: '3534123456' });
   assert.equal(SOL.revisarDatos({ ...DATOS, cuenta: 'propia', cuenta_titular: 'X' }, '2026-11-17').datos.cuenta_titular, undefined);
   assert.deepEqual(SOL.tipoArchivo(PDF()), { tipo: 'application/pdf', ext: 'pdf' });
   assert.deepEqual(SOL.tipoArchivo(JPG()), { tipo: 'image/jpeg', ext: 'jpg' });

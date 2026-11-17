@@ -337,9 +337,7 @@ function textoParaComprador(r) {
   return `Te paso las condiciones del crédito prendario de la Asociación Mutual Bell:\n\n`
     + `Vehículo: ${r.vehiculo} (${etiquetaAnio(r.anio)})\n`
     + `Monto del crédito: ${plata(r.monto)}\n`
-    + `${r.cuotas} cuotas de ${plata(r.cuota)}\n`
-    + `Total a pagar: ${plata(r.total)}\n`
-    + `TNA ${pct(r.tna)} · TEA ${pct(r.tea)} · CFT ${pct(r.cft)}\n\n`
+    + `${r.cuotas} cuotas de ${plata(r.cuota)}\n\n`
     + (r.leyenda ? `${r.leyenda}\n` : '') + (r.contacto ? `${r.contacto}\n` : '') + (S.yo?.agencia && !S.yo.miembro ? `\nAtentamente, ${S.yo.agencia}` : '');
 }
 
@@ -510,7 +508,7 @@ function vistaSolicitud() {
         <label class="f">Lugar del matrimonio<input data-campo="matrimonio_lugar" autocomplete="off" maxlength="200" value="${v('matrimonio_lugar')}"></label>
         <label class="f">Fecha del matrimonio<input data-campo="matrimonio_fecha" type="date" max="${hoy()}" value="${v('matrimonio_fecha')}"></label></div>` : ''}</div>
     <div class="bloque"><label class="f">Celular, con característica<input data-campo="celular" type="tel" inputmode="tel" autocomplete="off" maxlength="25" placeholder="Ej.: 3534 123456" value="${v('celular')}"></label></div>
-    <div class="bloque"><label class="f">CBU o CVU donde se deposita el crédito<input data-campo="cbu" inputmode="numeric" autocomplete="off" maxlength="30" value="${v('cbu')}"></label>
+    <div class="bloque"><label class="f">CBU o CVU donde se deposita el crédito (opcional)<input data-campo="cbu" inputmode="numeric" autocomplete="off" maxlength="30" value="${v('cbu')}"></label>
       <div class="f">¿De quién es la cuenta?<div class="opciones2" role="radiogroup" aria-label="Titular de la cuenta">
         <button type="button" role="radio" data-cuenta="propia" aria-checked="${L.cuenta === 'propia'}">Cuenta propia</button>
         <button type="button" role="radio" data-cuenta="terceros" aria-checked="${L.cuenta === 'terceros'}">De un tercero</button></div></div>
