@@ -7,9 +7,10 @@ import {
   crearEscrito, actualizarAgenda, preguntarAClaude, leerChat, guardarChat, leerDeudor,
 } from './datos.js';
 import { idNuevo, nuevaLiquidacion, cobradoRubro, totalPago, liqNormal, liqCalc, importe, pesos, enCelda, planillaExcel } from './liquidacion.js';
+import { documentos, tipoMovimiento, TIPOS_MOV } from './seguimiento.js';
 import { MODELOS, ACCIONES, CAMPOS_OFICIO, esModeloOficio, rellenar, htmlOficio, pdfOficio, enLetras, cifra, ordinal, datosDeCausa, partirDomicilio, dniOficio, nombreArchivo } from './oficio.js';
 
-const VERSION = '1.14.0';
+const VERSION = '1.15.0';
 
 // Cuatro datos de cada causa, con valores fijos: los mismos que acepta la base (supabase/migrations/0007).
 const UBICACIONES = ['Casillero', 'A despacho'];
@@ -37,6 +38,7 @@ const S = {
   pantalla: 'arranque',
   q: '', estado: '', nom: '', tag: '', quick: '', arch: false, view: 'inicio', sort: { k: 'dias', dir: -1 },
   open: null, isNew: false, confirmDel: false, choque: null, // ficha abierta
+  fh: 'todo', // qué movimientos se ven en la ficha: todos o un tipo (TIPOS_MOV)
   planilla: false, liqSucia: false, // la planilla de liquidación está a la vista / tiene cambios sin guardar
   cau: null, // la acción cautelar que se está armando desde la ficha (ver "Acción cautelar")
   tpl: false, tpSel: '', tplDel: '', tplVer: {}, clave: false, // otros paneles (tplVer: las plantillas desplegadas)
@@ -297,11 +299,21 @@ function renderCausas(rows) {
       <div class="causa-linea"><b class="mono">Expte. N° ${id}</b>${j ? ' · ' + esc(j) : ''}</div>
       <div class="causa-ult">${c.ultima ? `<time>${fmt(c.fecha)}</time><span>${esc(c.ultima)}</span>` : '<span class="hint">Sin acción cargada</span>'}${n === null ? '<small class="age old">sin fecha</small>' : `<small class="age ${n > STALE ? 'old' : ''}">hace ${n} d</small>`}</div>
       ${c.proxima && c.proxima.trim() ? `<div class="causa-prox"><b>Próxima acción</b><span>${esc(c.proxima)}</span>${c.vence ? `<small>${esc(fmt(c.vence))}</small>` : ''}</div>` : ''}
+      ${docsLinea(c)}
       ${tagsHtml(c, ubiHtml(c) + etapaHtml(c))}
     </div>
     <div class="causa-acc"><button class="btn small" data-lista="cautelar" data-id="${id}">Acción cautelar</button></div>
   </article>`;
   }).join('') + `</div>`;
+}
+
+/** Una línea en la tarjeta: si la próxima acción lleva adjuntos, si están en Drive o qué falta. */
+function docsLinea(c) {
+  const d = documentos(c);
+  if (!d.revisado || !d.lista.length) return '';
+  return d.faltan.length
+    ? `<div class="causa-docs falta">✗ Falta en Drive: ${esc(d.faltan.join(', '))}</div>`
+    : `<div class="causa-docs listo">✓ Adjuntos listos en Drive</div>`;
 }
 
 // Agenda: todo lo que hay que hacer, de todas las causas en trámite, en orden de fecha. Junta
@@ -549,7 +561,7 @@ function blank() { return { expte: '', actor: 'AMB', demandado: '', tipo: 'EJECU
 function openCausa(id, pre = null, pase = null) {
   S.open = id ? copia(D.causas.find((c) => c.expte === id) || blank()) : (pre || blank());
   S.base = copia(S.open); // la causa como se abrió: para saber qué se cambió en la ficha
-  S.isNew = !id; S.confirmDel = false; S.choque = null; S.tpl = false; S.clave = false; S.tpSel = '';
+  S.isNew = !id; S.confirmDel = false; S.choque = null; S.tpl = false; S.clave = false; S.tpSel = ''; S.fh = 'todo';
   S.planilla = false; S.liqSucia = false; S.cau = null; S.pase = !id && pase ? pase : null;
   cerrarFormsFicha();
   renderDrawer(true);
@@ -1134,6 +1146,41 @@ function notaHtml() {
   return '';
 }
 
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+/** Documentos en Drive: qué pide la próxima acción y qué hay en la carpeta del demandado (lo anota la revisión de las 10:30). */
+function docsHtml(c) {
+  const d = documentos(c);
+  const cuandoRev = d.revisado ? `Revisado ${cuando(new Date(d.revisado))}${d.carpeta ? ' · carpeta «' + esc(d.carpeta) + '»' : ''}.` : '';
+  let cuerpo;
+  if (!d.revisado) cuerpo = '<p class="hint m0">Todavía no se revisó la carpeta de Drive de esta causa. La revisión diaria de las 10:30 la anota acá.</p>';
+  else if (d.req && !d.req.length) cuerpo = `<p class="m0">El próximo escrito no lleva adjuntos.</p>`;
+  else if (d.lista.length) {
+    cuerpo = `<ul class="docs">${d.lista.map((x) => `<li><span class="docs-ico ${x.archivo ? 'si' : 'no'}" aria-hidden="true">${x.archivo ? '✓' : '✗'}</span><div><div>${esc(x.nombre)}</div><div class="mono docs-arch">${x.archivo ? esc(x.archivo) : (x.nombre === 'AFIP' ? 'No está en «Constancias Emiliano Soler»' : 'No está en la carpeta del demandado')}</div></div></li>`).join('')}</ul>
+    <p class="docs-estado ${d.faltan.length ? 'falta' : 'listo'}">${d.faltan.length ? `Falta subir: ${esc(d.faltan.join(', '))}. Hasta que esté, el escrito no se presenta.` : 'Todo listo para presentar.'}</p>`;
+  } else cuerpo = `<p class="hint m0">${c.proxima && c.proxima.trim() ? 'La próxima acción no es uno de los escritos con reglas de adjuntos.' : 'No hay próxima acción anotada.'}</p>`;
+  const todos = d.archivos.length ? `<details class="docs-todos"><summary>Archivos en la carpeta (${d.archivos.length})</summary><ul>${d.archivos.map((a) => `<li class="mono">${esc(a)}</li>`).join('')}</ul></details>` : '';
+  return `<div class="sec"><h4>Documentos en Drive</h4>${cuerpo}${todos}${cuandoRev ? `<p class="hint m0">${cuandoRev}</p>` : ''}</div>`;
+}
+
+/** Movimientos como línea de tiempo, agrupados por mes y con su tipo; se pueden filtrar por tipo. */
+function historialHtml(hist) {
+  if (!hist.length) return '<p class="hint m0">Sin movimientos registrados.</p>';
+  const conTipo = hist.map((h) => ({ ...h, tipo: tipoMovimiento(h.texto) }));
+  const hay = new Set(conTipo.map((h) => h.tipo));
+  const filtro = S.fh !== 'todo' && hay.has(S.fh) ? S.fh : 'todo';
+  const chips = [['todo', 'Todo'], ...Object.entries(TIPOS_MOV).filter(([k]) => hay.has(k)).map(([k, t]) => [k, t.plural])]
+    .map(([k, t]) => `<button class="chip-h${filtro === k ? ' on' : ''}" data-act="fh" data-fh="${k}" aria-pressed="${filtro === k}">${esc(t)}</button>`).join('');
+  let mes = '', filas = '';
+  for (const h of conTipo.filter((x) => filtro === 'todo' || x.tipo === filtro)) {
+    const m = h.fecha ? `${MESES[+h.fecha.slice(5, 7) - 1]} ${h.fecha.slice(0, 4)}` : 'Sin fecha';
+    if (m !== mes) { filas += `<li class="tl-mes">${m}</li>`; mes = m; }
+    const t = TIPOS_MOV[h.tipo];
+    filas += `<li class="tl-${h.tipo}"><span class="tl-ico" aria-hidden="true">${t.letra}</span><div class="tl-cuerpo"><div class="tl-meta"><span class="mono">${fmt(h.fecha)}</span> · ${t.nombre}${h.autor ? ' · ' + esc(h.autor) : ''}${h.hecha ? ' · <span class="tag t-acu">✓ realizada</span>' : ''}</div><div>${esc(h.texto)}</div></div><button class="x" data-act="histdel" data-i="${h.i}" aria-label="Borrar movimiento">×</button></li>`;
+  }
+  return `<div class="chips-h">${chips}</div><ul class="tl">${filas}</ul>`;
+}
+
 function renderDrawer(entra = false) {
   const c = S.open, d = $('#drawer'); d.hidden = false; document.body.style.overflow = 'hidden';
   if (c.liquidacion) liqNormal(c.liquidacion);
@@ -1167,6 +1214,8 @@ function renderDrawer(entra = false) {
    <label class="f">Vence / recordar el<input type="date" id="c_vence" value="${esc(c.vence)}"></label></div>
    ${S.isNew ? '' : `<div><button class="btn small donebtn" data-act="done">✓ Marcar como realizada</button> <span class="hint">Pasa a los movimientos con su fecha de vencimiento (o la de hoy, si no tiene o todavía no venció) y se guarda.</span></div>`}</div>
 
+  ${S.isNew ? '' : docsHtml(c)}
+
   ${S.isNew ? '' : `<div class="sec" id="secCautelar"><h4>Acción cautelar</h4><div class="liqpie"><span class="hint">Embargo de haberes o secuestro del vehículo: la app arma el oficio y el escrito con los datos de la causa, para presentarlos en el SAC.</span><button class="btn small primary" data-act="cautelar">Acción cautelar</button></div></div>`}
 
   <div id="acuerdoFicha">${acuerdoFichaHtml(c)}</div>
@@ -1174,7 +1223,7 @@ function renderDrawer(entra = false) {
   <div class="sec"><h4>Movimientos</h4>
    <div class="addrow"><input type="date" id="h_fecha" value="${iso(today())}" aria-label="Fecha"><input id="h_texto" placeholder="Ej.: Dimos cédula a Franco" aria-label="Acción realizada"><button class="btn small primary" data-act="histadd">Registrar</button></div>
    <p class="hint m0">La acción más reciente pasa a ser la “última acción” de la causa.</p>
-   ${hist.length ? `<ul class="hist">${hist.map((h) => `<li><span class="mono">${fmt(h.fecha)}</span><span>${h.hecha ? '<span class="tag t-acu">✓ realizada</span> ' : ''}${esc(h.texto)}</span><button class="x" data-act="histdel" data-i="${h.i}" aria-label="Borrar movimiento">×</button></li>`).join('')}</ul>` : '<p class="hint m0">Sin movimientos registrados.</p>'}
+   ${historialHtml(hist)}
   </div>
 
   ${demandadosHtml(c)}
@@ -2148,6 +2197,7 @@ document.addEventListener('click', async (e) => {
   if (act === 'rubdel') { const [quitado] = c.liquidacion.rubros.splice(+a.dataset.i, 1); c.liquidacion.pagos.forEach((p) => delete p.imp[quitado.id]); S.liqSucia = true; }
   if (act === 'pagadd') { c.liquidacion.pagos.push({ id: idNuevo(), fecha: iso(today()), op: '', imp: {} }); S.liqSucia = true; }
   if (act === 'pagdel') { c.liquidacion.pagos.splice(+a.dataset.i, 1); S.liqSucia = true; }
+  if (act === 'fh') { S.fh = a.dataset.fh || 'todo'; }
   if (act === 'maxi') { S.maxi = !S.maxi; try { localStorage.setItem('gj.maxi', S.maxi ? '1' : '0'); } catch { /* sin almacenamiento */ } }
   if (act === 'done') { if (!applyDone(c)) { toast('No hay próxima acción anotada'); return; } $('#c_proxima').value = ''; $('#c_vence').value = ''; await save(); return; }
   if (act === 'del') { S.confirmDel = true; }

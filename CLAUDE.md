@@ -140,6 +140,26 @@ Después de escribir, leer la fila y contar qué quedó. La app abierta lo muest
   «Ahora», y nunca le da el mismo escrito a dos corridas a la vez. (`agenda_tomar(false)` y
   `agenda_del_dia()` son del horario de las 10:15, que ya no existe; ver más abajo.)
 
+- **Documentos en Drive** (migración 0026, columna `causas.drive`): lo que la revisión diaria de las 10:30 encontró en
+  la carpeta de Drive del demandado. La anota Claude por el conector, solo nombres de archivo:
+
+  ```sql
+  select gestor.drive('14000001', 'Pérez Juan', array['261105-Cédula.pdf', '261101 tasa.pdf'], array['AFIP.pdf']);
+  -- 3.º argumento: la carpeta del demandado; 4.º: la carpeta «Constancias Emiliano Soler»
+  ```
+
+  Reemplaza lo anterior y guarda la hora de la revisión. **No cuenta como cambio de la causa** (no sube `rev` ni
+  queda en `gestor.cambios`), así no choca con quien tenga la ficha abierta. La app (`docs/seguimiento.js`) cruza esa
+  lista con la próxima acción: `requisitos` dice qué adjuntos lleva cada escrito (reglas del estudio: tasa →
+  tasa y comprobante, y oficio de secuestro en prendarios; no oposición → Cédula y AFIP; ejecuta sentencia con
+  fianza → Cédula Sentencia y liquidación; pase a fallo y aprobación de liquidación → sin adjuntos; el resto,
+  sin regla) y `documentos` busca cada uno por el nombre del archivo (el más nuevo, `AAMMDD-…`). La ficha muestra
+  «Documentos en Drive» y la tarjeta del listado, «✗ Falta en Drive: …» o «✓ Adjuntos listos en Drive». Si una
+  regla nueva de la persona cambia los adjuntos de un escrito, cambiarla ahí (y en `dev/tests/seguimiento.test.mjs`).
+- **Movimientos como línea de tiempo**: en la ficha, agrupados por mes, con su tipo (Escrito, Tribunal,
+  Notificación, Pago o Gestión, deducido del texto por `tipoMovimiento` de `seguimiento.js`) y quién lo anotó.
+  Desde 0026, la base le pone `autor` a cada movimiento nuevo (disparador `autor_movimientos`: la persona desde la
+  app, o «Claude» por SQL y el chat); los anteriores quedan sin autor. Se puede filtrar por tipo (`S.fh`).
 - **Ver qué cambió y deshacer**: todo cambio queda en `gestor.cambios` con el estado anterior.
 
   ```sql

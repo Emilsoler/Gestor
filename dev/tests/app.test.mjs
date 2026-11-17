@@ -237,13 +237,19 @@ test('ficha: registrar movimientos actualiza la última acción', async () => {
   await page.fill('#h_fecha', dia(-3)); await page.fill('#h_texto', 'Libramos oficio'); await page.click('[data-act=histadd]');
   await page.fill('#h_fecha', dia(-3)); await page.fill('#h_texto', 'Oficio diligenciado'); await page.keyboard.press('Enter');
   // a igual fecha, el anotado después queda arriba y es la última acción
-  assert.match(await page.locator('.hist li').first().textContent(), /Oficio diligenciado/);
+  assert.match(await page.locator('.tl li:not(.tl-mes)').first().textContent(), /Oficio diligenciado/);
   await page.selectOption('#c_estado', '5. Martillero Designado');
   await page.selectOption('#c_ubicacion', 'Casillero');
   await page.click('.ppie [data-act=save]'); await toast(page, 'Cambios guardados'); await cerrado(page);
   assert.match(await fila(page, '1002').textContent(), /Oficio diligenciado/);
   assert.equal(sql(`select concat_ws('|', ultima, fecha, estado, ubicacion, jsonb_array_length(historial)) from public.causas where expte='1002'`),
     `Oficio diligenciado|${dia(-3)}|5. Martillero Designado|Casillero|2`);
+  // la base firma cada movimiento nuevo con quien lo anotó, y la ficha lo muestra con su tipo
+  assert.equal(sql(`select count(*) filter (where h->>'autor' = gestor.autor_de_prueba) from public.causas, jsonb_array_elements(historial) h where expte='1002'`.replace('gestor.autor_de_prueba', `(select coalesce(nullif(nombre, ''), email) from gestor.miembros where email = '${EMAIL}')`)), '2');
+  await abrir(page, '1002');
+  assert.match(await page.locator('.tl li:not(.tl-mes)').first().textContent(), /Escrito|Gestión/);
+  assert.ok(await page.locator('.chips-h [data-fh=todo]').count());
+  await page.click('.phead [data-act=close]'); await cerrado(page);
 });
 
 test('acción realizada desde la agenda: pasa a movimientos con su fecha de vencimiento', async () => {
@@ -339,7 +345,7 @@ test('planilla: si Claude cambió la causa no se pisa, y guardarla igual conserv
   await page.click('[data-act=choque-pisar]'); await toast(page, 'Planilla guardada');
   assert.equal(sql(`select (liquidacion -> 'rubros' -> 5 ->> 'monto') || '|' || ultima from public.causas where expte='1002'`), '50000|Se libró oficio');
   await page.click('.ppie [data-act=plvolver]');
-  assert.match(await page.textContent('.hist'), /Se libró oficio/, 'la ficha ya muestra el movimiento de Claude');
+  assert.match(await page.textContent('.tl'), /Se libró oficio/, 'la ficha ya muestra el movimiento de Claude');
   await page.click('.ppie [data-act=save]'); await toast(page, 'Cambios guardados'); await cerrado(page);
   assert.equal(sql(`select ultima from public.causas where expte='1002'`), 'Se libró oficio', 'guardar la ficha después tampoco lo borra');
 });
@@ -636,7 +642,7 @@ test('si Claude cambia una causa que tengo abierta: aviso, y al guardar elijo qu
   await page.click('[data-act=choque-ver]');
   assert.equal(await page.inputValue('#c_notas'), '');
   assert.equal(await page.inputValue('#c_estado'), '1.1 Demanda');
-  assert.match(await page.textContent('.hist'), /Cédula diligenciada/);
+  assert.match(await page.textContent('.tl'), /Cédula diligenciada/);
   // segundo choque: guardar lo mío igual
   await page.fill('#c_notas', 'nota definitiva');
   sql(`select gestor.proxima('2001', 'Esperar plazo', '${dia(5)}')`);
@@ -850,7 +856,7 @@ test('chat: Claude responde dentro de la app y lo que cambia se ve al toque', as
   await page.keyboard.press('Escape');
   // la ficha ya tiene el movimiento, sin recargar
   await abrir(page, '1002');
-  await page.waitForFunction(() => /desde el chat/.test(document.querySelector('.hist')?.textContent || ''));
+  await page.waitForFunction(() => /desde el chat/.test(document.querySelector('.tl')?.textContent || ''));
   await page.keyboard.press('Escape'); await cerrado(page);
   await page.click('#btnChat');
 });
@@ -1291,7 +1297,7 @@ test('pase a juicio: la causa nueva llega armada desde Cobranzas y, al crearla, 
   assert.equal(await page.inputValue('#t_vence0'), dia(-90));
   assert.equal(await page.inputValue('#t_descripcion0'), `Contrato de prenda N° 900123 del 15/03/2024. 24 cuotas de $ 100.000. Mora desde la cuota 22 (${dma(dia(-90))}): se reclaman las cuotas 22 a 24 de 24.`);
   assert.equal(await page.inputValue('#t_vehiculo0'), 'Fiat Cronos 2021, dominio AB123CD');
-  assert.match(await page.textContent('.panel .hist'), /Inicio del juicio: pasó desde Cobranzas/);
+  assert.match(await page.textContent('.panel .tl'), /Inicio del juicio: pasó desde Cobranzas/);
   // Un expediente que ya es otra causa: ofrece vincularla en vez de crear otra.
   await page.fill('#c_expte', '7002');
   await page.click('.ppie [data-act=save]');

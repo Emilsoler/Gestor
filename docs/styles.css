@@ -720,3 +720,35 @@ body:has(#drawer:not([hidden])) #btnChat,body:has(#drawer:not([hidden])) .fab,bo
 .causa-arch span{color:var(--accent);font-weight:600}
 .causa-arch:hover{border-color:var(--accent)}
 .causa-arch:first-child{margin:0 0 12px}
+
+/* ───────── Documentos en Drive y movimientos como línea de tiempo (nov 2026) ───────── */
+.causa-docs{margin-top:6px;font-size:12.5px;font-weight:500}
+.causa-docs.falta,.docs-estado.falta{color:var(--bad)}
+.causa-docs.listo,.docs-estado.listo{color:var(--ok)}
+.docs{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.docs li{display:flex;gap:10px;align-items:center;background:var(--raised);border-radius:10px;padding:8px 12px}
+.docs-ico{flex:none;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700}
+.docs-ico.si{background:var(--ok-soft);color:var(--ok)}
+.docs-ico.no{background:var(--bad-soft);color:var(--bad)}
+.docs-arch{font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.docs-estado{margin:8px 0 0;font-size:13.5px;font-weight:600}
+.docs-todos{margin-top:8px;font-size:13px;color:var(--soft)}
+.docs-todos summary{cursor:pointer;color:var(--muted)}
+.docs-todos ul{margin:6px 0 0;padding-left:18px;font-size:12px;color:var(--muted)}
+
+.chips-h{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+.chip-h{background:var(--raised);border:1px solid var(--line);border-radius:999px;padding:4px 12px;font:inherit;font-size:12.5px;color:var(--fg);cursor:pointer}
+.chip-h.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.tl{list-style:none;margin:0;padding:0 0 0 4px}
+.tl li{position:relative;display:grid;grid-template-columns:1fr auto;gap:8px;padding:0 0 14px 28px;border-left:2px solid var(--line);margin-left:10px}
+.tl li:last-child{border-left-color:transparent}
+.tl-ico{position:absolute;left:-12px;top:-1px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:600;background:var(--tl-s);color:var(--tl-c);border:1px solid var(--tl-c)}
+.tl-meta{font-size:12px;color:var(--muted)}
+.tl-meta .mono{font-size:12px}
+.tl-cuerpo{min-width:0;overflow-wrap:anywhere}
+.tl .tl-mes{display:block;padding:0 0 8px 28px;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent)}
+.tl-escrito{--tl-c:var(--accent);--tl-s:var(--accent-soft)}
+.tl-decreto{--tl-c:var(--info);--tl-s:var(--info-soft)}
+.tl-cedula{--tl-c:var(--violet);--tl-s:var(--violet-soft)}
+.tl-pago{--tl-c:var(--ok);--tl-s:var(--ok-soft)}
+.tl-otro{--tl-c:var(--muted);--tl-s:rgba(163,179,198,.12)}

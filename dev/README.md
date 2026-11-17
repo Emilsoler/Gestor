@@ -15,6 +15,7 @@ Nada de esta carpeta se publica con la app (GitHub Pages sirve solo `docs/`).
 | `oficio-pdf.mjs`, `texto-seguro.mjs` | Arman el PDF de un oficio adjunto a partir de los renglones que devuelve `gestor.agenda_adjuntos` (texto de solo ASCII, en partes con control): lo usa la tarea del SAC. |
 | `tarea-sac.md` | Las instrucciones de la tarea programada que presenta en el SAC. |
 | `claude-falso.mjs` | Un doble de la API de Claude (127.0.0.1:54340) que contesta lo que cada prueba le guiona. La función `chat` corre en local apuntando a él. |
+| `tests/seguimiento.test.mjs` | Documentos de Drive que pide cada escrito y tipo de cada movimiento (`docs/seguimiento.js`). No necesita el stack. |
 | `tests/app.test.mjs` | La app de punta a punta en un navegador real (Playwright). |
 | `tests/cobranzas.test.mjs` | Cobranzas: las cuentas (contra la planilla de Excel y el listado de la Mutual), la liquidación de la base comparada con la de la app en cientos de casos al azar, las funciones para Claude, los permisos y la importación del listado (con uno inventado). |
 | `tests/cobranzas-app.test.mjs` | La app de cobranzas de punta a punta (`/cobranzas/`), en PC y en celular. |

@@ -61,7 +61,8 @@ test('miembro: alta, lectura, edición con control de revisión y baja', async (
   assert.equal(r.data.actualizado_por, 'Emi');
   assert.equal([r.data.ubicacion, r.data.estado, r.data.cautelar].join('|'), 'Casillero|1.1 Demanda|Embargo de sueldo');
   assert.equal(r.data.situacion, 'En trámite', 'sin decir nada, la causa está en trámite');
-  assert.deepEqual(r.data.historial, causa.historial);
+  // la base le pone a cada movimiento nuevo quién lo anotó (0026)
+  assert.deepEqual(r.data.historial, causa.historial.map((h) => ({ ...h, autor: 'Emi' })));
   assert.equal(r.data.vence, '2026-10-09');
 
   // una causa nueva sin datos arranca en la primera etapa, en el casillero y sin cautelar
@@ -685,4 +686,35 @@ test('pase a juicio: la causa que sale de un deudor lo deja En juicio, en la mis
   assert.equal(deudor(d3).expte, '99000005');
 
   sql(`delete from public.causas where expte like '9900000%'; delete from public.deudores where nombre like 'PRUEBA PASE %'`);
+});
+
+test('0026: autor de cada movimiento nuevo y carpeta de Drive sin tocar la revisión', async () => {
+  await crearCuenta('drive@test.local', 'Clave-de-prueba-drive-1', 'Emi');
+  const emi = await entrar('drive@test.local', 'Clave-de-prueba-drive-1');
+  sql(`insert into public.causas (expte, demandado, historial) values ('99100001', 'PRUEBA DRIVE', '[{"fecha":"2026-10-01","texto":"viejo","autor":"Alguien"}]')`);
+  // por SQL / Claude: firma Claude; lo que ya tenía autor no se toca
+  sql(`select gestor.movimiento('99100001', 'Decreto', '2026-10-05')`);
+  const h = () => JSON.parse(sql(`select historial from public.causas where expte='99100001'`));
+  assert.deepEqual(h().map((x) => x.autor), ['Alguien', 'Claude']);
+  // desde la app: firma la persona, y los que ya estaban quedan como estaban
+  const fila = (await emi.from('causas').select('rev, historial').eq('expte', '99100001').single()).data;
+  const r = await emi.from('causas').update({ historial: [...fila.historial, { fecha: '2026-10-06', texto: 'Dimos cédula' }] })
+    .eq('expte', '99100001').eq('rev', fila.rev).select().single();
+  assert.ifError(r.error);
+  assert.deepEqual(r.data.historial.map((x) => x.autor), ['Alguien', 'Claude', 'Emi']);
+  // borrar un movimiento no le cambia el autor a nadie
+  const r2 = await emi.from('causas').update({ historial: r.data.historial.slice(1) }).eq('expte', '99100001').eq('rev', r.data.rev).select().single();
+  assert.deepEqual(r2.data.historial.map((x) => x.autor), ['Claude', 'Emi']);
+
+  // Drive: se anota sin subir la revisión, así no choca con quien tenga la ficha abierta
+  const rev = sql(`select rev from public.causas where expte='99100001'`);
+  const cambios = sql(`select count(*) from gestor.cambios where clave='99100001'`);
+  const d = JSON.parse(sql(`select gestor.drive('99100001', 'Prueba Drive', array['261105-Cédula.pdf', ' ', '261101 tasa.pdf'], array['AFIP.pdf'])`));
+  assert.deepEqual(d.archivos, ['261101 tasa.pdf', '261105-Cédula.pdf']);
+  assert.deepEqual(d.constancias, ['AFIP.pdf']);
+  assert.equal(sql(`select rev from public.causas where expte='99100001'`), rev);
+  assert.equal(sql(`select count(*) from gestor.cambios where clave='99100001'`), cambios);
+  assert.equal((await emi.from('causas').select('drive').eq('expte', '99100001').single()).data.drive.carpeta, 'Prueba Drive');
+  assert.match(sqlFalla(`select gestor.drive('no-existe', '', array[]::text[])`), /No existe la causa/);
+  sql(`delete from public.causas where expte = '99100001'`);
 });
