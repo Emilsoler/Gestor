@@ -296,7 +296,9 @@ async function calcular(pedido: any, a: any) {
   const sim = cuotaDe(monto, cuotas, a, tasa);
   if (!sim) throw new Falla('No se pudo calcular el crédito con estos datos.', 400, 'calculo');
   const opciones = plazos.map((n) => { const s = cuotaDe(monto, n, a, tasa); return s ? { cuotas: n, cuota: s.cuota } : null; }).filter(Boolean);
-  return { financiable: true as const, anio, maximo, monto, cuotas, tasa, sim, opciones };
+  // Qué parte del valor del vehículo se presta: solo para la Mutual (va en los datos de la solicitud, que la agencia no ve).
+  const pct = Math.round((monto / valor) * 1000) / 10;
+  return { financiable: true as const, anio, maximo, monto, cuotas, tasa, sim, opciones, pct };
 }
 
 // ───────────────────────── Pedido ─────────────────────────
@@ -434,7 +436,7 @@ export async function manejar(req: Request): Promise<Response> {
         p_user: uid, p_consulta: consulta,
         p_datos: {
           cliente: rd.datos.celular, vehiculo: texto(pedido.vehiculo).slice(0, 200), anio: c.anio, monto: c.monto, cuotas: c.cuotas,
-          cuota: c.sim.cuota, total: c.sim.totalCredito, tasa: c.tasa, cft: t.cft, ingreso, categoria, datos: rd.datos,
+          cuota: c.sim.cuota, total: c.sim.totalCredito, tasa: c.tasa, cft: t.cft, ingreso, categoria, datos: { ...rd.datos, pct_valor: c.pct },
         },
       });
       if (g?.error === 'consulta') throw new Falla('La consulta al BCRA de este cliente venció: consultá el CUIT de nuevo.', 400, 'consulta');

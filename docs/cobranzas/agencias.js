@@ -125,30 +125,43 @@ function documentos(x, docs) {
     <div class="actions">${pdf}</div></div>`;
 }
 
+/**
+ * Una solicitud, resumida para decidir (pedido de la persona, nov 2026): arriba y en grande la agencia; después el cliente
+ * con su CUIT y el BCRA; el crédito con qué parte del valor del vehículo se presta; y el trabajo y los ingresos. Lo que
+ * hace falta recién después de aprobar (DNI, domicilio, estado civil, celular, CBU, total, tasa y CFT) queda plegado.
+ */
 function solicitud(x, A, est, notas) {
   const b = A.bcra.get(x.consulta), motivos = Array.isArray(b?.motivos) ? b.motivos : [], d = x.datos || {};
   const dniCuit = dniDelCuit(x.cuit), pend = x.estado === 'pendiente';
+  const pctValor = Number(d.pct_valor) > 0 ? ` <span class="hint">(${esc(Number(d.pct_valor).toLocaleString('es-AR', { maximumFractionDigits: 1 }))} % del valor del vehículo)</span>` : '';
+  const trabajo = [x.categoria ? CATEGORIAS[x.categoria] || x.categoria : '', d.actividad || ''].filter(Boolean);
   return `<section class="card ag-sol" id="sol-${esc(x.id)}">
-    <div class="card-cab"><div><b class="ag-nombre">${esc(x.denominacion || cuitLindo(x.cuit))}</b><div class="hint">${esc(fechaHora(x.enviada || x.momento))} · pide <b>${esc(x.agencia)}</b></div></div>
+    <div class="card-cab"><div><div class="ag-agencia">${esc(x.agencia)}</div><div class="hint">${esc(fechaHora(x.enviada || x.momento))}</div></div>
       ${etiqueta(ESTADO[x.estado] || [x.estado, ''])}</div>
-    <div class="ag-tabla"><table class="tabla"><tbody>
-      ${fila('CUIT', esc(cuitLindo(x.cuit)))}
-      ${fila('BCRA', etiqueta(SEM[x.semaforo] || [x.semaforo, '']))}
-      ${b ? fila('Deuda informada · entidades', `${plata(b.deuda_total)} · ${esc(b.entidades)}`) : ''}
-      ${fila('Vehículo', `${esc(x.vehiculo)} (${esc(anioTxt(x.anio))})`)}
-      ${fila('Crédito', `${plata(x.monto)} en ${x.cuotas} × ${plata(x.cuota)}`)}
-      ${fila('Total · tasa mensual · CFT', `${plata(x.total)} · ${pct(x.tasa)} · ${pct(x.cft)}`)}
-      ${x.ingreso ? fila('Ingreso mensual declarado', `${plata(x.ingreso)} · la cuota es el ${pct(x.relacion)}`) : ''}
-      ${x.categoria ? fila('Ingresos', esc(CATEGORIAS[x.categoria] || x.categoria)) : ''}
-      ${d.dni ? fila('DNI', `${esc(Number(d.dni).toLocaleString('es-AR'))}${dniCuit && dniCuit !== d.dni ? ' <span class="tag t-mal">no coincide con el CUIL</span>' : ''}`) : ''}
-      ${d.domicilio ? fila('Domicilio real', esc(d.domicilio)) : ''}
-      ${d.estado_civil ? fila('Estado civil', d.estado_civil === 'casado' ? `Casado/a · ${esc(d.matrimonio_lugar || '')}, ${esc(String(d.matrimonio_fecha || '').split('-').reverse().join('/'))}` : 'Soltero/a') : ''}
-      ${x.cliente ? fila('Celular', esc(x.cliente)) : ''}
-      ${d.cbu ? fila('CBU o CVU', `<span class="mono">${esc(d.cbu)}</span>`) : fila('CBU o CVU', '<span class="hint">No lo informó la agencia</span>')}
-      ${d.cuenta === 'propia' ? fila('Cuenta', 'Propia del cliente') : ''}
-      ${d.cuenta === 'terceros' ? fila('Cuenta', `<span class="tag t-prom">De un tercero</span> ${esc(d.cuenta_titular || '')} · ${esc(cuitLindo(d.cuenta_cuit || ''))}${d.cuenta_relacion ? ` · ${esc(d.cuenta_relacion)}` : ''}`) : ''}
-    </tbody></table></div>
-    ${motivos.length ? `<p class="hint m0">BCRA: ${esc(motivos.join(' · '))}</p>` : ''}
+    <div class="ag-bloque"><span class="ag-rotulo">Cliente</span>
+      <b class="ag-nombre">${esc(x.denominacion || cuitLindo(x.cuit))}</b>
+      <div>CUIT ${esc(cuitLindo(x.cuit))} · ${etiqueta(SEM[x.semaforo] || [x.semaforo, ''])}</div>
+      ${motivos.length ? `<div class="hint">${esc(motivos.join(' · '))}</div>` : ''}</div>
+    <div class="ag-bloque"><span class="ag-rotulo">Crédito</span>
+      <div><b>${plata(x.monto)}</b>${pctValor}</div>
+      <div>${x.cuotas} cuotas de <b>${plata(x.cuota)}</b></div>
+      <div class="hint">${esc(x.vehiculo)} (${esc(anioTxt(x.anio))})</div></div>
+    <div class="ag-bloque"><span class="ag-rotulo">Trabajo e ingresos</span>
+      ${trabajo.length ? `<div>${esc(trabajo.join(' · '))}</div>` : ''}
+      ${x.ingreso ? `<div>Declara <b>${plata(x.ingreso)}</b> por mes · la cuota es el ${pct(x.relacion)}</div>` : '<div class="hint">No declaró ingresos</div>'}</div>
+    <details class="ag-mas"><summary>Más datos del cliente y del crédito</summary>
+      <div class="ag-tabla"><table class="tabla"><tbody>
+        ${b ? fila('Deuda informada · entidades', `${plata(b.deuda_total)} · ${esc(b.entidades)}`) : ''}
+        ${fila('Total · tasa mensual · CFT', `${plata(x.total)} · ${pct(x.tasa)} · ${pct(x.cft)}`)}
+        ${d.dni ? fila('DNI', `${esc(Number(d.dni).toLocaleString('es-AR'))}${dniCuit && dniCuit !== d.dni ? ' <span class="tag t-mal">no coincide con el CUIL</span>' : ''}`) : ''}
+        ${d.domicilio ? fila('Domicilio real', esc(d.domicilio)) : ''}
+        ${d.estado_civil ? fila('Estado civil', d.estado_civil === 'casado' ? `Casado/a · ${esc(d.matrimonio_lugar || '')}, ${esc(String(d.matrimonio_fecha || '').split('-').reverse().join('/'))}` : 'Soltero/a') : ''}
+        ${x.cliente ? fila('Celular', esc(x.cliente)) : ''}
+        ${d.cbu ? fila('CBU o CVU', `<span class="mono">${esc(d.cbu)}</span>`) : fila('CBU o CVU', '<span class="hint">No lo informó la agencia</span>')}
+        ${d.cuenta === 'propia' ? fila('Cuenta', 'Propia del cliente') : ''}
+        ${d.cuenta === 'terceros' ? fila('Cuenta', `<span class="tag t-prom">De un tercero</span> ${esc(d.cuenta_titular || '')} · ${esc(cuitLindo(d.cuenta_cuit || ''))}${d.cuenta_relacion ? ` · ${esc(d.cuenta_relacion)}` : ''}`) : ''}
+      </tbody></table></div></details>
+    ${dniCuit && d.dni && dniCuit !== d.dni ? '<p class="aviso-chico m0">El DNI que cargó la agencia no coincide con el CUIL.</p>' : ''}
     ${documentos(x, est.docs)}
     ${pend ? `<label class="f">Nota para la agencia (opcional)<input data-k="ag.notas.${esc(x.id)}" value="${esc(notas[x.id] || '')}" maxlength="500" autocomplete="off"></label>
       <div class="actions"><button class="btn primary" data-a="ag-resolver" data-id="${esc(x.id)}" data-estado="aprobada">Aprobar</button>

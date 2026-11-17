@@ -114,8 +114,10 @@ export function revisarDatos(d, hoy) {
     if (!cuitValido(cuit)) errores.push('El CUIT o CUIL del titular de la cuenta no es válido: revisá los números.');
     tercero = { cuenta_titular: titular, cuenta_cuit: cuit, ...(txt(d?.cuenta_relacion, 120) ? { cuenta_relacion: txt(d?.cuenta_relacion, 120) } : {}) };
   }
+  // Empleo, profesión o actividad del cliente, en palabras de la agencia (opcional; nov 2026, para la Mutual).
+  const actividad = txt(d?.actividad, 200);
   if (errores.length) return { errores };
   return {
-    datos: { dni, domicilio, estado_civil: estado, ...(estado === 'casado' ? { matrimonio_lugar: lugar, matrimonio_fecha: fecha } : {}), celular, ...(cbu ? { cbu, cuenta } : {}), ...tercero },
+    datos: { ...(actividad ? { actividad } : {}), dni, domicilio, estado_civil: estado, ...(estado === 'casado' ? { matrimonio_lugar: lugar, matrimonio_fecha: fecha } : {}), celular, ...(cbu ? { cbu, cuenta } : {}), ...tercero },
   };
 }

@@ -44,7 +44,7 @@ const S = {
 function nuevaSol() {
   return {
     abierta: false, ingresos: null, ingreso: '', categoria: '', docs: {},
-    dni: '', domicilio: '', estado_civil: '', matrimonio_lugar: '', matrimonio_fecha: '', celular: '', cbu: '', conformidad: false,
+    actividad: '', dni: '', domicilio: '', estado_civil: '', matrimonio_lugar: '', matrimonio_fecha: '', celular: '', cbu: '', conformidad: false,
     cuenta: '', cuenta_titular: '', cuenta_cuit: '', cuenta_relacion: '',
     errores: [], error: '', enviando: false, progreso: '', preparando: 0, enviada: false, envio: null,
   };
@@ -234,7 +234,7 @@ const sinAdjuntar = () => docsRequeridos(S.sol.categoria, S.res.anio).filter((k)
 
 function revisarSolicitud() {
   const L = S.sol, errores = [];
-  const rd = revisarDatos({ dni: L.dni, domicilio: L.domicilio, estado_civil: L.estado_civil, matrimonio_lugar: L.matrimonio_lugar, matrimonio_fecha: L.matrimonio_fecha,
+  const rd = revisarDatos({ actividad: L.actividad, dni: L.dni, domicilio: L.domicilio, estado_civil: L.estado_civil, matrimonio_lugar: L.matrimonio_lugar, matrimonio_fecha: L.matrimonio_fecha,
     celular: L.celular, cbu: L.cbu, cuenta: L.cuenta, cuenta_titular: L.cuenta_titular, cuenta_cuit: L.cuenta_cuit, cuenta_relacion: L.cuenta_relacion }, hoy());
   if (rd.errores) errores.push(...rd.errores);
   if (!L.conformidad) errores.push('Marcá que el cliente está de acuerdo con enviar sus datos y documentos a la Mutual.');
@@ -490,6 +490,7 @@ function vistaSolicitud() {
   const v = (k) => esc(L[k] ?? '');
   const dniCuit = dniDelCuit(S.bcra?.cuit), dni = soloDigitos(L.dni);
   html += `<section class="card no-imprimir"><h2>4 · Documentación de ingresos</h2>
+    <label class="f">Empleo, profesión o actividad (opcional)<input data-campo="actividad" autocomplete="off" maxlength="200" placeholder="Ej.: empleado de comercio en Supermercado X; docente; productor agropecuario" value="${v('actividad')}"></label>
     <p class="hint m0">${esc(CATEGORIAS[L.categoria])}. PDF o fotos, hasta 10 MB cada archivo (las fotos se achican solas).</p>
     ${DOCS_INGRESOS[L.categoria].map(casillero).join('')}
   </section>

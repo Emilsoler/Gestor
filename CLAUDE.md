@@ -788,8 +788,12 @@ Mutual y no nombra a InfoAuto.
   matrimonio, celular, CBU, `cuenta` propia|terceros y, de un tercero, `cuenta_titular`, `cuenta_cuit`, `cuenta_relacion`),
   `archivos` y `cliente` (el celular); sin valor del vehículo ni CODIA. Las crea solo la función
   (`agencia_solicitar`, `agencia_archivo`, `agencia_enviar`, clave de servicio). La Mutual las ve en Créditos y Cobros →
-  Agencias → **Solicitudes**: el BCRA con su detalle, el crédito, los ingresos, los datos (avisa si el DNI no
-  coincide con el CUIL) y «Ver documentos», que pide a la función (acción `archivos`, solo miembros) enlaces que vencen a los
+  Agencias → **Solicitudes**, **resumidas para decidir** (pedido de la persona del 17/11/2026): arriba y en grande la agencia;
+  después el cliente (nombre, CUIT, BCRA), el crédito (monto con el **% del valor del vehículo** —`datos.pct_valor`, que calcula
+  la función al solicitar y la agencia no ve—, cuotas y vehículo) y el trabajo e ingresos (categoría, **empleo, profesión o
+  actividad** —`datos.actividad`, campo opcional del paso 4 del cotizador— e ingreso declarado). Lo que hace falta después
+  (deuda informada, total, tasa, CFT, DNI, domicilio, estado civil, celular, CBU) va plegado en «Más datos del cliente y del
+  crédito»; si el DNI no coincide con el CUIL, se avisa afuera y «Ver documentos», que pide a la función (acción `archivos`, solo miembros) enlaces que vencen a los
   15 minutos. **«Descargar todo en un PDF»** (`docs/cobranzas/unirpdf.js`, pedido de la persona del 17/11/2026) pide esos enlaces,
   baja cada archivo y arma en el navegador un solo PDF: carátula (cliente, agencia, crédito, documentos y «Sin adjuntar»), y
   después cada documento por casillero, con un rótulo arriba (los PDF con sus páginas; cada foto en una A4); lo que no se pueda

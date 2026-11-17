@@ -715,6 +715,12 @@ body:has(#drawer:not([hidden])) #btnClaudeWeb,body:has(#menu:not([hidden])) #btn
 /* ───────── Agencias: lo que mandan las agencias desde el cotizador ───────── */
 .ag{display:grid;gap:14px;min-width:0}
 .ag-nombre{font-size:16px}
+/* Solicitud resumida: la agencia en grande y tres bloques (cliente, crédito, trabajo e ingresos); el resto, plegado. */
+.ag-agencia{font-size:22px;font-weight:600;letter-spacing:.01em;line-height:1.2}
+.ag-bloque{display:grid;gap:3px;padding:10px 0;border-top:1px solid var(--line-soft)}
+.ag-rotulo{font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.ag-mas{border-top:1px solid var(--line-soft);padding-top:8px}
+.ag-mas summary{cursor:pointer;color:var(--accent-txt);font-size:14px;padding:4px 0}
 .ag-tabla{overflow-x:auto}
 .ag-tabla .tabla{min-width:0}
 .ag-tabla .tabla td.num{white-space:normal;overflow-wrap:anywhere}
