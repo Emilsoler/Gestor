@@ -720,7 +720,7 @@ Mutual y no nombra a InfoAuto.
 - **Las agencias no son miembros del gestor**: `gestor_puerta` les cierra toda la API de la base. Solo hablan con
   la función `agencias`, que las reconoce con `public.agencia_sesion` (clave de servicio). Un miembro que entra
   a `/agencias/` ve una «vista previa» (sus cotizaciones no se registran, puede probar con el cotizador
-  deshabilitado) y la pestaña **Administración** (parámetros, agencias, cotizaciones), que usa la API con sus permisos.
+  deshabilitado) y la pestaña **Administración** (solicitudes, parámetros, agencias, cotizaciones), que usa la API con sus permisos.
 - **Tablas** (migración 0025): `public.agencias` (nombre, email, cuenta, `activa`, `informada_infoauto` —fecha
   del aviso por escrito a InfoAuto, obligatoria para activar—, `clave_temporal`; tope de 20 activas y una cuenta
   del gestor no puede ser agencia, lo controla `gestor.tg_agencias_reglas`), `public.ajustes_agencias` (una fila:
@@ -731,6 +731,24 @@ Mutual y no nombra a InfoAuto.
   `docs/cobranzas/vehiculos.js` (las pruebas las comparan: si se cambia una, cambiar la otra), más `montoMaximo` y
   `tasasDelCredito` (TNA = tasa × 12; TEA = (1 + tasa)^12 − 1; CFT = TEA de la TIR entre lo que recibe el comprador y
   la cuota final, con todos los gastos, sin IVA).
+- **Parámetros de la Mutual** (migración 0027, pedido de la persona del 17/11/2026): 40 % del valor, de 1 a 24 cuotas,
+  modelos 2014 en adelante (`anio_minimo`), tasa mensual según el año del modelo (`tasas`: 2021 en adelante 5 %, 2018 a
+  2020 6 %, 2014 a 2017 7 %; el 0 km cuenta como el año en curso; `tasaPara` en `credito.js`) y los gastos del simulador
+  interno **sin envío ni gestoría** (en 0). Se cambian en Administración → Parámetros (los plazos aceptan un rango, «1-24»,
+  y las tasas, «2021=5; 2018=6; 2014=7»).
+- **Flujo de la agencia**: 1) consulta el CUIT del cliente en el BCRA (acción `bcra`, con `bcra.ts`, **copia exacta** de
+  `supabase/functions/bcra/bcra.ts`, mismo semáforo que Cobranzas; las pruebas comparan los dos archivos): a la agencia le
+  llega solo el color y el nombre, y la consulta completa queda en `public.consultas_bcra` firmada «Agencia · <nombre>»
+  (también en Créditos y Cobros → Deudas por CUIT); 2) simula el crédito del vehículo; 3) **solo con el cliente en verde**
+  manda la «Solicitud de aprobación de crédito» (acción `solicitar`; la función recalcula el crédito, no confía en el
+  navegador; exige una consulta en verde de esa misma agencia de los últimos 3 días y no deja dos pendientes para el mismo
+  CUIT). Las consultas al BCRA cuentan para el `tope_diario`.
+- **Solicitudes** (`public.solicitudes_credito`, migración 0027): agencia, CUIT, nombre, color del BCRA, vehículo, año,
+  monto, cuotas, cuota, total, tasa, CFT y contacto del cliente; sin valor del vehículo ni CODIA. Las crea solo la función
+  (`agencia_solicitar`, clave de servicio). La Mutual las ve en Administración → **Solicitudes** (la pestaña de arranque,
+  con el detalle del BCRA: deuda, entidades y motivos) y las aprueba o rechaza con una nota: los miembros solo pueden
+  cambiar `estado` y `nota`; quién y cuándo resolvió lo pone la base. La agencia ve en «Mis solicitudes» en qué quedó
+  cada una. No hay aviso por mail ni WhatsApp de una solicitud nueva: se ve al entrar a Administración.
 
 Para Claude, por el conector:
 
@@ -741,9 +759,12 @@ select gestor.pausar_agencia('ventas@agencia.com');
 select nombre, email, activa, informada_infoauto from public.agencias order by nombre;
 select momento, agencia, vehiculo, anio, monto, cuotas, cuota from public.cotizaciones_agencia order by momento desc limit 50;
 update public.ajustes_agencias set habilitado = true;   -- con set_config('gestor.autor', 'Claude', true)
+select momento, agencia, cuit, denominacion, vehiculo, anio, monto, cuotas, cuota, estado from public.solicitudes_credito order by momento desc;
+update public.solicitudes_credito set estado = 'aprobada', nota = '…' where id = '<id>';   -- solo si la persona lo decide
 ```
 
-- **Publicar la función**: `deploy_edge_function` con nombre `agencias`, `verify_jwt: true` y los dos archivos de
-  `supabase/functions/agencias/` (entrada `index.ts`). Usa los secretos `INFOAUTO_USER` e `INFOAUTO_PASS`.
+- **Publicar la función**: `deploy_edge_function` con nombre `agencias`, `verify_jwt: true` y los tres archivos de
+  `supabase/functions/agencias/` (`index.ts` de entrada, `credito.js` y `bcra.ts`). Usa los secretos `INFOAUTO_USER` e `INFOAUTO_PASS`.
 - **Pruebas**: `npm run test:agencias` (función de punta a punta contra `dev/infoauto-falso.mjs`, con vehículos y
-  precios inventados; controla que ninguna respuesta a una agencia incluya un precio o un CODIA).
+  precios inventados, y contra `dev/bcra-falso.mjs` para el BCRA; controla que ninguna respuesta a una agencia incluya un
+  precio o un CODIA, la tasa por año, el semáforo y las solicitudes).

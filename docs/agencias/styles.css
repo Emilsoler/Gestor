@@ -87,6 +87,18 @@ tr.elegido td{color:var(--accent-txt);font-weight:600}
 .check input{width:22px;height:22px;min-height:0}
 .ingreso{max-width:420px;margin:6vh auto 0}
 
+.aviso.ok{background:rgba(166,224,126,.13);color:#d9f5c4}
+.semaforo{border-left:6px solid var(--muted)}
+.sem-fila{display:flex;align-items:center;gap:14px}
+.sem-luz{width:44px;height:44px;border-radius:50%;background:var(--muted);flex:none;box-shadow:0 0 18px currentColor;color:var(--muted)}
+.sem-nombre{font-size:20px}
+.s-verde{border-left-color:#4ade80} .s-verde .sem-luz{background:#4ade80;color:#4ade80}
+.s-amarillo{border-left-color:#facc15} .s-amarillo .sem-luz{background:#facc15;color:#facc15}
+.s-rojo{border-left-color:#f87171} .s-rojo .sem-luz{background:#f87171;color:#f87171}
+.solicitar{display:grid;gap:10px;border-top:1px solid var(--line);padding-top:14px}
+.sol{display:grid;gap:6px;border-top:1px solid var(--line);padding-top:12px}
+.sol:first-of-type{border-top:0;padding-top:0}
+
 @media print{
   .cab,.pie,.no-imprimir{display:none !important}
   body{background:#fff;color:#000}

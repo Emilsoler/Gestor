@@ -14,12 +14,21 @@
 // reconoce con public.agencia_sesion, usando la clave de servicio.
 //
 // Pedido: { accion, ... }. Acciones: yo, clave_definida, marcas, modelos {marca}, versiones {marca, grupo},
-// anios {ref}, cotizar {ref, anio, cuotas, monto?, vehiculo?}.
-import { simularCredito, montoMaximo, tasasDelCredito, anioMinimo } from './credito.js';
+// anios {ref}, cotizar {ref, anio, cuotas, monto?, vehiculo?}, bcra {cuit}, solicitar {consulta, ref, anio,
+// cuotas, monto?, vehiculo?, cliente?}, solicitudes.
+//
+// BCRA: la agencia consulta el CUIT de su cliente en la Central de Deudores (API pública). La consulta queda
+// guardada entera en consultas_bcra para la Mutual; a la agencia se le devuelve solo el color y el nombre.
+// La solicitud de aprobación exige esa consulta en verde y recalcula el crédito acá (no se confía en los
+// importes que mande el navegador). En los registros no queda el CUIT.
+import { simularCredito, montoMaximo, tasasDelCredito, anioMinimo, tasaPara } from './credito.js';
+// Copia exacta de ../bcra/bcra.ts (las pruebas lo controlan): el mismo semáforo que Cobranzas.
+import { ErrorBCRA, consultar, cuitValido, resumir, sinCuit, soloDigitos } from './bcra.ts';
 
 const URL_BASE = Deno.env.get('SUPABASE_URL') || '';
 const CLAVE_SERVICIO = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 const API = (Deno.env.get('INFOAUTO_API') || 'https://api.infoauto.com.ar').replace(/\/+$/, '');
+const URL_BCRA = Deno.env.get('BCRA_URL') || 'https://api.bcra.gob.ar'; // otra solo en las pruebas locales
 const ORIGENES = (Deno.env.get('GESTOR_ORIGENES') || 'https://emilsoler.github.io,http://127.0.0.1:8080').split(',').map((s) => s.trim());
 
 function clavePublica() {
@@ -221,8 +230,31 @@ function plazosValidos(a: any): number[] {
   return (Array.isArray(a.plazos) ? a.plazos : []).map(Number).filter((n: number) => Number.isInteger(n) && n >= 1 && n <= 120).sort((x: number, y: number) => x - y);
 }
 
-function cuotaDe(monto: number, cuotas: number, a: any) {
-  return simularCredito({ capital: monto, cuotas, g: a.gastos || {}, tasa: Number(a.tasa_mensual) });
+function cuotaDe(monto: number, cuotas: number, a: any, tasa: number) {
+  return simularCredito({ capital: monto, cuotas, g: a.gastos || {}, tasa });
+}
+
+/** El crédito para un vehículo (referencia cifrada), un año y un plazo, con los parámetros vigentes. */
+async function calcular(pedido: any, a: any) {
+  const codia = await descifrar(pedido.ref);
+  const anio = String(pedido.anio || '');
+  const plazos = plazosValidos(a);
+  const cuotas = Math.trunc(Number(pedido.cuotas));
+  if (!plazos.includes(cuotas)) throw new Falla('Elegí uno de los plazos disponibles.', 400, 'plazo');
+  const [{ precios }, actual] = await Promise.all([aniosDe(codia, a), anioActual()]);
+  const valor = precios.get(anio);
+  if (!valor) throw new Falla('Ese año no se puede financiar para este vehículo.', 400, 'anio');
+  const maximo = montoMaximo(valor, a);
+  if (!maximo) return { financiable: false as const };
+  const pedidoMonto = Math.round(Number(pedido.monto) || 0);
+  const minimo = Math.max(Number(a.monto_minimo) || 0, 1);
+  const monto = pedidoMonto > 0 ? Math.min(pedidoMonto, maximo) : maximo;
+  if (monto < minimo) throw new Falla(`El monto mínimo es de $ ${minimo.toLocaleString('es-AR')}.`, 400, 'monto');
+  const tasa = tasaPara(anio, a, actual);
+  const sim = cuotaDe(monto, cuotas, a, tasa);
+  if (!sim) throw new Falla('No se pudo calcular el crédito con estos datos.', 400, 'calculo');
+  const opciones = plazos.map((n) => { const s = cuotaDe(monto, n, a, tasa); return s ? { cuotas: n, cuota: s.cuota } : null; }).filter(Boolean);
+  return { financiable: true as const, anio, maximo, monto, cuotas, tasa, sim, opciones };
 }
 
 // ───────────────────────── Pedido ─────────────────────────
@@ -248,7 +280,6 @@ export async function manejar(req: Request): Promise<Response> {
       return responder({
         agencia: ag.nombre, miembro: !!ag.miembro, clave_temporal: !!ag.clave_temporal,
         habilitado: !!a.habilitado, plazos: plazosValidos(a), leyenda: String(a.leyenda || ''), contacto: String(a.contacto || ''),
-        tasa_mensual: Number(a.tasa_mensual),
       }, 200, cors);
     }
     if (accion === 'clave_definida') {
@@ -294,35 +325,63 @@ export async function manejar(req: Request): Promise<Response> {
       return responder({ anios }, 200, cors);
     }
     if (accion === 'cotizar') {
-      const codia = await descifrar(pedido.ref);
-      const anio = String(pedido.anio || '');
-      const plazos = plazosValidos(a);
-      const cuotas = Math.trunc(Number(pedido.cuotas));
-      if (!plazos.includes(cuotas)) throw new Falla('Elegí uno de los plazos disponibles.', 400, 'plazo');
-      const { precios } = await aniosDe(codia, a);
-      const valor = precios.get(anio);
-      if (!valor) throw new Falla('Ese año no se puede financiar para este vehículo.', 400, 'anio');
-      const maximo = montoMaximo(valor, a);
-      if (!maximo) return responder({ financiable: false, mensaje: 'Este vehículo no alcanza el monto mínimo de financiación.' }, 200, cors);
-      const pedidoMonto = Math.round(Number(pedido.monto) || 0);
-      const minimo = Math.max(Number(a.monto_minimo) || 0, 1);
-      const monto = pedidoMonto > 0 ? Math.min(pedidoMonto, maximo) : maximo;
-      if (monto < minimo) throw new Falla(`El monto mínimo es de $ ${minimo.toLocaleString('es-AR')}.`, 400, 'monto');
-      const sim = cuotaDe(monto, cuotas, a);
-      if (!sim) throw new Falla('No se pudo calcular el crédito con estos datos.', 400, 'calculo');
+      const c = await calcular(pedido, a);
+      if (!c.financiable) return responder({ financiable: false, mensaje: 'Este vehículo no alcanza el monto mínimo de financiación.' }, 200, cors);
       if (!ag.miembro) {
         const ok = await rpc('agencia_registrar', {
-          p_user: uid, p_vehiculo: texto(pedido.vehiculo).slice(0, 200), p_anio: anio, p_monto: monto, p_cuotas: cuotas, p_cuota: sim.cuota,
+          p_user: uid, p_vehiculo: texto(pedido.vehiculo).slice(0, 200), p_anio: c.anio, p_monto: c.monto, p_cuotas: c.cuotas, p_cuota: c.sim.cuota,
         });
         if (ok !== true) throw new Falla('Llegaste al tope de cotizaciones de hoy. Probá mañana o consultá con la Mutual.', 429, 'tope');
       }
-      const opciones = plazos.map((n) => { const s = cuotaDe(monto, n, a); return s ? { cuotas: n, cuota: s.cuota } : null; }).filter(Boolean);
       // Solo condiciones del préstamo: ni el valor del vehículo ni el CODIA.
       return responder({
-        financiable: true, anio, maximo, monto, cuotas, cuota: sim.cuota, total: sim.totalCredito,
-        gastos_otorgamiento: sim.gastos, ...tasasDelCredito(sim), opciones,
+        financiable: true, anio: c.anio, maximo: c.maximo, monto: c.monto, cuotas: c.cuotas, cuota: c.sim.cuota, total: c.sim.totalCredito,
+        gastos_otorgamiento: c.sim.gastos, ...tasasDelCredito(c.sim), opciones: c.opciones,
         leyenda: String(a.leyenda || ''), contacto: String(a.contacto || ''),
       }, 200, cors);
+    }
+    if (accion === 'bcra') {
+      // Un CUIT mal escrito se rechaza antes de preguntar: para el BCRA "no figura", y se leería como sin deudas.
+      const cuit = soloDigitos(pedido?.cuit).slice(0, 20);
+      if (cuit.length !== 11) throw new Falla('El CUIT o CUIL tiene que tener 11 números.', 400, 'cuit');
+      if (!cuitValido(cuit)) throw new Falla('Ese CUIT o CUIL no existe: revisá los números (el último no coincide con los demás).', 400, 'cuit');
+      let r;
+      try { r = await consultar(cuit, { url: URL_BCRA }); } catch (e) {
+        const err = e instanceof ErrorBCRA ? e : new ErrorBCRA('red', 0, sinCuit(String(e)));
+        console.error(JSON.stringify({ agencias: 'bcra', tipo: err.tipo, status: err.status }));
+        throw new Falla(err.message, err.tipo === 'limite' ? 429 : err.tipo === 'tiempo' ? 504 : 502, `bcra_${err.tipo}`);
+      }
+      const resumen = resumir(r.deudas, r.cheques, r.historicas);
+      let consulta: string | null = null;
+      if (!ag.miembro) { // la vista previa de la Mutual no guarda (para eso está Cobranzas)
+        const g = await rpc('agencia_bcra_guardar', {
+          p_user: uid, p_fila: { cuit, ...resumen, resultado: { deudas: r.deudas, historicas: r.historicas, cheques: r.cheques, errores: r.errores } },
+        });
+        if (g?.tope) throw new Falla('Llegaste al tope de consultas de hoy. Probá mañana o consultá con la Mutual.', 429, 'tope');
+        consulta = g?.id || null;
+      }
+      // A la agencia, solo el color y el nombre: el detalle (entidades, montos, cheques) queda para la Mutual.
+      return responder({ consulta, cuit, denominacion: resumen.denominacion, semaforo: resumen.semaforo }, 200, cors);
+    }
+    if (accion === 'solicitar') {
+      if (ag.miembro) throw new Falla('En la vista previa no se envían solicitudes.', 400, 'vista_previa');
+      const consulta = String(pedido.consulta || '');
+      if (!/^[0-9a-f-]{36}$/i.test(consulta)) throw new Falla('Primero consultá el CUIT del cliente.', 400, 'consulta');
+      const c = await calcular(pedido, a);
+      if (!c.financiable) throw new Falla('Este vehículo no alcanza el monto mínimo de financiación.', 400, 'monto');
+      const t = tasasDelCredito(c.sim);
+      const g = await rpc('agencia_solicitar', {
+        p_user: uid, p_consulta: consulta,
+        p_datos: { cliente: texto(pedido.cliente).slice(0, 300), vehiculo: texto(pedido.vehiculo).slice(0, 200), anio: c.anio, monto: c.monto, cuotas: c.cuotas, cuota: c.sim.cuota, total: c.sim.totalCredito, tasa: c.tasa, cft: t.cft },
+      });
+      if (g?.error === 'consulta') throw new Falla('La consulta al BCRA de este cliente venció: consultá el CUIT de nuevo.', 400, 'consulta');
+      if (g?.error === 'semaforo') throw new Falla('Solo se puede solicitar la aprobación con el cliente en verde.', 400, 'semaforo');
+      if (g?.error === 'repetida') throw new Falla('Ya hay una solicitud pendiente para este cliente.', 409, 'repetida');
+      if (!g?.id) throw new Falla('No se pudo enviar la solicitud. Probá de nuevo.', 502, 'base');
+      return responder({ ok: true, id: g.id }, 200, cors);
+    }
+    if (accion === 'solicitudes') {
+      return responder({ solicitudes: ag.miembro ? [] : await rpc('agencia_solicitudes', { p_user: uid }) }, 200, cors);
     }
     throw new Falla('Pedido desconocido.', 400, 'accion');
   } catch (e) {

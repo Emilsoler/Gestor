@@ -161,7 +161,7 @@ SQL
   echo $! > "$STACK/infoauto-falso.pid"
   if [ -x "$DENO" ]; then
     SUPABASE_URL=http://127.0.0.1:54321 SUPABASE_ANON_KEY="$ANON_KEY" SUPABASE_SERVICE_ROLE_KEY="$SERVICE_KEY" \
-    INFOAUTO_API=http://127.0.0.1:54343 INFOAUTO_USER=agencia-prueba INFOAUTO_PASS=clave-prueba \
+    INFOAUTO_API=http://127.0.0.1:54343 INFOAUTO_USER=agencia-prueba INFOAUTO_PASS=clave-prueba BCRA_URL=http://127.0.0.1:54341 \
     DENO_SERVE_ADDRESS=tcp:127.0.0.1:54334 \
       nohup setsid "$DENO" run --allow-net --allow-env "$REPO/supabase/functions/agencias/index.ts" > "$LOGS/agencias.log" 2>&1 &
     echo $! > "$STACK/agencias.pid"

@@ -80,5 +80,20 @@ export function tasasDelCredito(sim) {
   return { tna: pct(i * 12), tea: pct((1 + i) ** 12 - 1), cft: pct((1 + r) ** 12 - 1) };
 }
 
-/** Los años que se pueden financiar según la antigüedad máxima (null: sin tope). */
-export const anioMinimo = (a, anioActual) => (a.antiguedad_max == null ? 0 : anioActual - Number(a.antiguedad_max));
+/** El año de modelo más viejo que se financia: el mayor entre `anio_minimo` y el de la antigüedad máxima (0: sin tope). */
+export const anioMinimo = (a, anioActual) => Math.max(Number(a.anio_minimo) || 0, a.antiguedad_max == null ? 0 : anioActual - Number(a.antiguedad_max));
+
+/**
+ * La tasa mensual según el año del modelo: de `a.tasas` ([{desde, tasa}]), el tramo de mayor `desde` que no
+ * supere el año; el 0 km cuenta como el año en curso. Sin tramo que alcance, `a.tasa_mensual`.
+ */
+export function tasaPara(anio, a, anioActual) {
+  const y = anio === '0km' ? anioActual : Math.trunc(Number(anio));
+  let mejor = null;
+  for (const t of Array.isArray(a.tasas) ? a.tasas : []) {
+    const desde = Math.trunc(Number(t?.desde)), tasa = Number(t?.tasa);
+    if (!Number.isFinite(desde) || !(tasa >= 0) || desde > y) continue;
+    if (!mejor || desde > mejor.desde) mejor = { desde, tasa };
+  }
+  return mejor ? mejor.tasa : Number(a.tasa_mensual);
+}
