@@ -21,6 +21,9 @@ Tiene tres piezas:
   prendados (con consentimiento del tomador): mapa, alertas, bitácora y constancias. Misma base,
   mismo login y mismas barreras. Ver "Prenda", al final; la ubicación la pide la función
   `supabase/functions/ubicar/`.
+- **El cotizador para agencias**, en `docs/agencias/`: app web para agencias y concesionarias (no son
+  usuarias del gestor) que muestra solo las condiciones de los créditos prendarios de la Mutual. Ver
+  "Cotizador para agencias", al final; lo calcula la función `supabase/functions/agencias/`.
 
 Este repositorio es **público**: acá no van datos de causas, exportaciones, claves secretas
 ni nada del estudio que no sea el código.
@@ -675,3 +678,52 @@ internet): lo hace el botón de la app. El `sim` para probar: `{"modo":"quieto",
 —dominio público—, `geo.js` las cuentas de coordenadas y la simulación, `textos.js` formato).
 Probar con `npm run test:prenda` (y las del gestor). Su service worker es `docs/prenda/sw.js`
 (`VERSION` propia); el del gestor no atiende nada de `prenda/`.
+
+## Cotizador para agencias (`docs/agencias/`)
+
+App web para las agencias y concesionarias que ofrecen los créditos prendarios de la Asociación Mutual Bell.
+Publicada en https://emilsoler.github.io/Gestor/agencias/. El vendedor entra con su usuario, elige marca,
+modelo, versión y año, y ve **solo las condiciones del crédito**: monto máximo, cuota por plazo, total, TNA,
+TEA y CFT; lo puede mandar por WhatsApp (lo envía él, con `wa.me`) o imprimir. La marca de la app es la de la
+Mutual y no nombra a InfoAuto.
+
+- **Licencia de InfoAuto** (presupuesto 63.199 del 04/11/2026, "Licencia Agencias/Concesionarias", tope 20
+  salones): permite simular y compartir información puntual del préstamo **sin exposición de códigos ni
+  valuaciones InfoAuto**. Por eso: la función nunca devuelve el precio ni el CODIA (el auto elegido viaja como
+  una referencia cifrada, AES-GCM con clave derivada de la de servicio); devuelve los años con precio, no los
+  precios; el monto máximo se redondea hacia abajo (`redondeo`) para no dejar leer el valor; no se guarda el
+  valor ni se copia el catálogo (todo se pide a demanda, paginado con tope, y reutiliza el token de
+  `infoauto_token`). La persona eligió mostrar **marca, modelo y versión** de InfoAuto para elegir el auto
+  (la licencia dice "sin exposición de descripciones"): quedó **a confirmar con InfoAuto**; si dicen que no,
+  hay que cambiar la elección del auto por una lista propia. Una **web para el público final no está
+  contratada**: no abrir el cotizador sin usuario. No sumar nada que muestre valores o CODIA a una agencia.
+- **Las agencias no son miembros del gestor**: `gestor_puerta` les cierra toda la API de la base. Solo hablan con
+  la función `agencias`, que las reconoce con `public.agencia_sesion` (clave de servicio). Un miembro que entra
+  a `/agencias/` ve una «vista previa» (sus cotizaciones no se registran, puede probar con el cotizador
+  deshabilitado) y la pestaña **Administración** (parámetros, agencias, cotizaciones), que usa la API con sus permisos.
+- **Tablas** (migración 0025): `public.agencias` (nombre, email, cuenta, `activa`, `informada_infoauto` —fecha
+  del aviso por escrito a InfoAuto, obligatoria para activar—, `clave_temporal`; tope de 20 activas y una cuenta
+  del gestor no puede ser agencia, lo controla `gestor.tg_agencias_reglas`), `public.ajustes_agencias` (una fila:
+  `habilitado` —arranca en false—, `pct_financiable`, `tasa_mensual`, `plazos`, `antiguedad_max`, montos mínimo y
+  máximo, `redondeo`, `gastos` con la forma de `GASTOS_DEFECTO`, `tope_diario` por agencia, `leyenda`, `contacto`) y
+  `public.cotizaciones_agencia` (cada simulación de una agencia, sin valor ni CODIA; solo lectura para miembros).
+- **Cuentas**: `supabase/functions/agencias/credito.js` tiene una copia exacta de `simularCredito` de
+  `docs/cobranzas/vehiculos.js` (las pruebas las comparan: si se cambia una, cambiar la otra), más `montoMaximo` y
+  `tasasDelCredito` (TNA = tasa × 12; TEA = (1 + tasa)^12 − 1; CFT = TEA de la TIR entre lo que recibe el comprador y
+  la cuota final, con todos los gastos, sin IVA).
+
+Para Claude, por el conector:
+
+```sql
+-- alta: la cuenta se crea antes en el panel de Supabase (Add user, Auto Confirm, contraseña provisoria)
+select gestor.autorizar_agencia('ventas@agencia.com', 'Agencia X', '2026-11-20');  -- fecha del aviso a InfoAuto
+select gestor.pausar_agencia('ventas@agencia.com');
+select nombre, email, activa, informada_infoauto from public.agencias order by nombre;
+select momento, agencia, vehiculo, anio, monto, cuotas, cuota from public.cotizaciones_agencia order by momento desc limit 50;
+update public.ajustes_agencias set habilitado = true;   -- con set_config('gestor.autor', 'Claude', true)
+```
+
+- **Publicar la función**: `deploy_edge_function` con nombre `agencias`, `verify_jwt: true` y los dos archivos de
+  `supabase/functions/agencias/` (entrada `index.ts`). Usa los secretos `INFOAUTO_USER` e `INFOAUTO_PASS`.
+- **Pruebas**: `npm run test:agencias` (función de punta a punta contra `dev/infoauto-falso.mjs`, con vehículos y
+  precios inventados; controla que ninguna respuesta a una agencia incluya un precio o un CODIA).

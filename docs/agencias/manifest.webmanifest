@@ -1,0 +1,15 @@
+{
+  "name": "Cotizador de créditos prendarios · Asociación Mutual Bell",
+  "short_name": "Cotizador Mutual Bell",
+  "description": "Cotizador de créditos prendarios para agencias y concesionarias",
+  "lang": "es-AR",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#101a2b",
+  "theme_color": "#101a2b",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

@@ -42,7 +42,7 @@ stop_one() { # detiene el servicio y espera a que libere su puerto
 }
 
 down() {
-  stop_one gateway; stop_one postgrest; stop_one gotrue; stop_one chat; stop_one claude-falso; stop_one bcra; stop_one bcra-falso; stop_one ubicar; stop_one traccar-falso
+  stop_one gateway; stop_one postgrest; stop_one gotrue; stop_one chat; stop_one claude-falso; stop_one bcra; stop_one bcra-falso; stop_one ubicar; stop_one traccar-falso; stop_one agencias; stop_one infoauto-falso
   if [ -d "$PGDATA" ]; then as_pg "$PGBIN/pg_ctl" -D "$PGDATA" -m fast stop >/dev/null 2>&1 || true; fi
 }
 
@@ -153,6 +153,18 @@ SQL
     TRACCAR_URL=http://127.0.0.1:54342 TRACCAR_TOKEN=prueba DENO_SERVE_ADDRESS=tcp:127.0.0.1:54333 \
       nohup setsid "$DENO" run --allow-net --allow-env "$REPO/supabase/functions/ubicar/index.ts" > "$LOGS/ubicar.log" 2>&1 &
     echo $! > "$STACK/ubicar.pid"
+  fi
+
+  # La función `agencias` (supabase/functions/agencias), con un doble de InfoAuto (infoauto-falso.mjs).
+  stop_one infoauto-falso; stop_one agencias
+  INFOAUTO_FALSO_PORT=54343 nohup setsid node "$HERE/infoauto-falso.mjs" > "$LOGS/infoauto-falso.log" 2>&1 &
+  echo $! > "$STACK/infoauto-falso.pid"
+  if [ -x "$DENO" ]; then
+    SUPABASE_URL=http://127.0.0.1:54321 SUPABASE_ANON_KEY="$ANON_KEY" SUPABASE_SERVICE_ROLE_KEY="$SERVICE_KEY" \
+    INFOAUTO_API=http://127.0.0.1:54343 INFOAUTO_USER=agencia-prueba INFOAUTO_PASS=clave-prueba \
+    DENO_SERVE_ADDRESS=tcp:127.0.0.1:54334 \
+      nohup setsid "$DENO" run --allow-net --allow-env "$REPO/supabase/functions/agencias/index.ts" > "$LOGS/agencias.log" 2>&1 &
+    echo $! > "$STACK/agencias.pid"
   fi
 
   # Puerta de entrada

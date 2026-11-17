@@ -1,0 +1,97 @@
+/* Cotizador para agencias · Asociación Mutual Bell
+   Tema oscuro como las otras apps del estudio, en azul con acento turquesa. Pensado para el celular del
+   vendedor en el salón: una columna, campos grandes, el resultado bien visible. Sin estilos en línea (CSP). */
+@font-face{font-family:"IBM Plex Sans";font-weight:400;font-display:swap;src:url(../fonts/plex-sans-latin-400.woff2) format("woff2")}
+@font-face{font-family:"IBM Plex Sans";font-weight:500;font-display:swap;src:url(../fonts/plex-sans-latin-500.woff2) format("woff2")}
+@font-face{font-family:"IBM Plex Sans";font-weight:600;font-display:swap;src:url(../fonts/plex-sans-latin-600.woff2) format("woff2")}
+@font-face{font-family:"IBM Plex Mono";font-weight:500;font-display:swap;src:url(../fonts/plex-mono-latin-500.woff2) format("woff2")}
+
+:root{
+  color-scheme:dark;
+  --bg:#101a2b; --surface:#16233a; --raised:#1c2c48; --line:#2a3d5e; --fg:#eef3fb; --soft:#c5d2e8; --muted:#8fa2c2;
+  --accent:#2dd4bf; --accent-txt:#7eeadb; --grad:linear-gradient(120deg,#1d4ed8 0%,#0e7490 55%,#0e9f8a 100%);
+  --ok:#a6e07e; --bad:#ff8e76; --bad-soft:rgba(255,142,118,.14); --warn:#f6bd60; --warn-soft:rgba(246,189,96,.13);
+  --r:14px; --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif; --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html{background:var(--bg);accent-color:var(--accent);-webkit-text-size-adjust:100%}
+body{margin:0;min-height:100dvh;color:var(--fg);font:15px/1.5 var(--f-body);
+  background:radial-gradient(800px 480px at 90% -10%,rgba(45,212,191,.10),transparent 60%),var(--bg)}
+h1,h2,h3{margin:0;font-weight:600;line-height:1.25}
+h2{font-size:18px} h3{font-size:15px}
+.hint{color:var(--muted);font-size:13px}
+.m0{margin:0}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+
+.cab{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:calc(12px + env(safe-area-inset-top,0px)) 16px 12px;
+  border-bottom:1px solid var(--line);background:rgba(16,26,43,.85);position:sticky;top:0;z-index:5;backdrop-filter:blur(8px)}
+.marca{display:flex;align-items:center;gap:10px;min-width:0}
+.marca b{display:block;font-size:15px}
+.marca small{display:block;color:var(--muted);font-size:12px}
+.logo{display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:var(--grad);font-weight:600;font-size:18px;flex:none}
+.cab-der{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--soft)}
+.cab-der .quien{max-width:40vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.main{max-width:760px;margin:0 auto;padding:16px 16px 32px;display:grid;gap:14px}
+.pie{max-width:760px;margin:0 auto;padding:0 16px calc(24px + env(safe-area-inset-bottom,0px));color:var(--muted);font-size:12px}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:grid;gap:12px}
+.card-cab{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
+
+.f{display:grid;gap:5px;font-size:13px;color:var(--soft)}
+input,select,textarea{font:inherit;font-size:16px;color:var(--fg);background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:10px 12px;width:100%;min-height:44px}
+textarea{min-height:80px;resize:vertical}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:1px}
+select:disabled,input:disabled{opacity:.55}
+.grilla{display:grid;gap:12px;grid-template-columns:1fr}
+@media (min-width:620px){.grilla{grid-template-columns:1fr 1fr}.ancho{grid-column:1/-1}}
+
+.btn{font:inherit;font-weight:500;color:var(--fg);background:var(--raised);border:1px solid var(--line);border-radius:999px;padding:10px 18px;min-height:44px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn.primario{background:var(--grad);border-color:transparent;color:#fff}
+.btn.chico{min-height:34px;padding:6px 14px;font-size:13px}
+.btn:disabled{opacity:.55;cursor:default}
+.acciones{display:flex;gap:10px;flex-wrap:wrap}
+
+.plazos{display:flex;gap:8px;flex-wrap:wrap}
+.plazos button{font:inherit;color:var(--soft);background:var(--raised);border:1px solid var(--line);border-radius:999px;padding:8px 16px;min-height:40px;cursor:pointer}
+.plazos button[aria-pressed="true"]{background:var(--grad);color:#fff;border-color:transparent}
+
+.aviso{border-radius:10px;padding:10px 12px;background:var(--bad-soft);color:#ffd6cc;font-size:14px}
+.aviso.suave{background:var(--warn-soft);color:#ffe7c2}
+
+.resultado{border-color:rgba(45,212,191,.45)}
+.destacado{display:grid;gap:4px}
+.destacado .titulo{color:var(--muted);font-size:13px}
+.destacado .cifra{font-size:30px;font-weight:600;font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.cuota-grande{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-size:17px}
+.cuota-grande b{font-size:26px;font-family:var(--f-mono)}
+.tasas{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.tasas div{background:var(--raised);border-radius:10px;padding:8px 10px}
+.tasas dt{color:var(--muted);font-size:12px}
+.tasas dd{margin:0;font-family:var(--f-mono);font-size:16px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left}
+th{color:var(--muted);font-weight:500;font-size:12px}
+td.num,th.num{text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+tr.elegido td{color:var(--accent-txt);font-weight:600}
+.scroll{overflow-x:auto}
+.leyenda{font-size:12px;color:var(--muted)}
+
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tabs button{font:inherit;color:var(--soft);background:transparent;border:1px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--grad);color:#fff;border-color:transparent}
+.etq{display:inline-block;border-radius:999px;padding:2px 9px;font-size:12px;background:var(--raised);color:var(--soft)}
+.etq.ok{color:var(--ok)} .etq.no{color:var(--bad)}
+.check{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--fg)}
+.check input{width:22px;height:22px;min-height:0}
+.ingreso{max-width:420px;margin:6vh auto 0}
+
+@media print{
+  .cab,.pie,.no-imprimir{display:none !important}
+  body{background:#fff;color:#000}
+  .card{border:1px solid #999;background:#fff;color:#000}
+  .tasas div{background:#f2f2f2}
+  .hint,.leyenda,.destacado .titulo,.tasas dt,th{color:#333}
+  tr.elegido td{color:#000}
+}

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Cotizador de créditos prendarios · Asociación Mutual Bell</title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="description" content="Cotizador de créditos prendarios de la Asociación Mutual Bell para agencias y concesionarias">
+<!-- Solo se cargan archivos de la propia app; lo único externo es la base de datos (Supabase). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://udfmoxnehgoihzsyrpvy.supabase.co; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#101a2b">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Cotizador Mutual Bell">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="cab">
+  <div class="marca"><span class="logo" aria-hidden="true">B</span><span><b>Asociación Mutual Bell</b><small>Cotizador de créditos prendarios</small></span></div>
+  <div class="cab-der" id="cabDer"></div>
+</header>
+<main id="main" class="main" aria-live="polite"><p class="hint">Abriendo el cotizador…</p></main>
+<footer class="pie" id="pie"></footer>
+<script src="../vendor/supabase.js"></script>
+<script src="../config.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
