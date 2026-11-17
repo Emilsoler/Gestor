@@ -229,12 +229,14 @@ function quitarArchivo(slot, i) {
   render();
 }
 
+/** Los casilleros que quedaron vacíos. No impiden enviar (nov 2026: a veces los documentos llegan a la Mutual por otra vía). */
+const sinAdjuntar = () => docsRequeridos(S.sol.categoria, S.res.anio).filter((k) => !S.sol.docs[k]?.length);
+
 function revisarSolicitud() {
   const L = S.sol, errores = [];
   const rd = revisarDatos({ dni: L.dni, domicilio: L.domicilio, estado_civil: L.estado_civil, matrimonio_lugar: L.matrimonio_lugar, matrimonio_fecha: L.matrimonio_fecha,
     celular: L.celular, cbu: L.cbu, cuenta: L.cuenta, cuenta_titular: L.cuenta_titular, cuenta_cuit: L.cuenta_cuit, cuenta_relacion: L.cuenta_relacion }, hoy());
   if (rd.errores) errores.push(...rd.errores);
-  for (const k of docsRequeridos(L.categoria, S.res.anio)) if (!L.docs[k]?.length) errores.push(`Adjuntá: ${DOCS[k].titulo}.`);
   if (!L.conformidad) errores.push('Marcá que el cliente está de acuerdo con enviar sus datos y documentos a la Mutual.');
   return { errores, datos: rd.datos };
 }
@@ -463,7 +465,7 @@ function casillero(slot) {
   const L = S.sol, d = DOCS[slot], xs = L.docs[slot] || [];
   const requerido = docsRequeridos(L.categoria, S.res.anio).includes(slot);
   const etq = xs.length ? (xs.length < d.esperados ? `<span class="etq">${xs.length} de ${d.esperados}</span>` : '<span class="etq ok">Listo</span>')
-    : requerido ? '<span class="etq no">Falta</span>' : '';
+    : requerido ? '<span class="etq">Sin adjuntar</span>' : '';
   return `<div class="doc" id="doc-${slot}">
     <div class="card-cab"><b>${esc(d.titulo)}</b>${etq}</div>
     ${xs.length ? `<ul class="doc-lista">${xs.map((x, i) => `<li><span class="doc-nombre">${esc(x.nombre)}</span><span class="hint">${tamano(x.file.size)}</span><button class="btn chico" type="button" data-quitar="${slot}" data-i="${i}" ${L.enviando ? 'disabled' : ''}>Quitar</button></li>`).join('')}</ul>` : ''}
@@ -519,6 +521,7 @@ function vistaSolicitud() {
       ${casillero('cbu')}
       ${L.cuenta === 'terceros' ? '<p class="hint m0">La constancia tiene que mostrar el CBU y quién es el titular.</p>' : ''}</div>
     <label class="check"><input type="checkbox" id="chkConformidad" ${L.conformidad ? 'checked' : ''}> El cliente está de acuerdo con enviar estos datos y documentos a la Asociación Mutual Bell para que evalúe el crédito.</label>
+    ${sinAdjuntar().length ? `<p class="hint m0">Sin adjuntar: ${esc(sinAdjuntar().map((k) => DOCS[k].titulo).join('; '))}. Podés enviar la solicitud igual y mandar esos documentos a la Mutual por otra vía.</p>` : ''}
     ${L.errores.length ? `<div class="aviso m0" role="alert" id="erroresSol"><b>Antes de enviar, falta:</b><ul>${L.errores.map((e) => `<li>${esc(e)}</li>`).join('')}</ul></div>` : ''}
     ${L.error ? `<p class="aviso m0" role="alert">${esc(L.error)}</p>` : ''}
     ${L.preparando ? '<p class="hint m0">Preparando las fotos…</p>' : ''}
@@ -535,13 +538,12 @@ function vistaResultado(r) {
     <div class="card-cab"><h2>${esc(r.vehiculo)}</h2><span class="etq">${esc(etiquetaAnio(r.anio))}</span></div>
     <div class="destacado"><span class="titulo">Monto máximo que financia la Mutual</span><span class="cifra">${plata(r.maximo)}</span></div>
     <div class="cuota-grande">Crédito de <b>${plata(r.monto)}</b> en ${r.cuotas} ${r.cuotas === 1 ? 'cuota' : 'cuotas'} de <b>${plata(r.cuota)}</b></div>
-    <dl class="tasas m0"><div><dt>TNA</dt><dd>${pct(r.tna)}</dd></div><div><dt>TEA</dt><dd>${pct(r.tea)}</dd></div><div><dt>CFT</dt><dd>${pct(r.cft)}</dd></div></dl>
     <table><tbody>
       <tr><td>Total a pagar</td><td class="num">${plata(r.total)}</td></tr>
       <tr><td>Gastos de otorgamiento (incluidos en las cuotas)</td><td class="num">${plata(r.gastos_otorgamiento)}</td></tr>
     </tbody></table>
     <div class="scroll"><table><thead><tr><th>Otros plazos con este monto</th><th class="num">Cuota</th></tr></thead><tbody>${opciones}</tbody></table></div>
-    <p class="leyenda m0">El CFT incluye los gastos de otorgamiento, el seguro, los gastos administrativos y la cuota social. No incluye IVA. ${esc(r.leyenda || '')}</p>
+    <p class="leyenda tasas m0">TNA ${pct(r.tna)} · TEA ${pct(r.tea)} · CFT ${pct(r.cft)}. El CFT incluye los gastos de otorgamiento, el seguro, los gastos administrativos y la cuota social. No incluye IVA. ${esc(r.leyenda || '')}</p>
     ${r.contacto ? `<p class="leyenda m0">${esc(r.contacto)}</p>` : ''}
     <div class="acciones no-imprimir">
       <button class="btn" type="button" id="btnWhatsapp">Enviar al cliente por WhatsApp</button>

@@ -3,7 +3,7 @@
 //
 // Lo usan la app (docs/agencias/solicitud.js) y la función `agencias` (supabase/functions/agencias/solicitud.js,
 // copia exacta: las pruebas comparan los dos archivos; si se cambia uno, copiar el otro). La base repite la
-// lista de casilleros obligatorios en gestor.docs_requeridos (migraciones 0028 y 0029): también la comparan las pruebas.
+// lista de casilleros en gestor.docs_requeridos (migraciones 0028 y 0029): también la comparan las pruebas.
 // Sin nada del navegador ni de Deno.
 
 export const CATEGORIAS = {
@@ -28,11 +28,15 @@ export const DOCS = {
 
 export const DOCS_INGRESOS = { dependencia: ['recibos'], monotributo: ['constancia', 'pagos'], inscripto: ['constancia', 'iva', 'ganancias'] };
 
-/** Los casilleros que tienen que tener al menos un archivo. Un 0 km todavía no tiene título: va la factura. */
+/**
+ * Los casilleros de documentos de la solicitud. Un 0 km todavía no tiene título: va la factura. Desde nov 2026 ninguno es
+ * obligatorio para enviarla (la persona pidió poder avanzar sin archivos, que a veces llegan por otra vía): la app y la Mutual
+ * ven los que quedaron vacíos. El nombre quedó de cuando lo eran.
+ */
 export function docsRequeridos(categoria, anio) {
   return [...(DOCS_INGRESOS[categoria] || []), 'dni', anio === '0km' ? 'factura' : 'titulo', 'servicio', 'cbu'];
 }
-/** Los que admiten archivos: los mismos (no hay casilleros opcionales). */
+/** Los que admiten archivos: los mismos. */
 export const docsPermitidos = (categoria, anio) => docsRequeridos(categoria, anio);
 
 export const MAX_BYTES = 10 * 1024 * 1024; // por archivo (igual que el límite de la carpeta del almacenamiento)

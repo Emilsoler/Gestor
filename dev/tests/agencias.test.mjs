@@ -471,11 +471,6 @@ test('solicitud completa: ingresos, 45 %, datos, documentos a la carpeta privada
   r = await subir(agencia, id, 'constancia', new Uint8Array(SOL.MAX_BYTES + 1).fill(0x25));
   assert.equal(r.status, 413);
 
-  // Enviar sin todo lo obligatorio dice qué falta.
-  r = await pedir(agencia, { accion: 'enviar', id });
-  assert.equal(r.status, 400);
-  assert.match(r.datos.mensaje, /Constancia de inscripción.*Últimos 3 pagos.*DNI.*Título.*servicio.*CBU/s);
-
   const subidos = { constancia: [PDF('constancia')], pagos: [PDF('pago 1'), PDF('pago 2'), PDF('pago 3')], dni: [JPG(1), JPG(2)], titulo: [PDF('título')], servicio: [JPG(3)], cbu: [PDF('cbu')] };
   for (const [slot, xs] of Object.entries(subidos)) for (const [k, b] of xs.entries()) {
     r = await subir(agencia, id, slot, b, `${slot}-${k + 1}.${b[0] === 0xff ? 'jpg' : 'pdf'}`);

@@ -714,8 +714,8 @@ Probar con `npm run test:prenda` (y las del gestor). Su service worker es `docs/
 
 App web para las agencias y concesionarias que ofrecen los créditos prendarios de la Asociación Mutual Bell.
 Publicada en https://emilsoler.github.io/Gestor/agencias/. El vendedor entra con su usuario, elige marca,
-modelo, versión y año, y ve **solo las condiciones del crédito**: monto máximo, cuota por plazo, total, TNA,
-TEA y CFT; lo puede mandar por WhatsApp (lo envía él, con `wa.me`) o imprimir. La marca de la app es la de la
+modelo, versión y año, y ve **solo las condiciones del crédito**: monto máximo, cuota por plazo, total, y TNA,
+TEA y CFT en letra chica al pie (pedido de la persona, nov 2026); lo puede mandar por WhatsApp (lo envía él, con `wa.me`) o imprimir. La marca de la app es la de la
 Mutual y no nombra a InfoAuto.
 
 - **Licencia de InfoAuto** (presupuesto 63.199 del 04/11/2026, "Licencia Agencias/Concesionarias", tope 20
@@ -767,8 +767,9 @@ Mutual y no nombra a InfoAuto.
      vehículo cotizado con el título (usado) o la **factura** (0 km; migración 0029), domicilio real e impuesto o servicio a su
      nombre, estado civil (casado: lugar y fecha del matrimonio), celular, y CBU o CVU (con sus dígitos verificadores), si la
      cuenta es **propia o de un tercero** (de un tercero: titular, su CUIT o CUIL —validado— y la relación con el cliente,
-     opcional) y la constancia de la cuenta. Más la conformidad del cliente para mandar sus datos a la Mutual. Todos los
-     casilleros son obligatorios.
+     opcional) y la constancia de la cuenta. Más la conformidad del cliente para mandar sus datos a la Mutual. Los datos son
+     obligatorios; **los documentos no** (migración 0030, pedido de la persona del 17/11/2026: a veces llegan por otra vía).
+     La app avisa «Sin adjuntar: …» y deja enviar; la Mutual ve en la solicitud qué casilleros quedaron vacíos.
   Los casilleros, sus topes de archivos y los controles de los datos están en `docs/agencias/solicitud.js`, con **copia exacta**
   en `supabase/functions/agencias/solicitud.js`; los obligatorios también en `gestor.docs_requeridos` (las pruebas comparan los
   tres). Si se cambia la documentación que se pide, cambiar los tres y `gestor.docs_maximo` (migración nueva).
@@ -779,7 +780,7 @@ Mutual y no nombra a InfoAuto.
   mira los primeros bytes (solo PDF o JPEG, hasta 10 MB) y lo guarda en la **carpeta privada `solicitudes` del almacenamiento**
   (Storage), en `<id de la solicitud>/<casillero>-<azar>.<pdf|jpg>`, con su SHA-256 en `solicitudes_credito.archivos`. La carpeta
   **no tiene políticas**: solo la usa la función, con la clave de servicio. La app achica las fotos antes de subirlas (2000 px,
-  JPEG) y pasa a JPG las PNG o las del iPhone. `enviar` controla que estén todos los casilleros obligatorios y la deja `pendiente`.
+  JPEG) y pasa a JPG las PNG o las del iPhone. `enviar` la deja `pendiente`, con o sin archivos (`gestor.docs_requeridos`, pese al nombre, dice solo qué casilleros admite).
   Mientras está `cargando` no la ve nadie y la Mutual no la puede resolver.
 - **Solicitudes** (`public.solicitudes_credito`, migraciones 0027 a 0029): agencia, CUIT, nombre, color del BCRA, vehículo,
   año, monto, cuotas, cuota, total, tasa, CFT, `ingreso`, `relacion`, `categoria`, `datos` (DNI, domicilio, estado civil,
