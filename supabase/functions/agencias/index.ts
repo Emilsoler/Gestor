@@ -15,15 +15,21 @@
 //
 // Pedido: { accion, ... }. Acciones: yo, clave_definida, marcas, modelos {marca}, versiones {marca, grupo},
 // anios {ref}, cotizar {ref, anio, cuotas, monto?, vehiculo?}, bcra {cuit}, solicitar {consulta, ref, anio,
-// cuotas, monto?, vehiculo?, cliente?}, solicitudes.
+// cuotas, monto?, vehiculo?, ingresos, ingreso, categoria, datos, consentimiento}, archivo (multipart: id, slot,
+// archivo), enviar {id}, solicitudes; y para la Mutual, archivos {id}.
 //
 // BCRA: la agencia consulta el CUIT de su cliente en la Central de Deudores (API pública). La consulta queda
 // guardada entera en consultas_bcra para la Mutual; a la agencia se le devuelve solo el color y el nombre.
-// La solicitud de aprobación exige esa consulta en verde y recalcula el crédito acá (no se confía en los
-// importes que mande el navegador). En los registros no queda el CUIT.
+// La solicitud de aprobación exige esa consulta (verde, o amarillo y sin antecedentes «sujeto a revisión»; rojo,
+// no apto), ingresos demostrables con la cuota dentro del tope de la relación cuota/ingreso, y recalcula el
+// crédito acá (no se confía en los importes que mande el navegador). Después se suben los documentos, uno por
+// pedido, a la carpeta privada `solicitudes` del almacenamiento, y `enviar` la deja pendiente para la Mutual.
+// En los registros no quedan el CUIT ni los datos del cliente.
 import { simularCredito, montoMaximo, tasasDelCredito, anioMinimo, tasaPara } from './credito.js';
 // Copia exacta de ../bcra/bcra.ts (las pruebas lo controlan): el mismo semáforo que Cobranzas.
 import { ErrorBCRA, consultar, cuitValido, resumir, sinCuit, soloDigitos } from './bcra.ts';
+// Copia exacta de docs/agencias/solicitud.js (las pruebas lo controlan): documentos y controles de la solicitud.
+import { CATEGORIAS, DOCS, MAX_BYTES, docsRequeridos, relacionCuota, revisarDatos, tipoArchivo } from './solicitud.js';
 
 const URL_BASE = Deno.env.get('SUPABASE_URL') || '';
 const CLAVE_SERVICIO = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
@@ -75,6 +81,42 @@ async function usuario(jwt: string): Promise<string | null> {
   const u = await r.json();
   return typeof u?.id === 'string' ? u.id : null;
 }
+
+// ───────────────────────── Almacenamiento (carpeta privada de los documentos) ─────────────────────────
+const CARPETA = 'solicitudes';
+const almacen = (ruta: string) => `${URL_BASE}/storage/v1/object${ruta}`;
+const conClave = { apikey: CLAVE_SERVICIO, authorization: `Bearer ${CLAVE_SERVICIO}` };
+
+async function subirArchivo(path: string, bytes: Uint8Array, tipo: string) {
+  const r = await fetch(almacen(`/${CARPETA}/${path}`), { method: 'POST', headers: { ...conClave, 'content-type': tipo, 'x-upsert': 'false' }, body: bytes });
+  if (!r.ok) {
+    console.error(JSON.stringify({ agencias: 'almacen', status: r.status }));
+    throw new Falla('No se pudo guardar el archivo. Probá de nuevo en un momento.', 502, 'almacen');
+  }
+}
+
+async function borrarArchivos(paths: string[]) {
+  const xs = paths.filter((p) => typeof p === 'string' && p);
+  if (!xs.length) return;
+  try {
+    await fetch(almacen(`/${CARPETA}`), { method: 'DELETE', headers: { ...conClave, 'content-type': 'application/json' }, body: JSON.stringify({ prefixes: xs }) });
+  } catch { /* quedan huérfanos: no traban nada */ }
+}
+
+/** Un enlace para abrir el archivo, que vence a los 15 minutos. */
+async function enlace(path: string): Promise<string | null> {
+  const r = await fetch(almacen(`/sign/${CARPETA}/${path}`), { method: 'POST', headers: { ...conClave, 'content-type': 'application/json' }, body: JSON.stringify({ expiresIn: 900 }) });
+  if (!r.ok) return null;
+  const d = await r.json().catch(() => null);
+  const u = String(d?.signedURL ?? d?.signedUrl ?? '');
+  return u ? `${URL_BASE}/storage/v1${u.startsWith('/') ? '' : '/'}${u}` : null;
+}
+
+const hex = (b: ArrayBuffer) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('');
+const esUuid = (x: unknown) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(x ?? ''));
+// La fecha de hoy en Córdoba (UTC−3, sin horario de verano).
+const hoyCordoba = () => new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10);
+const nombreArchivo = (s: unknown) => String(s ?? '').replace(/[\u0000-\u001f\\/]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) || 'archivo';
 
 // ───────────────────────── InfoAuto (token compartido con la función `infoauto`) ─────────────────────────
 async function tokenGuardado(): Promise<any> {
@@ -272,14 +314,22 @@ export async function manejar(req: Request): Promise<Response> {
     if (!ses?.agencia) throw new Falla('Esta cuenta no está habilitada para usar el cotizador.', 403, 'sin_acceso');
     const ag = ses.agencia, a = ses.ajustes || {};
 
-    let pedido: any;
-    try { pedido = await req.json(); } catch { throw new Falla('El pedido no se pudo leer.', 400, 'pedido'); }
+    // Los archivos llegan como formulario (multipart), uno por pedido; todo lo demás, en JSON.
+    let pedido: any, form: FormData | null = null;
+    if (/multipart\/form-data/i.test(req.headers.get('content-type') || '')) {
+      try { form = await req.formData(); } catch { throw new Falla('El archivo no se pudo leer. Probá de nuevo.', 400, 'pedido'); }
+      pedido = { accion: String(form.get('accion') || '') };
+      if (pedido.accion !== 'archivo') throw new Falla('Pedido desconocido.', 400, 'accion');
+    } else {
+      try { pedido = await req.json(); } catch { throw new Falla('El pedido no se pudo leer.', 400, 'pedido'); }
+    }
     const accion = String(pedido?.accion || '');
 
     if (accion === 'yo') {
       return responder({
         agencia: ag.nombre, miembro: !!ag.miembro, clave_temporal: !!ag.clave_temporal,
         habilitado: !!a.habilitado, plazos: plazosValidos(a), leyenda: String(a.leyenda || ''), contacto: String(a.contacto || ''),
+        relacion_max: Number(a.relacion_max) || 45,
       }, 200, cors);
     }
     if (accion === 'clave_definida') {
@@ -366,19 +416,81 @@ export async function manejar(req: Request): Promise<Response> {
     if (accion === 'solicitar') {
       if (ag.miembro) throw new Falla('En la vista previa no se envían solicitudes.', 400, 'vista_previa');
       const consulta = String(pedido.consulta || '');
-      if (!/^[0-9a-f-]{36}$/i.test(consulta)) throw new Falla('Primero consultá el CUIT del cliente.', 400, 'consulta');
+      if (!esUuid(consulta)) throw new Falla('Primero consultá el CUIT del cliente.', 400, 'consulta');
+      if (pedido.ingresos !== true) throw new Falla('Sin ingresos demostrables no se puede solicitar el crédito.', 400, 'ingresos');
+      const ingreso = Math.round(Number(pedido.ingreso) || 0);
+      if (!(ingreso > 0) || ingreso > 1e11) throw new Falla('Escribí el ingreso mensual aproximado del cliente.', 400, 'ingreso');
+      const categoria = String(pedido.categoria || '');
+      if (!Object.hasOwn(CATEGORIAS, categoria)) throw new Falla('Elegí cómo obtiene sus ingresos el cliente.', 400, 'categoria');
+      if (pedido.consentimiento !== true) throw new Falla('Falta la conformidad del cliente para enviar sus datos y documentos a la Mutual.', 400, 'consentimiento');
+      const rd = revisarDatos(pedido.datos, hoyCordoba());
+      if (rd.errores) throw new Falla(rd.errores.join(' '), 400, 'datos');
       const c = await calcular(pedido, a);
       if (!c.financiable) throw new Falla('Este vehículo no alcanza el monto mínimo de financiación.', 400, 'monto');
+      const tope = Number(a.relacion_max) || 45, rel = relacionCuota(c.sim.cuota, ingreso) as number;
+      if (rel > tope) throw new Falla(`La cuota es el ${rel.toLocaleString('es-AR')} % del ingreso: supera el ${tope.toLocaleString('es-AR')} %. Probá con más cuotas o un monto menor.`, 400, 'relacion');
       const t = tasasDelCredito(c.sim);
       const g = await rpc('agencia_solicitar', {
         p_user: uid, p_consulta: consulta,
-        p_datos: { cliente: texto(pedido.cliente).slice(0, 300), vehiculo: texto(pedido.vehiculo).slice(0, 200), anio: c.anio, monto: c.monto, cuotas: c.cuotas, cuota: c.sim.cuota, total: c.sim.totalCredito, tasa: c.tasa, cft: t.cft },
+        p_datos: {
+          cliente: rd.datos.celular, vehiculo: texto(pedido.vehiculo).slice(0, 200), anio: c.anio, monto: c.monto, cuotas: c.cuotas,
+          cuota: c.sim.cuota, total: c.sim.totalCredito, tasa: c.tasa, cft: t.cft, ingreso, categoria, datos: rd.datos,
+        },
       });
       if (g?.error === 'consulta') throw new Falla('La consulta al BCRA de este cliente venció: consultá el CUIT de nuevo.', 400, 'consulta');
-      if (g?.error === 'semaforo') throw new Falla('Solo se puede solicitar la aprobación con el cliente en verde.', 400, 'semaforo');
+      if (g?.error === 'semaforo') throw new Falla('El cliente no es apto según el BCRA: no se puede solicitar el crédito.', 400, 'semaforo');
       if (g?.error === 'repetida') throw new Falla('Ya hay una solicitud pendiente para este cliente.', 409, 'repetida');
+      if (g?.error === 'relacion') throw new Falla(`La cuota supera el ${tope.toLocaleString('es-AR')} % del ingreso.`, 400, 'relacion');
       if (!g?.id) throw new Falla('No se pudo enviar la solicitud. Probá de nuevo.', 502, 'base');
-      return responder({ ok: true, id: g.id }, 200, cors);
+      await borrarArchivos(Array.isArray(g.borrar) ? g.borrar : []);
+      return responder({ ok: true, id: g.id, requeridos: docsRequeridos(categoria, c.anio) }, 200, cors);
+    }
+    if (accion === 'archivo') {
+      if (ag.miembro) throw new Falla('En la vista previa no se envían solicitudes.', 400, 'vista_previa');
+      const id = String(form?.get('id') || ''), slot = String(form?.get('slot') || ''), f = form?.get('archivo');
+      if (!esUuid(id) || !Object.hasOwn(DOCS, slot) || !(f instanceof File)) throw new Falla('Falta el archivo.', 400, 'pedido');
+      const nombre = nombreArchivo(f.name);
+      if (f.size > MAX_BYTES) throw new Falla(`«${nombre}» pesa más de 10 MB. Mandalo más liviano (por ejemplo, una foto en vez de un escaneo).`, 413, 'tamano');
+      if (!f.size) throw new Falla(`«${nombre}» está vacío.`, 400, 'vacio');
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      const tipo = tipoArchivo(bytes);
+      if (!tipo) throw new Falla(`«${nombre}» no es un PDF ni una foto JPG.`, 415, 'tipo');
+      const path = `${id}/${slot}-${crypto.randomUUID().slice(0, 8)}.${tipo.ext}`;
+      const sha256 = hex(await crypto.subtle.digest('SHA-256', bytes));
+      await subirArchivo(path, bytes, tipo.tipo);
+      let g;
+      try {
+        g = await rpc('agencia_archivo', { p_user: uid, p_id: id, p_archivo: { slot, nombre, path, tipo: tipo.tipo, tamano: bytes.length, sha256 } });
+      } catch (e) { await borrarArchivos([path]); throw e; }
+      if (!g?.ok) {
+        await borrarArchivos([path]);
+        if (g?.error === 'cantidad') throw new Falla(`Son demasiados archivos en «${DOCS[slot as keyof typeof DOCS].titulo}».`, 400, 'cantidad');
+        throw new Falla('Esa solicitud ya no admite archivos: armala de nuevo.', 400, 'solicitud');
+      }
+      return responder({ ok: true }, 200, cors);
+    }
+    if (accion === 'enviar') {
+      if (ag.miembro) throw new Falla('En la vista previa no se envían solicitudes.', 400, 'vista_previa');
+      if (!esUuid(pedido.id)) throw new Falla('Falta la solicitud.', 400, 'pedido');
+      const g = await rpc('agencia_enviar', { p_user: uid, p_id: pedido.id });
+      if (g?.error === 'faltan') {
+        const xs = (Array.isArray(g.faltan) ? g.faltan : []).map((k: string) => DOCS[k as keyof typeof DOCS]?.titulo || k);
+        throw new Falla(`Falta adjuntar: ${xs.join('; ')}.`, 400, 'faltan');
+      }
+      if (!g?.ok) throw new Falla('Esa solicitud ya no se puede enviar: armala de nuevo.', 400, 'solicitud');
+      return responder({ ok: true }, 200, cors);
+    }
+    if (accion === 'archivos') {
+      // Solo para la Mutual: enlaces que vencen a los 15 minutos para abrir los documentos de una solicitud.
+      if (!ag.miembro) throw new Falla('Pedido desconocido.', 400, 'accion');
+      if (!esUuid(pedido.id)) throw new Falla('Falta la solicitud.', 400, 'pedido');
+      const r = await fetch(`${URL_BASE}/rest/v1/solicitudes_credito?id=eq.${pedido.id}&select=archivos`, { headers: servicio });
+      if (!r.ok) throw new Falla('No se pudo leer la solicitud.', 502, 'base');
+      const [fila] = await r.json();
+      const archivos = await Promise.all((Array.isArray(fila?.archivos) ? fila.archivos : []).map(async (x: any) => ({
+        slot: String(x.slot || ''), nombre: String(x.nombre || ''), tipo: String(x.tipo || ''), tamano: Number(x.tamano) || 0, url: await enlace(String(x.path || '')),
+      })));
+      return responder({ archivos }, 200, cors);
     }
     if (accion === 'solicitudes') {
       return responder({ solicitudes: ag.miembro ? [] : await rpc('agencia_solicitudes', { p_user: uid }) }, 200, cors);

@@ -1,5 +1,5 @@
 // Puerta de entrada local que imita la de Supabase:
-//   /auth/v1/*  -> GoTrue      /rest/v1/* -> PostgREST
+//   /auth/v1/*  -> GoTrue      /rest/v1/* -> PostgREST      /storage/v1/* -> storage-falso.mjs
 // Exige el header `apikey`, igual que la plataforma.
 //
 // Realtime: el servidor real no se puede correr acá, así que hay un doble mínimo del
@@ -19,6 +19,8 @@ const ROUTES = [
   ['/functions/v1/ubicar', { host: '127.0.0.1', port: +process.env.UBICAR_PORT || 54333 }],
   ['/functions/v1/agencias', { host: '127.0.0.1', port: +process.env.AGENCIAS_PORT || 54334 }],
   ['/functions/v1', { host: '127.0.0.1', port: +process.env.FUNCIONES_PORT || 54330 }],
+  // El almacenamiento (Storage): un doble con lo justo para los documentos de las agencias (storage-falso.mjs).
+  ['/storage/v1', { host: '127.0.0.1', port: +process.env.STORAGE_FALSO_PORT || 54344 }],
 ];
 const KEYS = new Set((process.env.API_KEYS || '').split(',').filter(Boolean));
 const CORS = {
@@ -63,7 +65,9 @@ http
     const route = ROUTES.find(([p]) => req.url === p || req.url.startsWith(p + '/') || req.url.startsWith(p + '?'));
     if (!route) return res.writeHead(404, { ...CORS, 'content-type': 'application/json' }).end('{"message":"no route"}');
     const key = req.headers.apikey || new URL(req.url, 'http://x').searchParams.get('apikey');
-    if (KEYS.size && !KEYS.has(key))
+    // Un enlace firmado del almacenamiento se abre sin clave, como en la plataforma.
+    const firmado = req.method === 'GET' && req.url.startsWith('/storage/v1/object/sign/');
+    if (KEYS.size && !KEYS.has(key) && !firmado)
       return res.writeHead(401, { ...CORS, 'content-type': 'application/json' }).end('{"message":"Invalid API key"}');
     const [prefix, target] = route;
     const headers = { ...req.headers, host: `${target.host}:${target.port}` };

@@ -326,65 +326,190 @@ test('BCRA desde la agencia: el color y el nombre; el detalle queda para la Mutu
   assert.equal(sql('select count(*) from public.consultas_bcra'), antes);
 });
 
-test('solicitud de aprobación: solo en verde, con el crédito recalculado, y la Mutual decide', async () => {
-  sql(PARAMS_MUTUAL + '; delete from public.solicitudes_credito');
-  await cargarCasosBCRA();
-  const verde = (await pedir(agencia, { accion: 'bcra', cuit: CUIT.verde })).datos.consulta;
-  const amarillo = (await pedir(agencia, { accion: 'bcra', cuit: CUIT.amarillo })).datos.consulta;
-  const ref = (await pedir(agencia, { accion: 'versiones', marca: 1, grupo: 10 })).datos.versiones[0].ref;
-  const base = { accion: 'solicitar', ref, anio: '2024', cuotas: 18, vehiculo: 'MARCA UNO SEDAN 1.6', cliente: '3534 123456' };
+// ───────────────────────── Tercera parte: solicitud en pasos con documentos ─────────────────────────
+import * as SOL from '../../docs/agencias/solicitud.js';
 
-  let r = await pedir(agencia, { ...base, consulta: amarillo });
+const ALMACEN = 'http://127.0.0.1:54344';
+const objetos = async () => (await fetch(`${ALMACEN}/__objetos`)).json();
+const PDF = (texto = 'hola') => new TextEncoder().encode(`%PDF-1.4\n% ${texto}\n%%EOF\n`);
+const JPG = (n = 1) => new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, n, 0xff, 0xd9]);
+const CBU = '2850590940090418135201'; // válido (dígitos verificadores)
+const DATOS = { dni: '11111111', domicilio: 'Bv. Colón 135, Bell Ville', estado_civil: 'casado', matrimonio_lugar: 'Bell Ville', matrimonio_fecha: '2015-03-20', celular: '3534 123456', cbu: CBU };
+
+async function subir(jwt, id, slot, bytes, nombre = `${slot}.pdf`) {
+  const fd = new FormData();
+  fd.append('accion', 'archivo'); fd.append('id', id); fd.append('slot', slot);
+  fd.append('archivo', new Blob([bytes]), nombre);
+  const r = await fetch(FN, { method: 'POST', headers: { apikey: env.ANON_KEY, origin: 'http://127.0.0.1:8080', authorization: `Bearer ${jwt}` }, body: fd });
+  const texto = await r.text();
+  return { status: r.status, datos: JSON.parse(texto), texto };
+}
+
+test('las reglas de la solicitud: copia igual en la función, casilleros como en la base, CBU y datos', () => {
+  assert.equal(readFileSync(new URL('../../supabase/functions/agencias/solicitud.js', import.meta.url), 'utf8'),
+    readFileSync(new URL('../../docs/agencias/solicitud.js', import.meta.url), 'utf8'));
+  for (const cat of [...Object.keys(SOL.CATEGORIAS), 'otra']) for (const anio of ['0km', '2020']) {
+    assert.deepEqual(JSON.parse(sql(`select to_json(gestor.docs_requeridos('${cat}', '${anio}'))`)).sort(), SOL.docsRequeridos(cat, anio).sort(), `${cat} ${anio}`);
+  }
+  for (const [k, d] of Object.entries(SOL.DOCS)) assert.equal(Number(sql(`select gestor.docs_maximo('${k}')`)), d.max, k);
+  assert.deepEqual(SOL.docsRequeridos('dependencia', '2020'), ['recibos', 'dni', 'titulo', 'servicio', 'cbu']);
+  assert.deepEqual(SOL.docsRequeridos('monotributo', '0km'), ['constancia', 'pagos', 'dni', 'servicio', 'cbu']);
+  assert.deepEqual(SOL.docsRequeridos('inscripto', '2019'), ['constancia', 'iva', 'ganancias', 'dni', 'titulo', 'servicio', 'cbu']);
+  assert.ok(SOL.cbuValido(CBU));
+  assert.ok(SOL.cbuValido('285 0590 9 4009041813520 1'.replace(/ /g, '')));
+  for (const malo of ['2850590940090418135202', '2850591940090418135201', '285059094009041813520', 'abc']) assert.ok(!SOL.cbuValido(malo), malo);
+  assert.equal(SOL.dniDelCuit('20-11111111-2'), '11111111');
+  assert.equal(SOL.dniDelCuit('20-05555555-6'), '5555555');
+  assert.equal(SOL.dniDelCuit('30-44444444-0'), '');
+  assert.equal(SOL.relacionCuota(450_000, 1_000_000), 45);
+  assert.equal(SOL.relacionCuota(1, 0), null);
+  assert.deepEqual(SOL.revisarDatos(DATOS, '2026-11-17').datos, { ...DATOS, celular: '3534123456' });
+  const { errores } = SOL.revisarDatos({ dni: '12', domicilio: 'x', estado_civil: 'casado', matrimonio_fecha: '2030-01-01', celular: '12', cbu: CBU.slice(0, 21) + '9' }, '2026-11-17');
+  assert.equal(errores.length, 6);
+  assert.deepEqual(SOL.revisarDatos({ ...DATOS, estado_civil: 'soltero' }, '2026-11-17').datos.matrimonio_lugar, undefined);
+  assert.deepEqual(SOL.tipoArchivo(PDF()), { tipo: 'application/pdf', ext: 'pdf' });
+  assert.deepEqual(SOL.tipoArchivo(JPG()), { tipo: 'image/jpeg', ext: 'jpg' });
+  assert.equal(SOL.tipoArchivo(new TextEncoder().encode('<html>')), null);
+});
+
+test('semáforo: rojo no apto; amarillo y sin antecedentes siguen, sujetos a revisión', async () => {
+  sql(PARAMS_MUTUAL + "; delete from public.solicitudes_credito");
+  await cargarCasosBCRA();
+  const ref = (await pedir(agencia, { accion: 'versiones', marca: 1, grupo: 10 })).datos.versiones[0].ref;
+  const base = { accion: 'solicitar', ref, anio: '2024', cuotas: 24, vehiculo: 'MARCA UNO SEDAN 1.6', ingresos: true, ingreso: 3_000_000, categoria: 'dependencia', datos: DATOS, consentimiento: true };
+  const rojo = (await pedir(agencia, { accion: 'bcra', cuit: CUIT.rojo })).datos.consulta;
+  let r = await pedir(agencia, { ...base, consulta: rojo });
   assert.equal(r.status, 400);
   assert.equal(r.datos.error, 'semaforo');
-  r = await pedir(emi, { ...base, consulta: verde });
-  assert.equal(r.status, 400, 'la vista previa no manda solicitudes');
-  // Un monto mayor al máximo no pasa: se recalcula en el servidor.
-  r = await pedir(agencia, { ...base, consulta: verde, monto: 999_000_000 });
+  const amarillo = (await pedir(agencia, { accion: 'bcra', cuit: CUIT.amarillo })).datos;
+  assert.equal(amarillo.semaforo, 'amarillo');
+  r = await pedir(agencia, { ...base, consulta: amarillo.consulta });
   assert.equal(r.status, 200, r.texto);
-  const s = JSON.parse(sql(`select to_jsonb(s) from public.solicitudes_credito s where id = '${r.datos.id}'`));
-  assert.equal(s.agencia, 'Salón Uno');
-  assert.equal(s.cuit, CUIT.verde);
-  assert.equal(s.denominacion, 'PERSONA VERDE');
-  assert.equal(s.semaforo, 'verde');
-  assert.equal(s.consulta, verde);
-  assert.equal(+s.monto, 10_000_000); // 40 % de 25.000.000
-  assert.equal(+s.tasa, 5);
-  assert.equal(s.cuotas, 18);
-  assert.equal(+s.cuota, simInterno({ capital: 10_000_000, cuotas: 18, g: { ...gastosDe(GASTOS_DEFECTO), envio: 0, gestoria: 0 }, tasa: 5 }).cuota);
-  assert.equal(s.cliente, '3534 123456');
-  assert.equal(s.estado, 'pendiente');
-  for (const p of ['25000000', '500001']) assert.ok(!JSON.stringify(s).includes(p));
-  // Otra para el mismo cliente, mientras está pendiente: no.
-  r = await pedir(agencia, { ...base, consulta: verde });
-  assert.equal(r.status, 409);
-  // Una consulta de otra agencia no sirve.
-  const otra = await cuentaAgencia('salon3@test.local', 'Salón Tres');
-  await pedir(otra, { accion: 'clave_definida' });
-  r = await pedir(otra, { ...base, consulta: verde });
-  assert.equal(r.status, 400);
-  assert.equal(r.datos.error, 'consulta');
+  assert.equal(sql(`select semaforo || ' ' || estado from public.solicitudes_credito where id = '${r.datos.id}'`), 'amarillo cargando');
+  const nada = (await pedir(agencia, { accion: 'bcra', cuit: CUIT.nada })).datos;
+  assert.equal(nada.semaforo, 'sin_datos');
+  assert.equal((await pedir(agencia, { ...base, consulta: nada.consulta })).status, 200);
+});
 
-  // La agencia ve la suya, pendiente.
+test('solicitud completa: ingresos, 45 %, datos, documentos a la carpeta privada y la Mutual los abre', async () => {
+  sql(PARAMS_MUTUAL + "; delete from public.solicitudes_credito");
+  await cargarCasosBCRA();
+  const verde = (await pedir(agencia, { accion: 'bcra', cuit: CUIT.verde })).datos.consulta;
+  const ref = (await pedir(agencia, { accion: 'versiones', marca: 1, grupo: 10 })).datos.versiones[0].ref;
+  // 2024 → 40 % de 25.000.000 = 10.000.000; tasa 5 %; 24 cuotas.
+  const g = { ...gastosDe(GASTOS_DEFECTO), envio: 0, gestoria: 0 };
+  const cuota = simInterno({ capital: 10_000_000, cuotas: 24, g, tasa: 5 }).cuota;
+  const base = { accion: 'solicitar', consulta: verde, ref, anio: '2024', cuotas: 24, vehiculo: 'MARCA UNO SEDAN 1.6', ingresos: true, categoria: 'monotributo', datos: DATOS, consentimiento: true };
+  const justo = Math.ceil(cuota / 0.45);
+
+  // Sin ingresos demostrables, con la cuota por encima del 45 %, con datos malos o sin conformidad: no.
+  let r = await pedir(agencia, { ...base, ingresos: false, ingreso: justo });
+  assert.equal(r.datos.error, 'ingresos');
+  r = await pedir(agencia, { ...base, ingreso: Math.floor(cuota / 0.46) });
+  assert.equal(r.status, 400);
+  assert.equal(r.datos.error, 'relacion');
+  assert.match(r.datos.mensaje, /supera el 45 %/);
+  r = await pedir(agencia, { ...base, ingreso: justo, datos: { ...DATOS, cbu: CBU.slice(0, 21) + '0' } });
+  assert.equal(r.datos.error, 'datos');
+  assert.match(r.datos.mensaje, /CBU/);
+  r = await pedir(agencia, { ...base, ingreso: justo, consentimiento: false });
+  assert.equal(r.datos.error, 'consentimiento');
+  r = await pedir(agencia, { ...base, ingreso: justo, categoria: 'otra' });
+  assert.equal(r.datos.error, 'categoria');
+  assert.equal(sql('select count(*) from public.solicitudes_credito'), '0');
+
+  // La primera vez queda a medias, con un archivo: al armarla de nuevo se descarta, con su archivo.
+  r = await pedir(agencia, { ...base, ingreso: justo });
+  assert.equal(r.status, 200, r.texto);
+  assert.deepEqual(r.datos.requeridos, ['constancia', 'pagos', 'dni', 'titulo', 'servicio', 'cbu']);
+  const vieja = r.datos.id;
+  assert.equal((await subir(agencia, vieja, 'dni', JPG())).status, 200);
+  assert.equal((await objetos()).length, 1);
+  r = await pedir(agencia, { ...base, ingreso: justo + 1000 });
+  assert.equal(r.status, 200, r.texto);
+  const id = r.datos.id;
+  assert.notEqual(id, vieja);
+  assert.equal(sql(`select count(*) from public.solicitudes_credito where id = '${vieja}'`), '0');
+  assert.equal((await objetos()).length, 0, 'el archivo de la que quedó a medias se borró');
+  const fila = () => JSON.parse(sql(`select to_jsonb(s) from public.solicitudes_credito s where id = '${id}'`));
+  let s = fila();
+  assert.equal(s.estado, 'cargando');
+  assert.equal(+s.ingreso, justo + 1000);
+  assert.equal(+s.relacion, SOL.relacionCuota(cuota, justo + 1000));
+  assert.equal(s.categoria, 'monotributo');
+  assert.equal(s.cliente, '3534123456');
+  assert.deepEqual(s.datos, { ...DATOS, celular: '3534123456' });
+  assert.equal(+s.cuota, cuota);
+
+  // Mientras se carga no la ve nadie: ni la agencia en «Mis solicitudes» ni la Mutual puede resolverla.
+  assert.equal((await pedir(agencia, { accion: 'solicitudes' })).datos.solicitudes.length, 0);
+  const c = await entrar('emi@test.local', 'Clave-de-prueba-2026');
+  assert.ok((await c.from('solicitudes_credito').update({ estado: 'aprobada' }).eq('id', id).select()).error, 'no se resuelve a medio cargar');
+
+  // Archivos: solo PDF o JPG de verdad, en un casillero de su categoría, hasta el máximo; nada de otra agencia.
+  r = await subir(agencia, id, 'constancia', new TextEncoder().encode('<html>no</html>'), 'trampa.pdf');
+  assert.equal(r.status, 415);
+  r = await subir(agencia, id, 'recibos', PDF());
+  assert.equal(r.status, 400, 'recibos no es de monotributo');
+  assert.equal((await objetos()).length, 0, 'lo rechazado no queda guardado');
+  const otra = (await entrar('salon3@test.local', 'Agencia-123456').catch(() => null))?.sesion?.access_token
+    || await cuentaAgencia('salon3@test.local', 'Salón Tres');
+  await pedir(otra, { accion: 'clave_definida' });
+  r = await subir(otra, id, 'constancia', PDF());
+  assert.equal(r.status, 400);
+  assert.equal((await objetos()).length, 0);
+  r = await subir(agencia, id, 'constancia', new Uint8Array(SOL.MAX_BYTES + 1).fill(0x25));
+  assert.equal(r.status, 413);
+
+  // Enviar sin todo lo obligatorio dice qué falta.
+  r = await pedir(agencia, { accion: 'enviar', id });
+  assert.equal(r.status, 400);
+  assert.match(r.datos.mensaje, /Constancia de inscripción.*Últimos 3 pagos.*DNI.*Título.*servicio.*CBU/s);
+
+  const subidos = { constancia: [PDF('constancia')], pagos: [PDF('pago 1'), PDF('pago 2'), PDF('pago 3')], dni: [JPG(1), JPG(2)], titulo: [PDF('título')], servicio: [JPG(3)], cbu: [PDF('cbu')] };
+  for (const [slot, xs] of Object.entries(subidos)) for (const [k, b] of xs.entries()) {
+    r = await subir(agencia, id, slot, b, `${slot}-${k + 1}.${b[0] === 0xff ? 'jpg' : 'pdf'}`);
+    assert.equal(r.status, 200, r.texto);
+  }
+  r = await subir(agencia, id, 'dni', JPG(9));
+  assert.equal(r.status, 400, 'el DNI admite hasta 2 archivos');
+  assert.match(r.datos.mensaje, /demasiados/);
+  r = await pedir(agencia, { accion: 'enviar', id });
+  assert.equal(r.status, 200, r.texto);
+  s = fila();
+  assert.equal(s.estado, 'pendiente');
+  assert.ok(s.enviada);
+  assert.equal(s.archivos.length, 9);
+  assert.ok(s.archivos.every((a) => a.path.startsWith(`${id}/`) && /^[0-9a-f]{64}$/.test(a.sha256)));
+  assert.equal((await objetos()).length, 9);
+  assert.equal((await subir(agencia, id, 'cbu', PDF())).status, 400, 'enviada, ya no admite archivos');
+
+  // La agencia la ve pendiente y no puede pedir los documentos; la Mutual sí, con enlaces que bajan lo mismo.
   r = await pedir(agencia, { accion: 'solicitudes' });
   assert.equal(r.datos.solicitudes.length, 1);
-  assert.equal(r.datos.solicitudes[0].estado, 'pendiente');
-  assert.equal((await pedir(otra, { accion: 'solicitudes' })).datos.solicitudes.length, 0);
+  assert.equal((await pedir(agencia, { accion: 'archivos', id })).status, 400);
+  r = await pedir(emi, { accion: 'archivos', id });
+  assert.equal(r.status, 200, r.texto);
+  assert.equal(r.datos.archivos.length, 9);
+  const pago2 = r.datos.archivos.find((a) => a.nombre === 'pagos-2.pdf');
+  assert.equal(pago2.slot, 'pagos');
+  const bajado = new Uint8Array(await (await fetch(pago2.url)).arrayBuffer());
+  assert.deepEqual(bajado, PDF('pago 2'));
+  assert.equal((await fetch(pago2.url.replace(/token=[^&]+/, 'token=otro'))).status, 400, 'sin la firma no se abre');
+  assert.equal((await fetch(`${env.SUPABASE_URL}/storage/v1/object/solicitudes/${s.archivos[0].path}`, { headers: { apikey: env.ANON_KEY } })).status, 403, 'sin la clave de servicio no se lee');
 
-  // La Mutual la aprueba desde la app: solo puede tocar estado y nota.
-  const c = await entrar('emi@test.local', 'Clave-de-prueba-2026');
-  let u = await c.from('solicitudes_credito').update({ monto: 1 }).eq('id', s.id).select();
-  assert.ok(u.error, 'el monto no se cambia');
-  u = await c.from('solicitudes_credito').update({ estado: 'aprobada', nota: 'Que pase a firmar el jueves' }).eq('id', s.id).select();
+  // Una segunda para el mismo cliente, con la primera pendiente: no.
+  r = await pedir(agencia, { ...base, ingreso: justo });
+  assert.equal(r.status, 409);
+
+  // La Mutual la aprueba; la agencia ve la respuesta.
+  const u = await c.from('solicitudes_credito').update({ estado: 'aprobada', nota: 'Que venga a firmar' }).eq('id', id).select();
   assert.ifError(u.error);
   assert.equal(u.data[0].resuelto_por, 'Emi');
-  assert.ok(u.data[0].resuelto);
-  u = await c.from('solicitudes_credito').insert({ agencia_id: crypto.randomUUID(), agencia: 'x', cuit: CUIT.verde, semaforo: 'verde', monto: 1, cuotas: 1, cuota: 1, total: 1, tasa: 1, cft: 1 });
-  assert.ok(u.error, 'las solicitudes las crea solo la función');
+  assert.ok((await c.from('solicitudes_credito').update({ estado: 'cargando' }).eq('id', id)).error, 'no se vuelve a «cargando»');
   r = await pedir(agencia, { accion: 'solicitudes' });
   assert.equal(r.datos.solicitudes[0].estado, 'aprobada');
-  assert.equal(r.datos.solicitudes[0].nota, 'Que pase a firmar el jueves');
-  // La agencia no lee la tabla por la API.
+  assert.equal(r.datos.solicitudes[0].nota, 'Que venga a firmar');
   const ca = await entrar('salon@test.local', 'Agencia-123456');
-  assert.ok((await ca.from('solicitudes_credito').select('*')).error);
+  assert.ok((await ca.from('solicitudes_credito').select('*')).error, 'la agencia no lee la tabla');
 });

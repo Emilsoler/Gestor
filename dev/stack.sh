@@ -42,7 +42,7 @@ stop_one() { # detiene el servicio y espera a que libere su puerto
 }
 
 down() {
-  stop_one gateway; stop_one postgrest; stop_one gotrue; stop_one chat; stop_one claude-falso; stop_one bcra; stop_one bcra-falso; stop_one ubicar; stop_one traccar-falso; stop_one agencias; stop_one infoauto-falso
+  stop_one gateway; stop_one postgrest; stop_one gotrue; stop_one chat; stop_one claude-falso; stop_one bcra; stop_one bcra-falso; stop_one ubicar; stop_one traccar-falso; stop_one agencias; stop_one infoauto-falso; stop_one storage-falso
   if [ -d "$PGDATA" ]; then as_pg "$PGBIN/pg_ctl" -D "$PGDATA" -m fast stop >/dev/null 2>&1 || true; fi
 }
 
@@ -156,7 +156,10 @@ SQL
   fi
 
   # La función `agencias` (supabase/functions/agencias), con un doble de InfoAuto (infoauto-falso.mjs).
-  stop_one infoauto-falso; stop_one agencias
+  stop_one infoauto-falso; stop_one agencias; stop_one storage-falso
+  # Los documentos de las solicitudes van a un doble del almacenamiento (storage-falso.mjs).
+  SERVICE_KEY="$SERVICE_KEY" STORAGE_FALSO_PORT=54344 nohup setsid node "$HERE/storage-falso.mjs" > "$LOGS/storage-falso.log" 2>&1 &
+  echo $! > "$STACK/storage-falso.pid"
   INFOAUTO_FALSO_PORT=54343 nohup setsid node "$HERE/infoauto-falso.mjs" > "$LOGS/infoauto-falso.log" 2>&1 &
   echo $! > "$STACK/infoauto-falso.pid"
   if [ -x "$DENO" ]; then

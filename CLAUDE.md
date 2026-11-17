@@ -736,19 +736,42 @@ Mutual y no nombra a InfoAuto.
   2020 6 %, 2014 a 2017 7 %; el 0 km cuenta como el año en curso; `tasaPara` en `credito.js`) y los gastos del simulador
   interno **sin envío ni gestoría** (en 0). Se cambian en Administración → Parámetros (los plazos aceptan un rango, «1-24»,
   y las tasas, «2021=5; 2018=6; 2014=7»).
-- **Flujo de la agencia**: 1) consulta el CUIT del cliente en el BCRA (acción `bcra`, con `bcra.ts`, **copia exacta** de
-  `supabase/functions/bcra/bcra.ts`, mismo semáforo que Cobranzas; las pruebas comparan los dos archivos): a la agencia le
-  llega solo el color y el nombre, y la consulta completa queda en `public.consultas_bcra` firmada «Agencia · <nombre>»
-  (también en Créditos y Cobros → Deudas por CUIT); 2) simula el crédito del vehículo; 3) **solo con el cliente en verde**
-  manda la «Solicitud de aprobación de crédito» (acción `solicitar`; la función recalcula el crédito, no confía en el
-  navegador; exige una consulta en verde de esa misma agencia de los últimos 3 días y no deja dos pendientes para el mismo
-  CUIT). Las consultas al BCRA cuentan para el `tope_diario`.
-- **Solicitudes** (`public.solicitudes_credito`, migración 0027): agencia, CUIT, nombre, color del BCRA, vehículo, año,
-  monto, cuotas, cuota, total, tasa, CFT y contacto del cliente; sin valor del vehículo ni CODIA. Las crea solo la función
-  (`agencia_solicitar`, clave de servicio). La Mutual las ve en Administración → **Solicitudes** (la pestaña de arranque,
-  con el detalle del BCRA: deuda, entidades y motivos) y las aprueba o rechaza con una nota: los miembros solo pueden
-  cambiar `estado` y `nota`; quién y cuándo resolvió lo pone la base. La agencia ve en «Mis solicitudes» en qué quedó
-  cada una. No hay aviso por mail ni WhatsApp de una solicitud nueva: se ve al entrar a Administración.
+- **Flujo de la agencia** (pedido de la persona del 17/11/2026, migraciones 0027 y 0028):
+  1. **El cliente**: CUIT → BCRA (acción `bcra`, con `bcra.ts`, **copia exacta** de `supabase/functions/bcra/bcra.ts`, mismo
+     semáforo que Cobranzas; las pruebas comparan los dos archivos). A la agencia le llega solo el color y el nombre, y ve:
+     verde «Continuar»; amarillo y sin antecedentes «Continuar – Sujeto a revisión»; rojo «No apto» (no sigue). La consulta
+     completa queda en `public.consultas_bcra` firmada «Agencia · <nombre>» (también en Créditos y Cobros → Deudas por CUIT) y
+     cuenta para el `tope_diario`.
+  2. **El crédito**: simula el vehículo. Debajo, «Continuar con la solicitud» si el cliente quiere avanzar.
+  3. **Ingresos**: «¿Tiene ingresos demostrables?» Sí/No (con No no avanza); ingreso mensual aproximado: la cuota no puede pasar
+     `ajustes_agencias.relacion_max` % (45) del ingreso; recién ahí elige cómo los obtiene (relación de dependencia,
+     monotributo o responsable inscripto).
+  4. **Documentación de ingresos** según esa categoría y 5. **datos del cliente** con la suya: DNI y foto de los dos lados, el
+     vehículo cotizado y el título (opcional en 0 km), domicilio real e impuesto o servicio a su nombre, estado civil (casado:
+     lugar y fecha del matrimonio), celular, y CBU o CVU (con sus dígitos verificadores) y la constancia de la cuenta. Más la
+     conformidad del cliente para mandar sus datos a la Mutual.
+  Los casilleros, sus topes de archivos y los controles de los datos están en `docs/agencias/solicitud.js`, con **copia exacta**
+  en `supabase/functions/agencias/solicitud.js`; los obligatorios también en `gestor.docs_requeridos` (las pruebas comparan los
+  tres). Si se cambia la documentación que se pide, cambiar los tres y `gestor.docs_maximo`.
+- **Envío** (acciones `solicitar`, `archivo`, `enviar`): `solicitar` recalcula el crédito (no confía en el navegador), controla
+  ingresos, relación, datos y conformidad, y crea la solicitud en estado `cargando` (exige una consulta al BCRA no roja de esa
+  agencia, de los últimos 3 días, y no deja dos pendientes para el mismo CUIT; las que quedaron a medio cargar de ese cliente, o
+  de hace más de 2 días, se borran con sus archivos). Después sube **un archivo por pedido** (formulario multipart); la función
+  mira los primeros bytes (solo PDF o JPEG, hasta 10 MB) y lo guarda en la **carpeta privada `solicitudes` del almacenamiento**
+  (Storage), en `<id de la solicitud>/<casillero>-<azar>.<pdf|jpg>`, con su SHA-256 en `solicitudes_credito.archivos`. La carpeta
+  **no tiene políticas**: solo la usa la función, con la clave de servicio. La app achica las fotos antes de subirlas (2000 px,
+  JPEG) y pasa a JPG las PNG o las del iPhone. `enviar` controla que estén todos los casilleros obligatorios y la deja `pendiente`.
+  Mientras está `cargando` no la ve nadie y la Mutual no la puede resolver.
+- **Solicitudes** (`public.solicitudes_credito`, migraciones 0027 y 0028): agencia, CUIT, nombre, color del BCRA, vehículo,
+  año, monto, cuotas, cuota, total, tasa, CFT, `ingreso`, `relacion`, `categoria`, `datos` (DNI, domicilio, estado civil,
+  matrimonio, celular, CBU), `archivos` y `cliente` (el celular); sin valor del vehículo ni CODIA. Las crea solo la función
+  (`agencia_solicitar`, `agencia_archivo`, `agencia_enviar`, clave de servicio). La Mutual las ve en Administración →
+  **Solicitudes** (la pestaña de arranque): el BCRA con su detalle, el crédito, los ingresos, los datos (avisa si el DNI no
+  coincide con el CUIL) y «Ver documentos», que pide a la función (acción `archivos`, solo miembros) enlaces que vencen a los
+  15 minutos. Las aprueba o rechaza con una nota: los miembros solo pueden cambiar `estado` y `nota`; quién y cuándo resolvió
+  lo pone la base. La agencia ve en «Mis solicitudes» en qué quedó cada una. No hay aviso por mail ni WhatsApp de una solicitud
+  nueva: se ve al entrar a Administración. Son datos personales y documentos de identidad e ingresos: no salen de ahí y no se
+  copian al repositorio. El almacenamiento del plan gratuito es de 1 GB (una solicitud con fotos ocupa unos pocos MB).
 
 Para Claude, por el conector:
 
@@ -761,10 +784,13 @@ select momento, agencia, vehiculo, anio, monto, cuotas, cuota from public.cotiza
 update public.ajustes_agencias set habilitado = true;   -- con set_config('gestor.autor', 'Claude', true)
 select momento, agencia, cuit, denominacion, vehiculo, anio, monto, cuotas, cuota, estado from public.solicitudes_credito order by momento desc;
 update public.solicitudes_credito set estado = 'aprobada', nota = '…' where id = '<id>';   -- solo si la persona lo decide
+select name, metadata->>'size' tamano from storage.objects where bucket_id = 'solicitudes' order by created_at desc;  -- los archivos
 ```
+Desde SQL no se abren los documentos: los enlaces los da la función (botón «Ver documentos» de Administración).
 
-- **Publicar la función**: `deploy_edge_function` con nombre `agencias`, `verify_jwt: true` y los tres archivos de
-  `supabase/functions/agencias/` (`index.ts` de entrada, `credito.js` y `bcra.ts`). Usa los secretos `INFOAUTO_USER` e `INFOAUTO_PASS`.
+- **Publicar la función**: `deploy_edge_function` con nombre `agencias`, `verify_jwt: true` y los cuatro archivos de
+  `supabase/functions/agencias/` (`index.ts` de entrada, `credito.js`, `bcra.ts` y `solicitud.js`). Usa los secretos `INFOAUTO_USER` e `INFOAUTO_PASS`.
 - **Pruebas**: `npm run test:agencias` (función de punta a punta contra `dev/infoauto-falso.mjs`, con vehículos y
-  precios inventados, y contra `dev/bcra-falso.mjs` para el BCRA; controla que ninguna respuesta a una agencia incluya un
-  precio o un CODIA, la tasa por año, el semáforo y las solicitudes).
+  precios inventados, contra `dev/bcra-falso.mjs` para el BCRA y contra `dev/storage-falso.mjs` para el almacenamiento, que la
+  base local no tiene; controla que ninguna respuesta a una agencia incluya un precio o un CODIA, la tasa por año, el semáforo,
+  la relación cuota/ingreso, los documentos y las solicitudes).
