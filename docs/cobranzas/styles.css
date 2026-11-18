@@ -741,3 +741,12 @@ body:has(#drawer:not([hidden])) #btnClaudeWeb,body:has(#menu:not([hidden])) #btn
 /* Semáforo del BCRA en las solicitudes de agencias: solo un círculo de color */
 .sem-punto{display:inline-block;width:14px;height:14px;border-radius:50%;vertical-align:-2px;background:var(--soft)}
 .sem-punto.verde{background:var(--ok)} .sem-punto.amarillo{background:var(--warn)} .sem-punto.rojo{background:var(--bad)}
+
+/* Eliminar un deudor desde el listado: discreto hasta pasar el mouse; la confirmación queda en la fila. */
+.lista th.acc,.lista td.acc{width:1%;white-space:nowrap;text-align:right}
+.borrar-fila{opacity:.55}
+.borrar-fila:hover,.borrar-fila:focus-visible{opacity:1;color:var(--bad)}
+.confirma-fila{display:inline-flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:6px;text-align:right;font-size:13px}
+.lista td.acc .confirma-fila{cursor:default}
+.fila-acc{display:flex;justify-content:flex-end;margin-top:8px}
+.fila-acc .confirma-fila{justify-content:flex-end}

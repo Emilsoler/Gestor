@@ -44,6 +44,7 @@ const nuevaSim = () => ({ valor: '', capital: '', capitalManual: false, cuotas: 
 
 const S = {
   pantalla: 'arranque', vista: 'inicio', q: '', chip: 'activos', tramo: '', orden: 'deuda', mes: mesDe(hoy()),
+  borrarFila: '', // el deudor del listado que espera confirmar la baja
   abierto: null, tab: 'resumen', f: null, confirmar: '', // la ficha abierta y lo que se escribe en ella
   panel: '', nuevo: null, aj: null, modelos: {}, // paneles: 'nuevo' | 'mensajes' | 'ajustes' | 'clave'
   menu: false, instalar: null, ocupado: false, maxi: false,
@@ -411,15 +412,20 @@ function vistaDeudores(todos) {
       <div class="fila-top"><b>${esc(nombre(d))}</b><b class="mono monto">${esc(plata(r.saldo))}</b></div>
       <div class="fila-sub">${sit(r)}${d.socio ? `<span class="mono">Socio ${esc(d.socio)}</span>` : ''}</div>
       ${r.liq.vencidas ? `<div class="hint">${esc(detalleCuotas(r.liq))}</div>` : ''}
-      ${proximo(x) ? `<div class="fila-prox">${prox(x)}</div>` : ''}</article>`; }).join('')}</div>`;
+      ${proximo(x) ? `<div class="fila-prox">${prox(x)}</div>` : ''}<div class="fila-acc">${borrarFila(d)}</div></article>`; }).join('')}</div>`;
   }
-  return `<div class="tablebox"><table class="lista"><thead><tr><th>Deudor</th><th>Situación</th><th>Cuotas vencidas</th><th class="num">Deuda</th><th>Último pago</th><th>Próximo</th></tr></thead><tbody>
+  return `<div class="tablebox"><table class="lista"><thead><tr><th>Deudor</th><th>Situación</th><th>Cuotas vencidas</th><th class="num">Deuda</th><th>Último pago</th><th>Próximo</th><th class="acc"><span class="vh">Eliminar</span></th></tr></thead><tbody>
     ${xs.map((x) => { const { d, r } = x; return `<tr data-abrir="${esc(d.id)}" tabindex="0">
       <td class="car"><b>${esc(nombre(d))}</b><small>${esc([d.socio ? 'Socio ' + d.socio : '', operacionCorta(d)].filter(Boolean).join(' · '))}</small></td>
       <td>${sit(r)}</td><td class="venc">${venc(r)}</td>
       <td class="num"><b class="mono">${esc(plata(r.saldo))}</b>${r.plan ? '<small>saldo del plan</small>' : ''}</td>
-      <td class="ult">${ult(d, r)}</td><td class="prox">${prox(x)}</td></tr>`; }).join('')}
+      <td class="ult">${ult(d, r)}</td><td class="prox">${prox(x)}</td><td class="acc">${borrarFila(d)}</td></tr>`; }).join('')}
   </tbody></table></div>`;
+}
+/** Eliminar desde el listado (pedido de la persona, nov 2026): la papelera pide confirmar en la misma fila. */
+function borrarFila(d) {
+  if (S.borrarFila !== d.id) return `<button class="btn small borrar-fila" type="button" data-borrar-fila="${esc(d.id)}" aria-label="Eliminar a ${esc(nombre(d))}" title="Eliminar deudor">Eliminar</button>`;
+  return `<span class="confirma-fila"><span>¿Eliminar con sus pagos y planes?</span><button class="btn small danger" type="button" data-borrar-si="${esc(d.id)}">Sí, eliminar</button><button class="btn small" type="button" data-borrar-no="1">No</button></span>`;
 }
 function operacionCorta(d) {
   const op = d.operaciones[0]; if (!op) return '';
@@ -2360,6 +2366,15 @@ document.addEventListener('click', async (e) => {
   if (t.closest('[data-tramo-x]')) { S.tramo = ''; render(); return; }
   const ch = t.closest('[data-chip]'); if (ch) { S.chip = ch.dataset.chip; S.tramo = ''; render(); return; }
   const tab = t.closest('[data-tab-ir]'); if (tab) { irATab(tab.dataset.tabIr); return; }
+  // Antes que [data-abrir]: los botones de eliminar están dentro de la fila que abre la ficha.
+  const bf = t.closest('[data-borrar-fila]'); if (bf) { e.stopPropagation(); S.borrarFila = bf.dataset.borrarFila; render(); return; }
+  if (t.closest('[data-borrar-no]')) { e.stopPropagation(); S.borrarFila = ''; render(); return; }
+  const bs = t.closest('[data-borrar-si]'); if (bs) {
+    e.stopPropagation(); const id = bs.dataset.borrarSi; bs.disabled = true;
+    try { await borrarDeudor(id); S.borrarFila = ''; if (S.abierto === id) cerrarFicha(); toast('Deudor eliminado'); } catch (err) { bs.disabled = false; toast(mensaje(err, 'no se eliminó')); }
+    render(); return;
+  }
+  if (t.closest('.confirma-fila')) { e.stopPropagation(); return; }
   const ab = t.closest('[data-abrir]'); if (ab) { e.stopPropagation(); abrirDeudor(ab.dataset.abrir, ab.dataset.tab || 'resumen', ab.dataset.con || ''); return; }
   const cq = t.closest('[data-consulta]'); if (cq) { await abrirConsulta(cq.dataset.consulta); return; }
   const so = t.closest('[data-sim-origen]'); if (so) { S.cred.simOrigen = so.dataset.simOrigen === 'mano' ? 'mano' : 'vehiculo'; try { localStorage.setItem('cb.simOrigen', S.cred.simOrigen); } catch { /* sin almacenamiento */ } render(); return; }
