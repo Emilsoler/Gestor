@@ -746,6 +746,8 @@ Mutual y no nombra a InfoAuto.
   documentado: `urlDeFoto` acepta lista u objeto con `url`/`image`/`photo`/… (si no encuentra nada, revisar los logs
   `agencias: 'foto'` y una respuesta real). **Licencia**: usar las fotos quedó a confirmar con InfoAuto; si dicen que no,
   poner el secreto `AGENCIAS_FOTOS=no` en Supabase (corta las fotos sin tocar el código).
+  **Estado (18/11/2026)**: InfoAuto responde **403** (sin permiso) a `/models/{codia}/photos/` con la cuenta actual: la
+  licencia no incluye las fotos. La app sigue sin foto; se pidió a InfoAuto que las habilite. Con eso no hay que cambiar código.
 - **Las agencias no son miembros del gestor**: `gestor_puerta` les cierra toda la API de la base. Solo hablan con
   la función `agencias`, que las reconoce con `public.agencia_sesion` (clave de servicio). Un miembro que entra
   a `/agencias/` ve solo una «vista previa» (sus cotizaciones no se registran, puede probar con el cotizador
