@@ -730,8 +730,9 @@ Mutual y no nombra a InfoAuto.
   precios; el monto máximo se redondea hacia abajo (`redondeo`) para no dejar leer el valor; no se guarda el
   valor ni se copia el catálogo (todo se pide a demanda, paginado con tope, y reutiliza el token de
   `infoauto_token`). La persona eligió mostrar **marca, modelo y versión** de InfoAuto para elegir el auto
-  (la licencia dice "sin exposición de descripciones"): quedó **a confirmar con InfoAuto**; si dicen que no,
-  hay que cambiar la elección del auto por una lista propia. Una **web para el público final no está
+  (la licencia dice "sin exposición de descripciones"). **El 18/11/2026 InfoAuto dio el ok a todo** lo que hace el
+  cotizador (marca, modelo y versión, y las fotos) y dijo que **no hace falta informarles nada** (ni las altas ni las
+  bajas de agencias). Siguen valiendo el resto de las reglas: ni precios, ni valuaciones, ni CODIA a una agencia. Una **web para el público final no está
   contratada**: no abrir el cotizador sin usuario. No sumar nada que muestre valores o CODIA a una agencia.
 - **Elegir el auto** (pedido de la persona del 18/11/2026): marca → modelo → **año** → **versión**. `versiones` devuelve, por
   versión, `anios` (el rango `prices_from`–`prices_to` del listado desde el año mínimo, y '0km' si tiene precio de lista; años,
@@ -760,7 +761,8 @@ Mutual y no nombra a InfoAuto.
   su `informada_infoauto` es la fecha del alta (17/11/2026), no un aviso real (lo dice su nota). Ocupa uno de los 20 lugares:
   pausarla (`gestor.pausar_agencia`) cuando no se use.
 - **Tablas** (migración 0025): `public.agencias` (nombre, email, cuenta, `activa`, `informada_infoauto` —fecha
-  del aviso por escrito a InfoAuto, obligatoria para activar—, `clave_temporal`; tope de 20 activas y una cuenta
+  del aviso por escrito a InfoAuto, obligatoria para activar; desde el 18/11/2026 InfoAuto dice que no hace falta avisarles, pero la
+  base todavía la pide—, `clave_temporal`; tope de 20 activas y una cuenta
   del gestor no puede ser agencia, lo controla `gestor.tg_agencias_reglas`), `public.ajustes_agencias` (una fila:
   `habilitado` —arranca en false—, `pct_financiable`, `tasa_mensual`, `plazos`, `antiguedad_max`, montos mínimo y
   máximo, `redondeo`, `gastos` con la forma de `GASTOS_DEFECTO`, `tope_diario` por agencia, `leyenda`, `contacto`) y
