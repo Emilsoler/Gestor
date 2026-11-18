@@ -856,8 +856,8 @@ Desde SQL no se abren los documentos: los enlaces los da la función (botón «V
   `es_miembro()`; las agencias no tienen acceso). Es solo un registro de simulaciones: **no queda historial** (`cotizaciones_agencia` no
   tiene el disparador `auditar`) y no se puede deshacer. Ojo: el tope diario de cada agencia cuenta estas filas, así que borrar las de
   hoy le devuelve cotizaciones del día.
-- **Publicar la función**: `deploy_edge_function` con nombre `agencias`, `verify_jwt: true` y los cuatro archivos de
-  `supabase/functions/agencias/` (`index.ts` de entrada, `credito.js`, `bcra.ts` y `solicitud.js`). Usa los secretos `INFOAUTO_USER` e `INFOAUTO_PASS`.
+- **Publicar la función**: `deploy_edge_function` con nombre `agencias`, `verify_jwt: true` y los cinco archivos de
+  `supabase/functions/agencias/` (`index.ts` de entrada, `credito.js`, `bcra.ts`, `solicitud.js` y `foto.js`). Usa los secretos `INFOAUTO_USER` e `INFOAUTO_PASS`.
 - **Pruebas**: `npm run test:agencias` (función de punta a punta contra `dev/infoauto-falso.mjs`, con vehículos y
   precios inventados, contra `dev/bcra-falso.mjs` para el BCRA y contra `dev/storage-falso.mjs` para el almacenamiento, que la
   base local no tiene; controla que ninguna respuesta a una agencia incluya un precio o un CODIA, la tasa por año, el semáforo,
