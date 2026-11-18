@@ -16,7 +16,7 @@
 // Pedido: { accion, ... }. Acciones: yo, clave_definida, marcas, modelos {marca}, versiones {marca, grupo},
 // anios {ref}, cotizar {ref, anio, cuotas, monto?, vehiculo?}, bcra {cuit}, solicitar {consulta, ref, anio,
 // cuotas, monto?, vehiculo?, ingresos, ingreso, categoria, datos, consentimiento}, archivo (multipart: id, slot,
-// archivo), enviar {id}, solicitudes; y para la Mutual, archivos {id} y eliminar {id}.
+// archivo), enviar {id}, solicitudes; y para la Mutual, archivos {id}, eliminar {id} y crear_agencia {nombre, email, informada, notas}.
 //
 // BCRA: la agencia consulta el CUIT de su cliente en la Central de Deudores (API pública). La consulta queda
 // guardada entera en consultas_bcra para la Mutual; a la agencia se le devuelve solo el color y el nombre.
@@ -113,6 +113,14 @@ async function enlace(path: string): Promise<string | null> {
 }
 
 const hex = (b: ArrayBuffer) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('');
+/** Clave provisoria al azar de 12 caracteres, sin los que se confunden al leerlos (0/O, 1/l/I). */
+function claveProvisoria(): string {
+  const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+  const tope = 256 - (256 % abc.length); // descarta los valores que sesgarían el reparto
+  let s = '';
+  while (s.length < 12) for (const b of crypto.getRandomValues(new Uint8Array(24))) if (b < tope && s.length < 12) s += abc[b % abc.length];
+  return s;
+}
 const esUuid = (x: unknown) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(x ?? ''));
 // La fecha de hoy en Córdoba (UTC−3, sin horario de verano).
 const hoyCordoba = () => new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10);
@@ -502,6 +510,30 @@ export async function manejar(req: Request): Promise<Response> {
       await borrarArchivos(Array.isArray(g?.borrar) ? g.borrar : []);
       if (!g?.ok) throw new Falla('No se pudo eliminar la solicitud. Probá de nuevo.', 502, 'base');
       return responder({ ok: true }, 200, cors);
+    }
+    if (accion === 'crear_agencia') {
+      // Solo para la Mutual: crea la cuenta de una agencia con una clave provisoria al azar, la habilita y devuelve la clave
+      // UNA vez (no se guarda ni se registra en ningún lado). La agencia tiene que elegir la suya al entrar.
+      if (!ag.miembro) throw new Falla('Pedido desconocido.', 400, 'accion');
+      const email = String(pedido.email || '').trim().toLowerCase(), nombre = String(pedido.nombre || '').trim();
+      const informada = String(pedido.informada || ''), notas = String(pedido.notas || '').trim().slice(0, 500);
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 200) throw new Falla('El email no es válido.', 400, 'pedido');
+      if (!nombre || nombre.length > 120) throw new Falla('Falta el nombre de la agencia.', 400, 'pedido');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(informada)) throw new Falla('Falta la fecha en que se informó a la guía de precios.', 400, 'pedido');
+      const clave = claveProvisoria();
+      const c = await fetch(`${URL_BASE}/auth/v1/admin/users`, { method: 'POST', headers: servicio, body: JSON.stringify({ email, password: clave, email_confirm: true }) });
+      if (c.status === 409 || c.status === 422) throw new Falla('Ya existe una cuenta con ese email. Si es de una agencia, usá «Ya tiene cuenta: solo habilitar».', 409, 'existe');
+      if (!c.ok) throw new Falla('No se pudo crear la cuenta. Probá de nuevo en un momento.', 502, 'cuenta');
+      const creado = await c.json();
+      const alta = await fetch(`${URL_BASE}/rest/v1/rpc/agencia_alta`, { method: 'POST', headers: servicio, body: JSON.stringify({ p_user: uid, p_email: email, p_nombre: nombre, p_informada: informada, p_notas: notas }) });
+      if (!alta.ok) {
+        // Si no se pudo habilitar (por ejemplo, ya hay 20 activas), la cuenta recién creada no queda suelta.
+        if (esUuid(creado?.id)) await fetch(`${URL_BASE}/auth/v1/admin/users/${creado.id}`, { method: 'DELETE', headers: servicio }).catch(() => {});
+        let msg = 'No se pudo habilitar la agencia.';
+        try { const e = await alta.json(); if (e?.message && alta.status === 400) msg = String(e.message); } catch { /* sin detalle */ }
+        throw new Falla(msg, 400, 'alta');
+      }
+      return responder({ ok: true, email, clave }, 200, cors);
     }
     if (accion === 'solicitudes') {
       return responder({ solicitudes: ag.miembro ? [] : await rpc('agencia_solicitudes', { p_user: uid }) }, 200, cors);

@@ -519,6 +519,10 @@ export async function contarSolicitudes() {
 export const guardarAjustesAgencias = (fila) => pedir(sb.from('ajustes_agencias').update(fila).eq('id', 1));
 export const altaAgencia = (email, nombre, informada, notas) =>
   pedir(sb.rpc('alta_agencia', { p_email: email, p_nombre: nombre, p_informada: informada, p_notas: notas }));
+/** Crea la cuenta de la agencia con una clave provisoria al azar y la habilita; devuelve {email, clave} (la clave se ve una sola vez). */
+export async function crearAgencia(nombre, email, informada, notas) {
+  return invocarBCRA({ accion: 'crear_agencia', nombre, email, informada, notas }, 'agencias');
+}
 export const activarAgencia = (id, activa) => pedir(sb.from('agencias').update({ activa }).eq('id', id));
 /** La Mutual solo cambia el estado y la nota; quién y cuándo resolvió lo pone la base. */
 export const resolverSolicitud = (id, estado, nota) => pedir(sb.from('solicitudes_credito').update({ estado, nota }).eq('id', id));

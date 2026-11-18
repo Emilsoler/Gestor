@@ -731,3 +731,9 @@ body:has(#drawer:not([hidden])) #btnClaudeWeb,body:has(#menu:not([hidden])) #btn
 .ag-check input{width:20px;height:20px;accent-color:var(--accent)}
 .ag-aviso{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;border-color:rgba(246,189,96,.45);box-shadow:inset 3px 0 0 var(--warn),var(--sombra)}
 .ag-resueltas{margin-top:6px}
+
+/* Alta de agencia: los datos de acceso que se ven una sola vez */
+.ag-nueva{border-color:var(--accent)}
+.ag-acceso{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;margin:0;padding:12px;border-radius:10px;background:var(--surface-2,rgba(255,255,255,.06))}
+.ag-acceso dt{color:var(--muted);font-size:13px}
+.ag-acceso dd{margin:0;font-size:17px;overflow-wrap:anywhere;user-select:all}

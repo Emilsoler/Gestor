@@ -4,7 +4,7 @@ import {
   D, iniciar, reconectar, entrar, salir, cambiarClave, alCambiar, mensaje, ajustes, ESTADOS,
   crearDeudor, cambiarDeudor, borrarDeudor, crearModelo, guardarModelo, borrarModelo, guardarAjustes,
   consultarInfoAuto, consultarInfoAutoTodo, consultarBCRA, detalleConsulta, detalleGuardado, borrarConsulta, consultarCheque, entidadesCheques, borrarConsultaCheque, crearCasoRefi, actualizarCasoRefi, borrarCasoRefi, archivarCasoRefi,
-  leerAgencias, contarSolicitudes, guardarAjustesAgencias, altaAgencia, activarAgencia, resolverSolicitud, documentosSolicitud, eliminarSolicitud,
+  leerAgencias, contarSolicitudes, guardarAjustesAgencias, altaAgencia, crearAgencia, activarAgencia, resolverSolicitud, documentosSolicitud, eliminarSolicitud,
 } from './datos.js';
 import { htmlAgencias, avisoInicio, parametrosEnTexto, leerParametros, TABS_AGENCIAS } from './agencias.js';
 import {
@@ -178,7 +178,7 @@ function mostrar(pantalla) {
   if (enApp) { $('#ingresoCuerpo').innerHTML = ''; render(); seguirEnlace(); return; }
   cerrarFicha(); S.menu = false; renderMenu();
   for (const k of ['#main', '#chips', '#franja', '#nPlanes', '#nDeudores', '#nAgencias']) $(k).innerHTML = '';
-  S.ag = { ...S.ag, datos: null, error: '', docs: new Map(), notas: {}, alta: {}, pend: 0 }; // al salir no queda nada de otra sesión
+  S.ag = { ...S.ag, datos: null, error: '', docs: new Map(), notas: {}, alta: {}, nueva: null, pend: 0 }; // al salir no queda nada de otra sesión
   $('#sub').textContent = ''; $('#q').value = ''; S.q = '';
   renderIngreso();
 }
@@ -525,7 +525,7 @@ async function accionAgencias(act, b) {
   const G = S.ag, id = b.dataset.id;
   if (act === 'ag-recargar') { G.error = ''; await cargarAgencias(); return; }
   if (act === 'ag-tab') {
-    G.tab = b.dataset.tab; G.msg = '';
+    G.tab = b.dataset.tab; G.msg = ''; G.nueva = null;
     try { localStorage.setItem('cb.agTab', G.tab); } catch { /* sin almacenamiento */ }
     render(); return;
   }
@@ -562,6 +562,22 @@ async function accionAgencias(act, b) {
     G.msg = ''; toast('Parámetros guardados');
     await cargarAgencias(); return;
   }
+  if (act === 'ag-crear') {
+    const al = G.alta, email = String(al.email || '').trim(), nombre = String(al.nombre || '').trim();
+    if (!email || !nombre || !al.informada) { G.msg = 'Completá nombre, email y la fecha en que se informó a la guía de precios.'; render(); return; }
+    let r;
+    try { r = await crearAgencia(nombre, email, al.informada, String(al.notas || '').trim()); } catch (e) { G.msg = mensaje(e); render(); return; }
+    // La clave solo vive en esta pantalla: no se guarda en el dispositivo y desaparece al cambiar de solapa.
+    G.alta = {}; G.msg = ''; G.nueva = { nombre, email: r.email || email, clave: r.clave };
+    toast('Agencia creada');
+    await cargarAgencias(); return;
+  }
+  if (act === 'ag-copiar-acceso') {
+    const n = G.nueva; if (!n) return;
+    copiar(`Cotizador de créditos prendarios · Mutual Bell\nIngresá en: ${location.origin}${location.pathname.replace(/cobranzas\/?$/, '')}agencias/\nUsuario: ${n.email}\nContraseña provisoria: ${n.clave}\nLa primera vez que entres, el cotizador te va a pedir que elijas tu propia contraseña.`);
+    return;
+  }
+  if (act === 'ag-listo') { G.nueva = null; render(); return; }
   if (act === 'ag-alta') {
     const al = G.alta, email = String(al.email || '').trim(), nombre = String(al.nombre || '').trim();
     if (!email || !nombre || !al.informada) { G.msg = 'Completá nombre, email y la fecha en que se informó a la guía de precios.'; render(); return; }
@@ -2320,7 +2336,7 @@ async function unaVez(boton, tarea) {
 const verVista = (v) => {
   S.vista = v;
   try { localStorage.setItem('cb.vista', v); } catch { /* sin almacenamiento */ }
-  if (v === 'agencias') { S.ag.msg = ''; setTimeout(cargarAgencias); } // al entrar, lo último que mandaron
+  if (v === 'agencias') { S.ag.msg = ''; S.ag.nueva = null; setTimeout(cargarAgencias); } // al entrar, lo último que mandaron
   render(); window.scrollTo(0, 0);
 };
 

@@ -132,6 +132,22 @@ test('Créditos y Cobros: parámetros del cotizador y agencias, desde la solapa'
   assert.equal(sql(`select activa from public.agencias where email = '${AG}'`), 'f');
   await p.click('[data-a="ag-activa"]');
   await toast(p, 'Agencia activada');
+  // Crear una agencia desde la solapa: la clave provisoria se ve una sola vez.
+  await p.fill('[data-k="ag.alta.nombre"]', 'Salón Botón');
+  await p.fill('[data-k="ag.alta.email"]', 'boton@test.local');
+  await p.fill('[data-k="ag.alta.informada"]', sql('select gestor.hoy()'));
+  await p.click('[data-a="ag-crear"]');
+  await p.waitForSelector('.ag-nueva .ag-acceso');
+  const clave = (await p.textContent('.ag-nueva .ag-acceso dd:last-of-type')).trim();
+  assert.match(clave, /^[A-HJ-NP-Za-km-z2-9]{12}$/);
+  assert.match(norm(await p.textContent('.ag-nueva')), /boton@test\.local/);
+  assert.equal(sql(`select activa::text || clave_temporal::text from public.agencias where email = 'boton@test.local'`), 'truetrue');
+  assert.equal((await entrar('boton@test.local', clave)).sesion.user.email, 'boton@test.local', 'la clave que se ve es la que sirve');
+  // Al cambiar de solapa la clave desaparece de la pantalla y no se puede volver a ver.
+  await p.click('[data-a="ag-tab"][data-tab="parametros"]');
+  await p.click('[data-a="ag-tab"][data-tab="agencias"]');
+  assert.equal(await p.$('.ag-nueva'), null);
+  assert.ok(!(await p.content()).includes(clave), 'la clave ya no está en la página');
   await p.context().close();
 });
 

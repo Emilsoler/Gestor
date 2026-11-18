@@ -235,7 +235,7 @@ test('la Mutual administra desde la app: parámetros, agencias y cotizaciones; l
   assert.ifError(r.error);
   const { error } = await servicio().auth.admin.createUser({ email: 'salon2@test.local', password: 'Agencia-123456', email_confirm: true });
   assert.ifError(error);
-  r = await c.rpc('alta_agencia', { p_email: 'salon2@test.local', p_nombre: 'Salón Dos', p_informada: new Date().toISOString().slice(0, 10) });
+  r = await c.rpc('alta_agencia', { p_email: 'salon2@test.local', p_nombre: 'Salón Dos', p_informada: sql('select gestor.hoy()') });
   assert.ifError(r.error);
   assert.equal(sql(`select actualizado_por from public.agencias where email = 'salon2@test.local'`), 'Emi');
   // Las cotizaciones no se modifican ni se inventan desde la API.
@@ -449,7 +449,7 @@ test('solicitud completa: ingresos, 45 %, datos, documentos a la carpeta privada
   assert.equal(+s.relacion, SOL.relacionCuota(cuota, justo + 1000));
   assert.equal(s.categoria, 'monotributo');
   assert.equal(s.cliente, '3534123456');
-  assert.deepEqual(s.datos, { ...DATOS, celular: '3534123456' });
+  assert.deepEqual(s.datos, { ...DATOS, celular: '3534123456', pct_valor: 40 });
   assert.equal(+s.cuota, cuota);
 
   // Mientras se carga no la ve nadie: ni la agencia en «Mis solicitudes» ni la Mutual puede resolverla.
@@ -520,4 +520,48 @@ test('solicitud completa: ingresos, 45 %, datos, documentos a la carpeta privada
   assert.equal(r.datos.solicitudes[0].nota, 'Que venga a firmar');
   const ca = await entrar('salon@test.local', 'Agencia-123456');
   assert.ok((await ca.from('solicitudes_credito').select('*')).error, 'la agencia no lee la tabla');
+});
+
+test('crear una agencia desde la app: cuenta con clave provisoria al azar, habilitada, y la agencia elige la suya', async () => {
+  const datos = { accion: 'crear_agencia', nombre: 'Salón Nuevo', email: 'Nuevo@Salon.Test', informada: sql('select gestor.hoy()'), notas: 'prueba' };
+  // Una agencia no puede crear otras agencias.
+  assert.equal((await pedir(agencia, datos)).status, 400);
+  assert.equal(sql(`select count(*) from public.agencias where email = 'nuevo@salon.test'`), '0');
+  // Datos que faltan o están mal.
+  assert.equal((await pedir(emi, { ...datos, email: 'sin-arroba' })).status, 400);
+  assert.equal((await pedir(emi, { ...datos, nombre: '' })).status, 400);
+  assert.equal((await pedir(emi, { ...datos, informada: '' })).status, 400);
+  // El alta: devuelve la clave una sola vez y la agencia queda habilitada, con clave temporal.
+  const r = await pedir(emi, datos);
+  assert.equal(r.status, 200, r.texto);
+  assert.equal(r.datos.email, 'nuevo@salon.test');
+  assert.match(r.datos.clave, /^[A-HJ-NP-Za-km-z2-9]{12}$/);
+  const fila = JSON.parse(sql(`select to_jsonb(a) from public.agencias a where email = 'nuevo@salon.test'`));
+  assert.equal(fila.activa, true);
+  assert.equal(fila.clave_temporal, true);
+  assert.equal(fila.nombre, 'Salón Nuevo');
+  assert.ok(!JSON.stringify(fila).includes(r.datos.clave), 'la clave no se guarda en ningún campo');
+  // La agencia entra con la provisoria, la función le pide elegir otra, y después cotiza.
+  const jwt = (await entrar('nuevo@salon.test', r.datos.clave)).sesion.access_token;
+  assert.equal((await pedir(jwt, { accion: 'yo' })).datos.clave_temporal, true);
+  assert.equal((await pedir(jwt, { accion: 'marcas' })).status, 403, 'con la clave provisoria no se cotiza');
+  assert.equal((await pedir(jwt, { accion: 'clave_definida' })).status, 200);
+  assert.equal((await pedir(jwt, { accion: 'yo' })).datos.clave_temporal, false);
+  // Dos claves provisorias seguidas no se repiten.
+  const r2 = await pedir(emi, { ...datos, nombre: 'Otro', email: 'otro@salon.test' });
+  assert.equal(r2.status, 200);
+  assert.notEqual(r2.datos.clave, r.datos.clave);
+  // Un email que ya tiene cuenta no se pisa.
+  const dup = await pedir(emi, datos);
+  assert.equal(dup.status, 409);
+  assert.match(dup.texto, /Ya existe una cuenta/);
+  // Si no se puede habilitar (fecha futura), la cuenta recién creada no queda suelta.
+  const futura = await pedir(emi, { ...datos, email: 'futura@salon.test', informada: '2099-01-01' });
+  assert.equal(futura.status, 400);
+  assert.match(futura.texto, /futura/);
+  const { data } = await servicio().auth.admin.listUsers({ perPage: 200 });
+  assert.ok(!data.users.some((u) => u.email === 'futura@salon.test'), 'la cuenta de un alta fallida se borra');
+  // La clave no queda en los registros de la función.
+  const logs = (await import('node:fs')).existsSync(`${process.env.STACK || ''}/logs/agencias.log`) ? (await import('node:fs')).readFileSync(`${process.env.STACK}/logs/agencias.log`, 'utf8') : '';
+  assert.ok(!logs.includes(r.datos.clave), 'la clave provisoria no se registra');
 });

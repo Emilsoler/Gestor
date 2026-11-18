@@ -217,14 +217,20 @@ export function htmlAgencias(A, est) {
     const filas = A.agencias.map((x) => `<tr><td><b>${esc(x.nombre)}</b><br><span class="hint">${esc(x.email)}</span>${x.notas ? `<br><span class="hint">${esc(x.notas)}</span>` : ''}</td>
       <td>${x.activa ? '<span class="tag t-plan">Activa</span>' : '<span class="tag t-mal">Pausada</span>'}<br><span class="hint">Informada: ${esc(String(x.informada_infoauto || '—').split('-').reverse().join('/'))}</span></td>
       <td class="num"><button class="btn small" data-a="ag-activa" data-id="${esc(x.id)}" data-valor="${x.activa ? '0' : '1'}">${x.activa ? 'Pausar' : 'Activar'}</button></td></tr>`).join('');
-    cuerpo = `<section class="card"><div class="card-cab"><h3>Agencias</h3><span class="hint">${A.agencias.filter((x) => x.activa).length} de 20 activas</span></div>
+    const nueva = est.nueva ? `<section class="card ag-nueva"><div class="card-cab"><h3>Agencia creada: ${esc(est.nueva.nombre)}</h3></div>
+        <p class="m0">Pasale estos datos a la agencia. <b>La contraseña se muestra una sola vez</b>: si cerrás esta pantalla, no se puede volver a ver.</p>
+        <dl class="ag-acceso"><dt>Usuario</dt><dd class="mono">${esc(est.nueva.email)}</dd><dt>Contraseña provisoria</dt><dd class="mono">${esc(est.nueva.clave)}</dd></dl>
+        <p class="hint m0">Cuando entre por primera vez, el cotizador le va a pedir que elija su propia contraseña.</p>
+        <div class="actions"><button class="btn primary" data-a="ag-copiar-acceso">Copiar los datos para enviar</button><button class="btn" data-a="ag-listo">Listo, ya los copié</button></div>
+      </section>` : '';
+    cuerpo = `${nueva}<section class="card"><div class="card-cab"><h3>Agencias</h3><span class="hint">${A.agencias.filter((x) => x.activa).length} de 20 activas</span></div>
         ${A.agencias.length ? `<div class="ag-tabla"><table class="tabla"><tbody>${filas}</tbody></table></div>` : '<p class="hint m0">Todavía no hay agencias.</p>'}
         ${msg}</section>
       <section class="card"><div class="card-cab"><h3>Agregar una agencia</h3></div>
         <ol class="campos">
           <li>Avisale por escrito a la guía de precios que vas a sumar esta agencia (lo exige la licencia; tope: 20).</li>
-          <li>Creá su cuenta en el panel de Supabase (Authentication → Users → Add user, con «Auto Confirm User») con una contraseña provisoria.</li>
-          <li>Completá esto: al entrar, la agencia va a tener que elegir su propia contraseña.</li>
+          <li>Completá esto y tocá «Crear agencia»: se crea su cuenta con una contraseña provisoria que vas a ver una sola vez.</li>
+          <li>Pasásela a la agencia: al entrar, va a tener que elegir su propia contraseña.</li>
         </ol>
         <div class="grid2">
           <label class="f">Nombre de la agencia<input data-k="ag.alta.nombre" value="${esc(al.nombre || '')}" maxlength="120" autocomplete="off"></label>
@@ -232,7 +238,7 @@ export function htmlAgencias(A, est) {
           <label class="f">Fecha en que se informó a la guía de precios<input type="date" data-k="ag.alta.informada" value="${esc(al.informada || '')}"></label>
           <label class="f">Notas<input data-k="ag.alta.notas" value="${esc(al.notas || '')}" maxlength="500" autocomplete="off"></label>
         </div>
-        <div class="actions"><button class="btn primary" data-a="ag-alta">Habilitar agencia</button></div>
+        <div class="actions"><button class="btn primary" data-a="ag-crear">Crear agencia</button><button class="btn" data-a="ag-alta">Ya tiene cuenta: solo habilitar</button></div>
       </section>`;
   } else if (est.tab === 'cotizaciones') {
     const filas = A.cotizaciones.map((x) => `<tr><td>${esc(fechaHora(x.momento))}</td><td>${esc(x.agencia)}</td><td>${esc(x.vehiculo)} <span class="hint">${esc(anioTxt(x.anio))}</span></td>

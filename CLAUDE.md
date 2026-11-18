@@ -809,7 +809,8 @@ Mutual y no nombra a InfoAuto.
 Para Claude, por el conector:
 
 ```sql
--- alta: la cuenta se crea antes en el panel de Supabase (Add user, Auto Confirm, contraseña provisoria)
+-- alta: lo normal es el botón «Crear agencia» de Créditos y Cobros → Agencias → Agencias (ver abajo). Si la cuenta ya existe
+-- (creada en el panel de Supabase: Add user, Auto Confirm), solo se habilita con esto:
 select gestor.autorizar_agencia('ventas@agencia.com', 'Agencia X', '2026-11-20');  -- fecha del aviso a InfoAuto
 select gestor.pausar_agencia('ventas@agencia.com');
 select nombre, email, activa, informada_infoauto from public.agencias order by nombre;
@@ -830,6 +831,14 @@ Desde SQL no se abren los documentos: los enlaces los da la función (botón «V
   volver a la app: insignia en la solapa y aviso arriba de Inicio. `cobranzas/#agencias` abre la solapa. Usa la sesión de la
   persona (las mismas barreras); los documentos los pide a la función `agencias`. Pruebas en el navegador:
   `dev/tests/agencias-admin.test.mjs` (dentro de `npm run test:agencias`).
+- **Crear agencia desde la app** (migración 0032, pedido de la persona del 17/11/2026): en la pestaña Agencias, «Crear agencia» pide
+  nombre, email, fecha del aviso a InfoAuto y notas; la función `agencias` (acción `crear_agencia`, solo miembros) crea la cuenta
+  con la API de administración del login (`/auth/v1/admin/users`, clave de servicio), con una **contraseña provisoria al azar de
+  12 caracteres**, y la habilita con `public.agencia_alta` (solo `service_role`; firma con el nombre del miembro y llama a
+  `gestor.autorizar_agencia`, que deja `clave_temporal`). Si la habilitación falla (por ejemplo, ya hay 20 activas), borra la cuenta
+  recién creada. La contraseña se muestra **una sola vez** en pantalla (`S.ag.nueva`, nunca en el chat ni en la base ni en los
+  registros): la persona se la manda a la agencia ella misma («Copiar los datos para enviar» arma el mensaje con el enlace) y la
+  agencia elige la suya al entrar (`clave_definida`). «Ya tiene cuenta: solo habilitar» sigue disponible. Prueba 18 de `agencias.test.mjs`.
 - **Publicar la función**: `deploy_edge_function` con nombre `agencias`, `verify_jwt: true` y los cuatro archivos de
   `supabase/functions/agencias/` (`index.ts` de entrada, `credito.js`, `bcra.ts` y `solicitud.js`). Usa los secretos `INFOAUTO_USER` e `INFOAUTO_PASS`.
 - **Pruebas**: `npm run test:agencias` (función de punta a punta contra `dev/infoauto-falso.mjs`, con vehículos y
