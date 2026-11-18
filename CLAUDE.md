@@ -756,7 +756,7 @@ Mutual y no nombra a InfoAuto.
   y las tasas, «2021=5; 2018=6; 2014=7»).
 - **Flujo de la agencia** (pedido de la persona del 17/11/2026, migraciones 0027 y 0028):
   1. **El cliente**: CUIT → BCRA (acción `bcra`, con `bcra.ts`, **copia exacta** de `supabase/functions/bcra/bcra.ts`, mismo
-     semáforo que Cobranzas; las pruebas comparan los dos archivos). A la agencia le llega solo el color y el nombre, y ve:
+     semáforo que Cobranzas; las pruebas comparan los dos archivos). A la agencia le llegan el color, el nombre y un resumen del último período de la Central de Deudores (`bancos`: entidad, situación y deuda en pesos; `deuda_total`, `periodo`; pedido de la persona del 18/11/2026: se muestra a la derecha del recuadro «1 · El cliente», `resumenBCRA` en `app.js`, y «Otro cliente» quedó fuera del recuadro); lo histórico y los cheques siguen solo para la Mutual. Ve:
      verde «Continuar»; amarillo y sin antecedentes «Continuar – Sujeto a revisión»; rojo «No apto» (no sigue). La consulta
      completa queda en `public.consultas_bcra` firmada «Agencia · <nombre>» (también en Créditos y Cobros → Deudas por CUIT) y
      cuenta para el `tope_diario`.

@@ -299,14 +299,17 @@ test('con los parámetros de la Mutual: 40 %, 1 a 24 cuotas, desde 2014 y tasa p
   assert.equal((await pedir(agencia, { accion: 'cotizar', ref: v1.ref, anio: '2020', cuotas: 1 })).status, 200);
 });
 
-test('BCRA desde la agencia: el color y el nombre; el detalle queda para la Mutual', async () => {
+test('BCRA desde la agencia: color, nombre y resumen por entidad; lo histórico queda para la Mutual', async () => {
   sql(PARAMS_MUTUAL);
   await cargarCasosBCRA();
   let r = await pedir(agencia, { accion: 'bcra', cuit: '20-11111111-2' });
   assert.equal(r.status, 200, r.texto);
   assert.equal(r.datos.semaforo, 'verde');
   assert.equal(r.datos.denominacion, 'PERSONA VERDE');
-  assert.deepEqual(Object.keys(r.datos).sort(), ['consulta', 'cuit', 'denominacion', 'semaforo']);
+  assert.deepEqual(Object.keys(r.datos).sort(), ['bancos', 'consulta', 'cuit', 'denominacion', 'deuda_total', 'periodo', 'semaforo']);
+  assert.ok(Array.isArray(r.datos.bancos) && r.datos.bancos.length > 0, 'las entidades con las que opera');
+  for (const b of r.datos.bancos) assert.deepEqual(Object.keys(b).sort(), ['entidad', 'monto', 'situacion']);
+  assert.equal(r.datos.deuda_total, r.datos.bancos.reduce((a, b) => a + b.monto, 0));
   const fila = JSON.parse(sql(`select to_jsonb(c) from public.consultas_bcra c where id = '${r.datos.consulta}'`));
   assert.equal(fila.consultado_por, 'Agencia · Salón Uno');
   assert.equal(fila.cuit, CUIT.verde);

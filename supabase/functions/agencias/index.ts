@@ -19,7 +19,8 @@
 // archivo), enviar {id}, solicitudes; y para la Mutual, archivos {id}, eliminar {id} y crear_agencia {nombre, email, informada, notas}.
 //
 // BCRA: la agencia consulta el CUIT de su cliente en la Central de Deudores (API pública). La consulta queda
-// guardada entera en consultas_bcra para la Mutual; a la agencia se le devuelve solo el color y el nombre.
+// guardada entera en consultas_bcra para la Mutual; a la agencia se le devuelven el color, el nombre y, del último
+// período, las entidades con su situación y deuda (sin lo histórico ni los cheques).
 // La solicitud de aprobación exige esa consulta (verde, o amarillo y sin antecedentes «sujeto a revisión»; rojo,
 // no apto), ingresos demostrables con la cuota dentro del tope de la relación cuota/ingreso, y recalcula el
 // crédito acá (no se confía en los importes que mande el navegador). Después se suben los documentos, uno por
@@ -27,7 +28,7 @@
 // En los registros no quedan el CUIT ni los datos del cliente.
 import { simularCredito, montoMaximo, tasasDelCredito, anioMinimo, tasaPara } from './credito.js';
 // Copia exacta de ../bcra/bcra.ts (las pruebas lo controlan): el mismo semáforo que Cobranzas.
-import { ErrorBCRA, consultar, cuitValido, resumir, sinCuit, soloDigitos } from './bcra.ts';
+import { ErrorBCRA, consultar, cuitValido, resumir, sinCuit, soloDigitos, ultimoPeriodo } from './bcra.ts';
 // Copia exacta de docs/agencias/solicitud.js (las pruebas lo controlan): documentos y controles de la solicitud.
 import { CATEGORIAS, DOCS, MAX_BYTES, docsRequeridos, relacionCuota, revisarDatos, tipoArchivo } from './solicitud.js';
 
@@ -420,8 +421,20 @@ export async function manejar(req: Request): Promise<Response> {
         if (g?.tope) throw new Falla('Llegaste al tope de consultas de hoy. Probá mañana o consultá con la Mutual.', 429, 'tope');
         consulta = g?.id || null;
       }
-      // A la agencia, solo el color y el nombre: el detalle (entidades, montos, cheques) queda para la Mutual.
-      return responder({ consulta, cuit, denominacion: resumen.denominacion, semaforo: resumen.semaforo }, 200, cors);
+      // A la agencia: el color, el nombre y un resumen de la Central de Deudores (con qué entidades opera, situación y deuda
+      // informada en el último período; pedido de la persona del 18/11/2026). Lo histórico y los cheques quedan para la Mutual.
+      const bancos = ultimoPeriodo(r.deudas).entidades
+        .map((e: any) => ({
+          entidad: String(e?.entidad ?? '').trim().slice(0, 120) || 'Entidad sin nombre',
+          situacion: Math.max(0, Math.min(6, Math.trunc(Number(e?.situacion) || 0))),
+          monto: Math.round((Number(e?.monto) || 0) * 1000), // el BCRA informa en miles de pesos
+        }))
+        .sort((a: any, b: any) => b.situacion - a.situacion || b.monto - a.monto)
+        .slice(0, 40);
+      return responder({
+        consulta, cuit, denominacion: resumen.denominacion, semaforo: resumen.semaforo,
+        periodo: resumen.periodo, deuda_total: Math.round(resumen.deuda_total), bancos,
+      }, 200, cors);
     }
     if (accion === 'solicitar') {
       if (ag.miembro) throw new Falla('En la vista previa no se envían solicitudes.', 400, 'vista_previa');

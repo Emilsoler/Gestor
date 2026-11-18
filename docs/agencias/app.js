@@ -389,13 +389,44 @@ function vistaCliente() {
     </section>`;
   }
   const sem = SEMAFORO[B.semaforo] || SEMAFORO.sin_datos;
-  return `<section class="card semaforo s-${esc(B.semaforo)}">
-    <div class="card-cab"><h2>1 · El cliente</h2><button class="btn chico no-imprimir" type="button" id="btnOtroCliente">${S.confirmarOtro ? 'Sí, empezar con otro' : 'Otro cliente'}</button></div>
-    <div class="sem-fila"><span class="sem-luz" aria-hidden="true"></span><div><b class="sem-nombre">${esc(sem.accion)}</b><div>${esc(B.denominacion || 'Sin nombre informado')}</div><div class="hint mono">${esc(cuitLindo(B.cuit))}</div></div></div>
-    <p class="hint m0">BCRA: ${esc(sem.color.toLowerCase())}, ${esc(sem.texto)}</p>
-    ${S.confirmarOtro ? '<p class="aviso suave m0">Se borra todo lo que cargaste de este cliente (datos y documentos). Tocá de nuevo para confirmarlo.</p>' : ''}
-    ${sem.sigue && !S.continuo ? `<div class="acciones no-imprimir"><button class="btn primario" type="button" id="btnContinuar">${esc(sem.accion)}</button></div>` : ''}
+  // «Otro cliente» va fuera del recuadro, para que el espacio de la derecha sea el resumen del BCRA.
+  return `<div class="otro-cliente no-imprimir">
+      ${S.confirmarOtro ? '<span class="aviso suave m0">Se borra todo lo que cargaste de este cliente (datos y documentos). Tocá de nuevo para confirmarlo.</span>' : ''}
+      <button class="btn chico" type="button" id="btnOtroCliente">${S.confirmarOtro ? 'Sí, empezar con otro' : 'Otro cliente'}</button>
+    </div>
+    <section class="card semaforo s-${esc(B.semaforo)}">
+    <div class="cliente-cols">
+      <div class="cliente-izq">
+        <h2>1 · El cliente</h2>
+        <div class="sem-fila"><span class="sem-luz" aria-hidden="true"></span><div><b class="sem-nombre">${esc(sem.accion)}</b><div>${esc(B.denominacion || 'Sin nombre informado')}</div><div class="hint mono">${esc(cuitLindo(B.cuit))}</div></div></div>
+        <p class="hint m0">BCRA: ${esc(sem.color.toLowerCase())}, ${esc(sem.texto)}</p>
+        ${sem.sigue && !S.continuo ? `<div class="acciones no-imprimir"><button class="btn primario" type="button" id="btnContinuar">${esc(sem.accion)}</button></div>` : ''}
+      </div>
+      ${resumenBCRA(B)}
+    </div>
   </section>`;
+}
+
+const SITUACION = { 0: 'Sin dato', 1: '1 · Normal', 2: '2 · Riesgo bajo', 3: '3 · Riesgo medio', 4: '4 · Riesgo alto', 5: '5 · Irrecuperable', 6: '6 · Irrec. técnica' };
+
+/** El resumen de la Central de Deudores: con qué entidades opera, su situación y la deuda informada (último período). */
+function resumenBCRA(B) {
+  const bancos = Array.isArray(B.bancos) ? B.bancos : null;
+  if (!bancos) return ''; // respuesta de una versión anterior de la función
+  const per = /^\d{6}$/.test(B.periodo || '') ? `${B.periodo.slice(4, 6)}/${B.periodo.slice(0, 4)}` : '';
+  if (!bancos.length) {
+    return `<aside class="bcra-res"><h3>Situación en el BCRA</h3><p class="hint m0">No tiene deudas informadas en el sistema financiero${per ? ` (${esc(per)})` : ''}.</p></aside>`;
+  }
+  const filas = bancos.map((b) => `<tr><td>${esc(b.entidad)}</td><td><span class="sit sit-${Math.min(Number(b.situacion) || 0, 3)}">${esc(SITUACION[b.situacion] || b.situacion)}</span></td><td class="num">${esc(plata(b.monto))}</td></tr>`).join('');
+  return `<aside class="bcra-res">
+    <h3>Situación en el BCRA</h3>
+    <div class="bcra-tabla"><table>
+      <thead><tr><th>Entidad</th><th>Situación</th><th class="num">Deuda</th></tr></thead>
+      <tbody>${filas}</tbody>
+      <tfoot><tr><td colspan="2">Total · ${bancos.length === 1 ? '1 entidad' : `${bancos.length} entidades`}</td><td class="num">${esc(plata(B.deuda_total))}</td></tr></tfoot>
+    </table></div>
+    <p class="hint m0">Central de Deudores${per ? `, período ${esc(per)}` : ''}.</p>
+  </aside>`;
 }
 
 function vistaCotizar() {
