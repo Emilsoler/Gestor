@@ -35,6 +35,9 @@ const PRECIOS = {
   500009: [{ year: 2001, price: 3000 }],
 };
 const LISTA = { 500001: { list_price: 35000 } };
+// Fotos: solo la 500001 tiene (una JPG mínima, servida por este mismo doble).
+const JPG = Buffer.from('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AVN//2Q==', 'base64');
+const FOTOS = { 500001: () => [{ id: 1, url: `http://127.0.0.1:${PORT}/fotos/500001.jpg` }] };
 
 const json = (res, status, cuerpo, extra = {}) => res.writeHead(status, { 'content-type': 'application/json', ...extra }).end(JSON.stringify(cuerpo));
 
@@ -51,6 +54,7 @@ http.createServer((req, res) => {
     return json(res, 200, pedidos);
   }
   pedidos.push(u.pathname + u.search);
+  if (u.pathname === '/fotos/500001.jpg') return res.writeHead(200, { 'content-type': 'image/jpeg' }).end(JPG);
   if (u.pathname === '/cars/auth/login') {
     const ok = req.headers.authorization === `Basic ${Buffer.from(`${USUARIO}:${CLAVE}`).toString('base64')}`;
     return ok ? json(res, 200, { access_token: 'acceso-falso', refresh_token: 'refresco-falso' }) : json(res, 401, { message: 'credenciales' });
@@ -64,6 +68,7 @@ http.createServer((req, res) => {
   if ((m = p.match(/^\/brands\/(\d+)\/groups\/$/))) return paginar(res, GRUPOS[m[1]] || [], u);
   if ((m = p.match(/^\/brands\/(\d+)\/groups\/(\d+)\/models\/$/))) return paginar(res, MODELOS[`${m[1]}/${m[2]}`] || [], u);
   if ((m = p.match(/^\/models\/(\d+)\/prices\/$/))) return PRECIOS[m[1]] ? json(res, 200, PRECIOS[m[1]]) : json(res, 404, {});
+  if ((m = p.match(/^\/models\/(\d+)\/photos\/$/))) return FOTOS[m[1]] ? json(res, 200, FOTOS[m[1]]()) : json(res, 404, {});
   if ((m = p.match(/^\/models\/(\d+)\/list_price$/))) return LISTA[m[1]] ? json(res, 200, LISTA[m[1]]) : json(res, 404, {});
   json(res, 404, { message: 'no existe' });
 }).listen(PORT, '127.0.0.1');

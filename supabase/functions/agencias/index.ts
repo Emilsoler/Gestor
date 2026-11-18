@@ -30,6 +30,7 @@ import { simularCredito, montoMaximo, tasasDelCredito, anioMinimo, tasaPara } fr
 // Copia exacta de ../bcra/bcra.ts (las pruebas lo controlan): el mismo semáforo que Cobranzas.
 import { ErrorBCRA, consultar, cuitValido, resumir, sinCuit, soloDigitos, ultimoPeriodo } from './bcra.ts';
 // Copia exacta de docs/agencias/solicitud.js (las pruebas lo controlan): documentos y controles de la solicitud.
+import { MAX_FOTO, base64, tipoImagen, urlDeFoto } from './foto.js';
 import { CATEGORIAS, DOCS, MAX_BYTES, docsRequeridos, relacionCuota, revisarDatos, tipoArchivo } from './solicitud.js';
 
 const URL_BASE = Deno.env.get('SUPABASE_URL') || '';
@@ -310,6 +311,30 @@ async function calcular(pedido: any, a: any) {
   return { financiable: true as const, anio, maximo, monto, cuotas, tasa, sim, opciones, pct };
 }
 
+// ───────────────────────── Foto del vehículo (ver foto.js) ─────────────────────────
+const FOTOS = (Deno.env.get('AGENCIAS_FOTOS') || 'si').toLowerCase() !== 'no';
+
+/** La foto del modelo como data:image/…;base64, o null. Nunca corta la cotización: cualquier falla es «sin foto». */
+async function fotoDe(codia: number): Promise<string | null> {
+  if (!FOTOS) return null;
+  try {
+    const { cuerpo } = await infoauto(`/models/${codia}/photos/`);
+    const url = urlDeFoto(cuerpo, `${API}/`);
+    if (!url) return null;
+    // Si la foto está en la misma API, va con el token; si es de otro servidor (un CDN), sin nada.
+    const mismaApi = new URL(url).host === new URL(API).host;
+    const r = await fetch(url, { headers: mismaApi ? { authorization: `Bearer ${await accessToken()}` } : {}, signal: AbortSignal.timeout(15_000) });
+    if (!r.ok) return null;
+    if (Number(r.headers.get('content-length') || 0) > MAX_FOTO) return null;
+    const bytes = new Uint8Array(await r.arrayBuffer());
+    const tipo = bytes.length <= MAX_FOTO ? tipoImagen(bytes) : null;
+    return tipo ? `data:${tipo};base64,${base64(bytes)}` : null;
+  } catch (e) {
+    console.error(JSON.stringify({ agencias: 'foto', error: String((e as Error)?.message || e).slice(0, 200) }));
+    return null;
+  }
+}
+
 // ───────────────────────── Pedido ─────────────────────────
 export async function manejar(req: Request): Promise<Response> {
   const cors = cabeceras(req);
@@ -384,6 +409,10 @@ export async function manejar(req: Request): Promise<Response> {
       const codia = await descifrar(pedido.ref);
       const { anios } = await aniosDe(codia, a);
       return responder({ anios }, 200, cors);
+    }
+    if (accion === 'foto') {
+      const codia = await descifrar(pedido.ref);
+      return responder({ foto: await fotoDe(codia) }, 200, cors);
     }
     if (accion === 'cotizar') {
       const c = await calcular(pedido, a);

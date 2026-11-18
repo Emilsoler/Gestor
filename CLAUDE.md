@@ -733,6 +733,14 @@ Mutual y no nombra a InfoAuto.
   (la licencia dice "sin exposición de descripciones"): quedó **a confirmar con InfoAuto**; si dicen que no,
   hay que cambiar la elección del auto por una lista propia. Una **web para el público final no está
   contratada**: no abrir el cotizador sin usuario. No sumar nada que muestre valores o CODIA a una agencia.
+- **Foto del vehículo** (`foto.js` en la función; nov 2026, la persona pidió la foto de «Ver ficha» de InfoAuto y descartó
+  dibujos propios): después de cotizar, la app pide `accion: 'foto'` con la misma `ref` cifrada; la función busca
+  `/models/{codia}/photos/` en el momento, baja la primera imagen y la devuelve como `data:image/…;base64` (así la
+  agencia no ve la dirección ni el CODIA, y la CSP de la app no cambia: `img-src 'self' data:`). No se guarda nada. Sin
+  foto o con cualquier error: `foto: null` y el resultado se ve como antes. El formato de la respuesta de fotos no está
+  documentado: `urlDeFoto` acepta lista u objeto con `url`/`image`/`photo`/… (si no encuentra nada, revisar los logs
+  `agencias: 'foto'` y una respuesta real). **Licencia**: usar las fotos quedó a confirmar con InfoAuto; si dicen que no,
+  poner el secreto `AGENCIAS_FOTOS=no` en Supabase (corta las fotos sin tocar el código).
 - **Las agencias no son miembros del gestor**: `gestor_puerta` les cierra toda la API de la base. Solo hablan con
   la función `agencias`, que las reconoce con `public.agencia_sesion` (clave de servicio). Un miembro que entra
   a `/agencias/` ve solo una «vista previa» (sus cotizaciones no se registran, puede probar con el cotizador

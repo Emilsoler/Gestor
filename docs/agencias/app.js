@@ -35,6 +35,7 @@ const S = {
   vista: 'cotizar', // cotizar | solicitudes (agencia) | admin (Mutual)
   marcas: null, marca: '', modelos: null, modelo: '', versiones: null, version: '', anios: null, anio: '',
   plazo: 0, monto: '', cargando: '', res: null,
+  foto: null, // { ref, src }: la foto de la versión elegida (src null si no hay); la pide `cargarFoto`
   cuit: '', bcra: null, bcraError: '', continuo: false, confirmarOtro: false, sols: null,
   sol: null, // la solicitud que se está armando (nuevaSol)
 };
@@ -331,6 +332,19 @@ async function cotizar() {
   } catch (e) { S.cargando = ''; S.res = null; falla(e); return; }
   S.cargando = ''; render();
   $('#resultado')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (S.res?.financiable) cargarFoto(S.version);
+}
+
+/** La foto de la versión, una vez por versión. Si no hay o falla, el resultado queda sin foto. */
+async function cargarFoto(ref) {
+  if (S.foto?.ref === ref) return;
+  S.foto = { ref, src: null };
+  let src = null;
+  try { src = (await fn({ accion: 'foto', ref })).foto || null; } catch { src = null; }
+  if (S.foto?.ref !== ref || !/^data:image\/(jpeg|png|webp);base64,/.test(String(src || ''))) return;
+  S.foto.src = src;
+  const f = $('#fotoVehiculo');
+  if (f) f.innerHTML = `<img src="${src}" alt="Foto del vehículo">`; else render();
 }
 
 function textoParaComprador(r) {
@@ -565,7 +579,10 @@ function vistaResultado(r) {
   if (!r.financiable) return `<section class="card resultado" id="resultado"><h2>No se puede financiar</h2><p class="m0">${esc(r.mensaje || 'Este vehículo no alcanza las condiciones del crédito.')}</p></section>`;
   const opciones = opcionesVisibles(r).map((o) => `<tr class="${o.cuotas === r.cuotas ? 'elegido' : ''}"><td>${o.cuotas} ${o.cuotas === 1 ? 'cuota' : 'cuotas'}</td><td class="num">${plata(o.cuota)}</td></tr>`).join('');
   return `<section class="card resultado" id="resultado">
-    <div class="card-cab"><h2>${esc(r.vehiculo)}</h2><span class="etq">${esc(etiquetaAnio(r.anio))}</span></div>
+    <div class="vehiculo-cab">
+      <figure class="figura" id="fotoVehiculo">${S.foto?.ref === S.version && S.foto.src ? `<img src="${S.foto.src}" alt="Foto del vehículo">` : ''}</figure>
+      <div class="card-cab"><h2>${esc(r.vehiculo)}</h2><span class="etq">${esc(etiquetaAnio(r.anio))}</span></div>
+    </div>
     <div class="destacado"><span class="titulo">Monto máximo que financia la Mutual</span><span class="cifra">${plata(r.maximo)}</span></div>
     <div class="cuota-grande">Crédito de <b>${plata(r.monto)}</b> en ${r.cuotas} ${r.cuotas === 1 ? 'cuota' : 'cuotas'} de <b>${plata(r.cuota)}</b></div>
     <table><tbody>

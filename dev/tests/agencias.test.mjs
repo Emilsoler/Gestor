@@ -187,6 +187,20 @@ test('cotizar: solo las condiciones del préstamo, y queda registrado sin el val
   assert.equal(sql('select count(*) from public.cotizaciones_agencia'), '3');
 });
 
+test('foto del vehículo: llega como imagen, sin la dirección de InfoAuto ni el CODIA', async () => {
+  const vs = (await pedir(agencia, { accion: 'versiones', marca: 1, grupo: 10 })).datos.versiones;
+  let r = await pedir(agencia, { accion: 'foto', ref: vs[0].ref });
+  assert.equal(r.status, 200, r.texto);
+  assert.match(r.datos.foto, /^data:image\/jpeg;base64,\/9j\//);
+  for (const p of ['500001', '127.0.0.1', 'fotos/']) assert.ok(!r.texto.includes(p), p);
+  // Sin foto en la guía: null, sin error.
+  r = await pedir(agencia, { accion: 'foto', ref: vs[1].ref });
+  assert.equal(r.status, 200, r.texto);
+  assert.equal(r.datos.foto, null);
+  // Un CODIA suelto no sirve.
+  assert.equal((await pedir(agencia, { accion: 'foto', ref: '500001' })).status, 400);
+});
+
 test('el token de InfoAuto se reutiliza: un solo login para muchas consultas', async () => {
   sql('delete from public.infoauto_token');
   await olvidar();
