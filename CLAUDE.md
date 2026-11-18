@@ -430,6 +430,10 @@ una está adentro de la otra), `config.js`, `vendor/`, las tipografías, `liquid
   "está para caer" (la persona lo da por caído). Si cae, vuelve la deuda original con sus
   intereses, descontados los pagos (por eso cada pago también se imputa a los rubros originales).
   Cumplido: el deudor queda Cancelado.
+  **Importes editables** (pedido de la persona, nov 2026): al armar el plan, «Importe de cada cuota» fija todas y cada cuota de la
+  tabla es un campo (`f.plan.cuota` y `f.plan.imp`, aplicados en `borradorPlan`; lo escrito manda sobre la cuenta y la suma puede
+  diferir de lo financiado, la app lo avisa). En un plan vigente, «Editar importes de las cuotas» (`guardarImportesPlan`) cambia solo
+  los importes y anota una gestión. Desde el listado, «Eliminar» en cada fila borra al deudor (con confirmación en la fila).
 - **WhatsApp**: la app arma el mensaje y abre `wa.me` con el número y el texto; **lo envía la
   persona**. No hay envío automático: la política de WhatsApp Business (app y API) prohíbe la
   cobranza de deudas, y las APIs no oficiales arriesgan el número. Nunca mandar mensajes masivos.

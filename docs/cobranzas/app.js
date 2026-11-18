@@ -1444,7 +1444,7 @@ function actualizarPie() {
 
 function planNuevo(d) {
   const aj = ajustes();
-  return { fecha: hoy(), monto: '', quitaPct: '', quitaMonto: '', anticipo: '', anticipoVto: hoy(), n: '6', cada: 'mes', primerVto: sumarMeses(hoy(), 1), tasa: '0', caducidad: String(aj.caducidad), nota: '' };
+  return { fecha: hoy(), monto: '', quitaPct: '', quitaMonto: '', anticipo: '', anticipoVto: hoy(), n: '6', cada: 'mes', primerVto: sumarMeses(hoy(), 1), tasa: '0', caducidad: String(aj.caducidad), nota: '', cuota: '', imp: {} };
 }
 /** Lo que se está armando en el simulador: la deuda base, la quita y el plan resultante. */
 function borradorPlan(d) {
@@ -1454,8 +1454,19 @@ function borradorPlan(d) {
   const quita = importe(P.quitaMonto) > 0 ? importe(P.quitaMonto) : (porc(P.quitaPct) > 0 ? r2(base * porc(P.quitaPct) / 100) : 0);
   const anticipo = importe(P.anticipo), n = Math.max(1, Math.min(120, parseInt(P.n, 10) || 1)), tasa = porc(P.tasa) > 0 ? porc(P.tasa) : 0;
   const armado = armarPlan({ deuda: base, quita, anticipo, n, tasa, primerVto: P.primerVto, cada: P.cada });
+  // El importe de las cuotas se puede escribir (pedido de la persona, nov 2026): uno para todas o cuota por cuota.
+  // Lo escrito manda sobre la cuenta; lo que no se escribió sale de armarPlan.
+  const fija = importe(P.cuota), imp = P.imp || {};
+  let tocadas = false;
+  armado.cuotas = armado.cuotas.map((q) => {
+    const propio = String(imp[q.n] ?? '').trim() ? importe(imp[q.n]) : NaN;
+    const monto = propio >= 0 ? propio : fija > 0 ? fija : NaN;
+    if (!(monto >= 0)) return q;
+    tocadas = true; return { ...q, importe: monto };
+  });
+  if (tocadas) { armado.total = r2(suma(armado.cuotas, (q) => q.importe)); armado.intereses = r2(armado.total - armado.financiado); }
   const plan = { anticipo, cada: P.cada, cuotas: armado.cuotas };
-  return { fecha, liq, deudaLiq, base, quita, anticipo, n, tasa, armado, plan };
+  return { fecha, liq, deudaLiq, base, quita, anticipo, n, tasa, armado, plan, tocadas };
 }
 
 function tabPlan(d, r) {
@@ -1480,6 +1491,7 @@ function tabPlan(d, r) {
       <label class="f">Frecuencia<select data-k="f.plan.cada">${opciones(Object.entries(CADAS), P.cada)}</select></label>
       <label class="f">Vence la 1ª cuota<input type="date" ${atar('f.plan.primerVto')}></label>
       <label class="f">Interés de financiación (% mensual)<input ${atar('f.plan.tasa')} inputmode="decimal" autocomplete="off"></label>
+      <label class="f">Importe de cada cuota ($)<input ${atar('f.plan.cuota')} inputmode="decimal" data-importe placeholder="Lo calcula la app" autocomplete="off"></label>
       <label class="f">Cae con … cuotas impagas<input type="number" min="1" max="24" ${atar('f.plan.caducidad')}></label>
       <label class="f ancho">Nota<input ${atar('f.plan.nota')} placeholder="Ej.: paga por transferencia"></label>
     </div>
@@ -1487,13 +1499,19 @@ function tabPlan(d, r) {
     <div class="actions"><button class="btn primary" data-a="plan-guardar">Guardar plan</button><button class="btn" data-a="plan-whatsapp">Mandar la propuesta por WhatsApp</button><span class="sep"></span><button class="btn" data-a="plan-cancelar">Cancelar</button></div>
   </div>${historial}`;
 }
-function actualizarVistaPlan() {
+function actualizarVistaPlan(soloCifras = false) {
   const d = deudor(S.abierto), caja = $('#planVista'); if (!d || !caja || !S.f.plan) return;
-  const b = borradorPlan(d), a = b.armado;
+  const b = borradorPlan(d), a = b.armado, P = S.f.plan;
   const iguales = a.cuotas.every((q) => q.importe === a.cuotas[0].importe);
-  caja.innerHTML = `<dl class="cifras"><div><dt>Deuda a refinanciar</dt><dd>${esc(plata(b.base))}</dd></div>${b.quita ? `<div><dt>Quita</dt><dd>${esc(plata(b.quita))}</dd></div>` : ''}${b.anticipo ? `<div><dt>Anticipo</dt><dd>${esc(plata(b.anticipo))}</dd></div>` : ''}<div><dt>Se financia</dt><dd>${esc(plata(a.financiado))}</dd></div>${a.intereses > 0 ? `<div><dt>Interés de financiación</dt><dd>${esc(plata(a.intereses))}</dd></div>` : ''}<div><dt>Total a pagar</dt><dd>${esc(plata(r2(b.anticipo + a.total)))}</dd></div></dl>
-    <p class="m0"><b>${esc(planDetalle(b.plan) || 'Completá la cantidad de cuotas y el primer vencimiento')}</b>${!iguales ? ' <span class="hint">(la última cuota ajusta el redondeo)</span>' : ''}</p>
-    <div class="scrollx"><table class="tabla"><thead><tr><th>Cuota</th><th>Vence</th><th class="num">Importe</th></tr></thead><tbody>${b.anticipo ? `<tr><td>Anticipo</td><td class="mono">${fmt(S.f.plan.anticipoVto)}</td><td class="num mono">${esc(plata(b.anticipo))}</td></tr>` : ''}${a.cuotas.map((q) => `<tr><td>${q.n}</td><td class="mono">${fmt(q.vto)}</td><td class="num mono">${esc(plata(q.importe))}</td></tr>`).join('')}</tbody></table></div>`;
+  const dif = r2(a.total - a.financiado);
+  const cifras = `<dl class="cifras"><div><dt>Deuda a refinanciar</dt><dd>${esc(plata(b.base))}</dd></div>${b.quita ? `<div><dt>Quita</dt><dd>${esc(plata(b.quita))}</dd></div>` : ''}${b.anticipo ? `<div><dt>Anticipo</dt><dd>${esc(plata(b.anticipo))}</dd></div>` : ''}<div><dt>Se financia</dt><dd>${esc(plata(a.financiado))}</dd></div>${!b.tocadas && a.intereses > 0 ? `<div><dt>Interés de financiación</dt><dd>${esc(plata(a.intereses))}</dd></div>` : ''}<div><dt>Total a pagar</dt><dd>${esc(plata(r2(b.anticipo + a.total)))}</dd></div></dl>
+    <p class="m0"><b>${esc(planDetalle(b.plan) || 'Completá la cantidad de cuotas y el primer vencimiento')}</b>${!iguales && !b.tocadas ? ' <span class="hint">(la última cuota ajusta el redondeo)</span>' : ''}</p>
+    ${b.tocadas && Math.abs(dif) >= 1 ? `<p class="hint m0">Con los importes escritos, las cuotas suman ${esc(plata(a.total))}: ${esc(plata(Math.abs(dif)))} ${dif > 0 ? 'más' : 'menos'} que lo que se financia.</p>` : ''}`;
+  if (soloCifras && $('#planCifras')) { $('#planCifras').innerHTML = cifras; return; }
+  // Cada importe es un campo: al escribir en uno solo se rehacen las cifras, así no se pierde el foco.
+  caja.innerHTML = `<div id="planCifras">${cifras}</div>
+    <div class="scrollx"><table class="tabla"><thead><tr><th>Cuota</th><th>Vence</th><th class="num">Importe</th></tr></thead><tbody>${b.anticipo ? `<tr><td>Anticipo</td><td class="mono">${fmt(P.anticipoVto)}</td><td class="num mono">${esc(plata(b.anticipo))}</td></tr>` : ''}${a.cuotas.map((q) => `<tr><td>${q.n}</td><td class="mono">${fmt(q.vto)}</td><td class="num"><input class="imp-cuota mono" data-k="f.plan.imp.${q.n}" data-cuota="1" value="${esc(String(P.imp?.[q.n] ?? '').trim() ? P.imp[q.n] : enCelda(q.importe))}" inputmode="decimal" data-importe autocomplete="off" aria-label="Importe de la cuota ${q.n}"></td></tr>`).join('')}</tbody></table></div>
+    ${b.tocadas ? '<div class="actions"><button class="btn small" type="button" data-a="plan-recalcular">Volver a los importes calculados</button></div>' : ''}`;
 }
 
 function planResumenHtml(d, r) {
@@ -1515,8 +1533,9 @@ function planVigenteHtml(d, r) {
     <div class="progreso"><span class="barra"><i data-ancho="${pct.toFixed(1)}"></i></span><span class="mono">${esc(plata(ep.pagado))} de ${esc(plata(ep.total))}</span></div>
     <dl class="cifras"><div><dt>Deuda al armarlo</dt><dd>${esc(plata(+plan.deuda || 0))}</dd></div>${+plan.quita ? `<div><dt>Quita</dt><dd>${esc(plata(+plan.quita))}</dd></div>` : ''}${+plan.tasa ? `<div><dt>Interés de financiación</dt><dd>${porciento(plan.tasa)} mensual</dd></div>` : ''}<div><dt>Saldo del plan</dt><dd>${esc(plata(ep.saldo))}</dd></div></dl>
     <div class="scrollx"><table class="tabla"><thead><tr><th>Cuota</th><th>Vence</th><th class="num">Importe</th><th class="num">Pagado</th><th>Estado</th></tr></thead><tbody>
-      ${ep.items.map((x) => `<tr><td>${x.n === 0 ? 'Anticipo' : x.n}</td><td class="mono">${fmt(x.vto)}</td><td class="num mono">${esc(plata(x.importe))}</td><td class="num mono">${x.cubierto ? esc(plata(x.cubierto)) : '—'}</td><td>${estadoCuota(x)}</td></tr>`).join('')}
+      ${ep.items.map((x) => `<tr><td>${x.n === 0 ? 'Anticipo' : x.n}</td><td class="mono">${fmt(x.vto)}</td><td class="num mono">${S.f.planImp && x.n > 0 ? `<input class="imp-cuota mono" data-k="f.planImp.${x.n}" value="${esc(S.f.planImp[x.n] ?? '')}" inputmode="decimal" data-importe autocomplete="off" aria-label="Importe de la cuota ${x.n}">` : esc(plata(x.importe))}</td><td class="num mono">${x.cubierto ? esc(plata(x.cubierto)) : '—'}</td><td>${estadoCuota(x)}</td></tr>`).join('')}
     </tbody></table></div>
+    <div class="actions">${S.f.planImp ? '<button class="btn small primary" data-a="plan-guardar-imp">Guardar importes</button><button class="btn small" data-a="plan-editar-imp-no">Cancelar</button>' : '<button class="btn small" data-a="plan-editar-imp">Editar importes de las cuotas</button>'}</div>
     <p class="hint m0">Cae con ${cuantos(ep.caducidad, 'cuota impaga', 'cuotas impagas')} (una cuota cuenta como impaga a los ${cuantos(aj.gracia, 'día', 'días')} de su vencimiento). Los pagos marcados “del plan” se aplican a sus cuotas en orden.${plan.nota ? ' ' + esc(plan.nota) : ''}</p>
     ${ep.situacion === 'para-caer' ? `<div class="nota choque" role="alert"><p><b>El plan está en condiciones de caer:</b> ${esc(cuantos(ep.impagas, 'cuota impaga', 'cuotas impagas'))}.</p></div>` : ''}
     ${ep.situacion === 'cumplido' ? '<div class="nota" role="status"><p><b>El plan está pagado.</b> Cerralo como cumplido: la deuda queda cancelada.</p></div>' : ''}
@@ -1798,6 +1817,10 @@ async function accionFicha(a, b) {
     case 'plan-cancelar': F.plan = null; if (F.msg?.propuesta) F.msg = null; renderFicha(); return;
     case 'plan-whatsapp': F.msg = msgNuevo(d, 'plan'); F.msg.propuesta = true; F.msg.texto = F.msg.base = generar(d, F.msg); irATab('mensaje'); return;
     case 'plan-guardar': await guardarPlan(d, b); return;
+    case 'plan-recalcular': F.plan.cuota = ''; F.plan.imp = {}; renderFicha(); return;
+    case 'plan-editar-imp': F.planImp = Object.fromEntries(planVigente(d).cuotas.map((q) => [q.n, enCelda(+q.importe || 0)])); renderFicha(); return;
+    case 'plan-editar-imp-no': F.planImp = null; renderFicha(); return;
+    case 'plan-guardar-imp': await guardarImportesPlan(d, b); return;
     case 'plan-caer': case 'plan-anular': case 'plan-cumplido': {
       const r = res(d), plan = r.plan; if (!plan) return;
       const estado = { 'plan-caer': 'caido', 'plan-anular': 'anulado', 'plan-cumplido': 'cumplido' }[a];
@@ -1920,6 +1943,27 @@ async function guardarPlan(d, b) {
       });
       S.f.plan = null; if (S.f.msg?.propuesta) S.f.msg = null;
       toast(r.sinCambios ? 'Ya tenía un plan vigente: no se guardó otro' : 'Plan guardado'); renderFicha(false, true);
+    } catch (e) { toast(mensaje(e)); }
+  });
+}
+
+async function guardarImportesPlan(d, b) {
+  const E = S.f.planImp, pv = planVigente(d); if (!E || !pv) return;
+  const nuevos = {};
+  for (const q of pv.cuotas) {
+    const v = importe(E[q.n]);
+    if (!(v > 0)) { toast(`Escribí el importe de la cuota ${q.n}`); return; }
+    nuevos[q.n] = v;
+  }
+  if (pv.cuotas.every((q) => nuevos[q.n] === +q.importe)) { S.f.planImp = null; renderFicha(); return; }
+  await conBoton(b, 'Guardando…', async () => {
+    try {
+      await cambiarDeudor(d.id, (x) => {
+        const p = x.planes.find((y) => y.id === pv.id && y.estado === 'vigente'); if (!p) return false;
+        p.cuotas = p.cuotas.map((q) => ({ ...q, importe: nuevos[q.n] ?? q.importe }));
+        x.gestiones.push({ id: idNuevo(), creado: ahora(), fecha: hoy(), tipo: 'Nota', texto: `Se cambiaron los importes de las cuotas del plan: ${planDetalle(p)}.` });
+      });
+      S.f.planImp = null; toast('Importes guardados'); renderFicha(false, true);
     } catch (e) { toast(mensaje(e)); }
   });
 }
@@ -2435,6 +2479,9 @@ document.addEventListener('input', (e) => {
     // Quita en % o en pesos: al escribir una, la otra se borra (vale la última que se escribió).
     if (k === 'f.plan.quitaPct') { S.f.plan.quitaMonto = ''; const o = $('#pl_qm'); if (o) o.value = ''; }
     if (k === 'f.plan.quitaMonto') { S.f.plan.quitaPct = ''; const o = $('#pl_qp'); if (o) o.value = ''; }
+    if (el.dataset.cuota) { actualizarVistaPlan(true); return; }
+    // Si cambia algo que rehace las cuotas, lo escrito cuota por cuota ya no corresponde.
+    if (['f.plan.monto', 'f.plan.quitaPct', 'f.plan.quitaMonto', 'f.plan.anticipo', 'f.plan.n', 'f.plan.tasa', 'f.plan.cuota'].includes(k)) S.f.plan.imp = {};
     actualizarVistaPlan();
   } else if (k === 'f.msg.texto') actualizarEnlace();
   else if (k.startsWith('nuevo.') && el.dataset.vista) { const N = S.nuevo, qs = cuotasDelNuevo(N), venc = qs.filter((q) => q.vto <= hoy()).length, p = $('#nuevoVista'); if (p) p.textContent = qs.length ? `Se cargan ${cuantos(qs.length, 'cuota', 'cuotas')} (${qs[0].n}${qs.length > 1 ? ' a ' + qs[qs.length - 1].n : ''}${qs[0].de ? ' de ' + qs[0].de : ''}): ${cuantos(venc, 'vencida', 'vencidas')} y ${qs.length - venc} a vencer.` : 'Con el vencimiento y el importe se arman las cuotas mensuales; después se pueden corregir en “Datos”.'; }

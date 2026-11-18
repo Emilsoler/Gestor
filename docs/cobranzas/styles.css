@@ -750,3 +750,6 @@ body:has(#drawer:not([hidden])) #btnClaudeWeb,body:has(#menu:not([hidden])) #btn
 .lista td.acc .confirma-fila{cursor:default}
 .fila-acc{display:flex;justify-content:flex-end;margin-top:8px}
 .fila-acc .confirma-fila{justify-content:flex-end}
+
+/* Importe de cada cuota del plan, editable en la tabla. */
+.tabla input.imp-cuota{width:130px;max-width:100%;text-align:right;padding:6px 8px;font-size:13px}
