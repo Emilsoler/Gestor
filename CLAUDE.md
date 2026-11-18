@@ -744,7 +744,7 @@ Mutual y no nombra a InfoAuto.
   del gestor no puede ser agencia, lo controla `gestor.tg_agencias_reglas`), `public.ajustes_agencias` (una fila:
   `habilitado` —arranca en false—, `pct_financiable`, `tasa_mensual`, `plazos`, `antiguedad_max`, montos mínimo y
   máximo, `redondeo`, `gastos` con la forma de `GASTOS_DEFECTO`, `tope_diario` por agencia, `leyenda`, `contacto`) y
-  `public.cotizaciones_agencia` (cada simulación de una agencia, sin valor ni CODIA; solo lectura para miembros).
+  `public.cotizaciones_agencia` (cada simulación de una agencia, sin valor ni CODIA; los miembros las leen y las pueden eliminar).
 - **Cuentas**: `supabase/functions/agencias/credito.js` tiene una copia exacta de `simularCredito` de
   `docs/cobranzas/vehiculos.js` (las pruebas las comparan: si se cambia una, cambiar la otra), más `montoMaximo` y
   `tasasDelCredito` (TNA = tasa × 12; TEA = (1 + tasa)^12 − 1; CFT = TEA de la TIR entre lo que recibe el comprador y
@@ -839,6 +839,11 @@ Desde SQL no se abren los documentos: los enlaces los da la función (botón «V
   recién creada. La contraseña se muestra **una sola vez** en pantalla (`S.ag.nueva`, nunca en el chat ni en la base ni en los
   registros): la persona se la manda a la agencia ella misma («Copiar los datos para enviar» arma el mensaje con el enlace) y la
   agencia elige la suya al entrar (`clave_definida`). «Ya tiene cuenta: solo habilitar» sigue disponible. Prueba 18 de `agencias.test.mjs`.
+- **Eliminar cotizaciones** (migración 0033, pedido de la persona del 17/11/2026): en la pestaña Cotizaciones, «Eliminar» en cada
+  fila y «Eliminar todas», con confirmación. Se borra por la API con la sesión de la persona (política `miembros_eliminan`, con
+  `es_miembro()`; las agencias no tienen acceso). Es solo un registro de simulaciones: **no queda historial** (`cotizaciones_agencia` no
+  tiene el disparador `auditar`) y no se puede deshacer. Ojo: el tope diario de cada agencia cuenta estas filas, así que borrar las de
+  hoy le devuelve cotizaciones del día.
 - **Publicar la función**: `deploy_edge_function` con nombre `agencias`, `verify_jwt: true` y los cuatro archivos de
   `supabase/functions/agencias/` (`index.ts` de entrada, `credito.js`, `bcra.ts` y `solicitud.js`). Usa los secretos `INFOAUTO_USER` e `INFOAUTO_PASS`.
 - **Pruebas**: `npm run test:agencias` (función de punta a punta contra `dev/infoauto-falso.mjs`, con vehículos y

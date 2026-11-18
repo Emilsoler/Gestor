@@ -243,10 +243,16 @@ export function htmlAgencias(A, est) {
         <div class="actions"><button class="btn primary" data-a="ag-crear">Crear agencia</button><button class="btn" data-a="ag-alta">Ya tiene cuenta: solo habilitar</button></div>
       </section>`;
   } else if (est.tab === 'cotizaciones') {
+    const pide = (est.borrarCot || '') !== '';
     const filas = A.cotizaciones.map((x) => `<tr><td>${esc(fechaHora(x.momento))}</td><td>${esc(x.agencia)}</td><td>${esc(x.vehiculo)} <span class="hint">${esc(anioTxt(x.anio))}</span></td>
-      <td class="num">${plata(x.monto)}</td><td class="num">${x.cuotas} × ${plata(x.cuota)}</td></tr>`).join('');
+      <td class="num">${plata(x.monto)}</td><td class="num">${x.cuotas} × ${plata(x.cuota)}</td>
+      <td class="num"><button class="btn small" data-a="ag-cot-preguntar" data-id="${esc(x.id)}">Eliminar</button></td></tr>`).join('');
+    const aviso = !pide ? '' : `<div class="aviso-chico ag-borrar" role="alert"><span>${est.borrarCot === 'todas' ? '¿Eliminar todas las cotizaciones de la lista?' : '¿Eliminar esta cotización?'} Es solo un registro y no se puede deshacer. Si es de hoy, la agencia recupera ese lugar en su tope diario.</span>
+      <div class="actions"><button class="btn danger small" data-a="ag-cot-borrar" data-id="${esc(est.borrarCot)}">Sí, eliminar</button><button class="btn small" data-a="ag-cot-no">No</button></div></div>`;
     cuerpo = `<section class="card"><div class="card-cab"><h3>Cotizaciones de las agencias</h3><span class="hint">Las últimas 200</span></div>
-      ${A.cotizaciones.length ? `<div class="ag-tabla"><table class="tabla"><thead><tr><th>Fecha</th><th>Agencia</th><th>Vehículo</th><th class="num">Monto</th><th class="num">Cuotas</th></tr></thead><tbody>${filas}</tbody></table></div>`
+      ${aviso}
+      ${A.cotizaciones.length ? `<div class="ag-tabla"><table class="tabla"><thead><tr><th>Fecha</th><th>Agencia</th><th>Vehículo</th><th class="num">Monto</th><th class="num">Cuotas</th><th></th></tr></thead><tbody>${filas}</tbody></table></div>
+        <div class="actions"><button class="btn small" data-a="ag-cot-preguntar" data-id="todas">Eliminar todas</button></div>`
         : '<p class="hint m0">Todavía no hay cotizaciones.</p>'}
       <p class="hint m0">No se guarda el valor del vehículo.</p></section>`;
   } else {

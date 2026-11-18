@@ -154,6 +154,45 @@ test('Créditos y Cobros: parámetros del cotizador y agencias, desde la solapa'
   await p.context().close();
 });
 
+test('Créditos y Cobros: la Mutual elimina cotizaciones, una por una o todas', async () => {
+  sql(`delete from public.cotizaciones_agencia;
+       insert into public.cotizaciones_agencia (agencia_id, agencia, vehiculo, anio, monto, cuotas, cuota)
+       select id, nombre, 'AUTO ' || g, '2022', 1000000, 12, 100000 from public.agencias, generate_series(1, 3) g where email = '${AG}'`);
+  const p = await pagina('pc');
+  await ingresarCobranzas(p);
+  await p.click('#v_agencias');
+  await p.click('[data-a="ag-tab"][data-tab="cotizaciones"]');
+  await p.waitForSelector('tbody tr [data-a="ag-cot-preguntar"]');
+  assert.equal(await p.locator('tbody tr').count(), 3);
+  // Una: pregunta antes; «No» la deja.
+  await p.locator('tbody tr [data-a="ag-cot-preguntar"]').first().click();
+  await p.waitForSelector('[data-a="ag-cot-borrar"]');
+  await p.click('[data-a="ag-cot-no"]');
+  assert.equal(sql('select count(*) from public.cotizaciones_agencia'), '3');
+  await p.locator('tbody tr [data-a="ag-cot-preguntar"]').first().click();
+  await p.click('[data-a="ag-cot-borrar"]');
+  await toast(p, 'Cotización eliminada');
+  assert.equal(sql('select count(*) from public.cotizaciones_agencia'), '2');
+  assert.equal(await p.locator('tbody tr').count(), 2);
+  // Todas.
+  await p.click('[data-a="ag-cot-preguntar"][data-id="todas"]');
+  await p.click('[data-a="ag-cot-borrar"]');
+  await toast(p, 'Cotizaciones eliminadas');
+  assert.equal(sql('select count(*) from public.cotizaciones_agencia'), '0');
+  await p.waitForSelector('text=Todavía no hay cotizaciones');
+  await p.context().close();
+});
+
+// Una agencia no puede borrar el registro de cotizaciones por la API (ni verlo): la puerta es solo de la Mutual.
+test('una agencia no puede eliminar cotizaciones', async () => {
+  sql(`insert into public.cotizaciones_agencia (agencia_id, agencia, vehiculo, anio, monto, cuotas, cuota) select id, nombre, 'X', '2022', 1, 1, 1 from public.agencias limit 1`);
+  const ses = (await entrar(AG, AG_CLAVE)).sesion.access_token;
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/cotizaciones_agencia?id=gte.0`, { method: 'DELETE', headers: { authorization: `Bearer ${ses}`, apikey: env.ANON_KEY } });
+  assert.ok(r.status >= 400, `status ${r.status}`);
+  assert.equal(sql('select count(*) from public.cotizaciones_agencia'), '1');
+  sql('delete from public.cotizaciones_agencia');
+});
+
 test('en el mismo navegador conviven la sesión de la agencia (cotizador) y la de la Mutual (sus apps)', async () => {
   const c = await browser.newContext({ locale: 'es-AR', viewport: { width: 390, height: 844 } });
   const p = await pagina('celular', null, c);

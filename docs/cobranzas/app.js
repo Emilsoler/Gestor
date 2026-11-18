@@ -4,7 +4,7 @@ import {
   D, iniciar, reconectar, entrar, salir, cambiarClave, alCambiar, mensaje, ajustes, ESTADOS,
   crearDeudor, cambiarDeudor, borrarDeudor, crearModelo, guardarModelo, borrarModelo, guardarAjustes,
   consultarInfoAuto, consultarInfoAutoTodo, consultarBCRA, detalleConsulta, detalleGuardado, borrarConsulta, consultarCheque, entidadesCheques, borrarConsultaCheque, crearCasoRefi, actualizarCasoRefi, borrarCasoRefi, archivarCasoRefi,
-  leerAgencias, contarSolicitudes, guardarAjustesAgencias, altaAgencia, crearAgencia, activarAgencia, resolverSolicitud, documentosSolicitud, eliminarSolicitud,
+  leerAgencias, contarSolicitudes, guardarAjustesAgencias, altaAgencia, crearAgencia, activarAgencia, resolverSolicitud, documentosSolicitud, eliminarSolicitud, eliminarCotizaciones,
 } from './datos.js';
 import { htmlAgencias, avisoInicio, parametrosEnTexto, leerParametros, TABS_AGENCIAS } from './agencias.js';
 import {
@@ -67,7 +67,7 @@ const S = {
   },
   // Agencias (el cotizador para agencias): lo leído, la pestaña, los enlaces a documentos ya pedidos, lo que se escribe
   // (notas para la agencia, parámetros y alta, atados con data-k) y cuántas solicitudes esperan respuesta.
-  ag: { datos: null, cargando: false, error: '', tab: 'solicitudes', msg: '', docs: new Map(), notas: {}, p: {}, alta: {}, pend: 0, borrar: '' },
+  ag: { datos: null, cargando: false, error: '', tab: 'solicitudes', msg: '', docs: new Map(), notas: {}, p: {}, alta: {}, pend: 0, borrar: '', borrarCot: '' },
 };
 try { S.vista = VISTAS[localStorage.getItem('cb.vista')] ? localStorage.getItem('cb.vista') : 'inicio'; } catch { /* sin almacenamiento */ }
 try { if (localStorage.getItem('cb.simOrigen') === 'mano') S.cred.simOrigen = 'mano'; } catch { /* sin almacenamiento */ }
@@ -525,7 +525,7 @@ async function accionAgencias(act, b) {
   const G = S.ag, id = b.dataset.id;
   if (act === 'ag-recargar') { G.error = ''; await cargarAgencias(); return; }
   if (act === 'ag-tab') {
-    G.tab = b.dataset.tab; G.msg = ''; G.nueva = null;
+    G.tab = b.dataset.tab; G.msg = ''; G.nueva = null; G.borrarCot = '';
     try { localStorage.setItem('cb.agTab', G.tab); } catch { /* sin almacenamiento */ }
     render(); return;
   }
@@ -540,6 +540,13 @@ async function accionAgencias(act, b) {
     try { await eliminarSolicitud(id); } catch (e) { toast(mensaje(e, 'no se pudo eliminar la solicitud')); return; }
     G.borrar = ''; G.docs.delete(id); delete G.notas[id];
     toast('Solicitud eliminada');
+    await cargarAgencias(); return;
+  }
+  if (act === 'ag-cot-preguntar' || act === 'ag-cot-no') { G.borrarCot = act === 'ag-cot-preguntar' ? id : ''; render(); return; }
+  if (act === 'ag-cot-borrar') {
+    try { await eliminarCotizaciones(id === 'todas' ? null : id); } catch (e) { toast(mensaje(e, 'no se pudieron eliminar las cotizaciones')); return; }
+    G.borrarCot = '';
+    toast(id === 'todas' ? 'Cotizaciones eliminadas' : 'Cotización eliminada');
     await cargarAgencias(); return;
   }
   if (act === 'ag-resolver') {
