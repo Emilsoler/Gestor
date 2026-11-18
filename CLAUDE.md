@@ -733,6 +733,11 @@ Mutual y no nombra a InfoAuto.
   (la licencia dice "sin exposición de descripciones"): quedó **a confirmar con InfoAuto**; si dicen que no,
   hay que cambiar la elección del auto por una lista propia. Una **web para el público final no está
   contratada**: no abrir el cotizador sin usuario. No sumar nada que muestre valores o CODIA a una agencia.
+- **Elegir el auto** (pedido de la persona del 18/11/2026): marca → modelo → **año** → **versión**. `versiones` devuelve, por
+  versión, `anios` (el rango `prices_from`–`prices_to` del listado desde el año mínimo, y '0km' si tiene precio de lista; años,
+  nunca precios: `aniosDeVersion`). El año se elige de la unión de esos años y filtra las versiones. La versión es un campo
+  donde se escribe para buscar (palabras en cualquier orden, sin acentos; Enter elige la primera). Al elegirla, `anios` confirma
+  con InfoAuto que ese año tenga valor (el rango puede tener huecos); si no, avisa y la borra.
 - **Foto del vehículo** (`foto.js` en la función; nov 2026, la persona pidió la foto de «Ver ficha» de InfoAuto y descartó
   dibujos propios): después de cotizar, la app pide `accion: 'foto'` con la misma `ref` cifrada; la función busca
   `/models/{codia}/photos/` en el momento, baja la primera imagen y la devuelve como `data:image/…;base64` (así la

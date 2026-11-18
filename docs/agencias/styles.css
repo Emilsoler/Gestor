@@ -154,3 +154,12 @@ tr.elegido td{background:#e9e9e9;color:#000;font-weight:600}
 .figura:empty{display:none}
 .figura img{display:block;width:100%;height:auto}
 @media (max-width:520px){.vehiculo-cab{grid-template-columns:1fr}}
+
+/* Versión con búsqueda: el campo y, debajo, la lista que se achica mientras se escribe. */
+.combo{position:relative}
+.combo-lista{position:absolute;left:0;right:0;top:100%;z-index:4;margin-top:4px;max-height:280px;overflow-y:auto;background:#fff;border:1px solid #000;border-radius:10px;box-shadow:0 8px 20px rgba(0,0,0,.18);padding:4px}
+.combo-lista[hidden]{display:none}
+.combo-lista button{display:block;width:100%;text-align:left;font:inherit;font-size:15px;color:var(--fg);background:none;border:0;border-radius:8px;padding:10px 10px;min-height:42px;cursor:pointer}
+.combo-lista button:hover,.combo-lista button:focus{background:#e9e9e9;outline:none}
+.combo-lista button[aria-selected="true"]{background:#000;color:#fff}
+.combo-vacio{margin:0;padding:10px;color:var(--muted);font-size:14px}

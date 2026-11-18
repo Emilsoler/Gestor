@@ -33,7 +33,7 @@ const S = {
   error: '', ocupado: false,
   yo: null, // { agencia, miembro, clave_temporal, habilitado, plazos, leyenda, contacto }
   vista: 'cotizar', // cotizar | solicitudes (agencia) | admin (Mutual)
-  marcas: null, marca: '', modelos: null, modelo: '', versiones: null, version: '', anios: null, anio: '',
+  marcas: null, marca: '', modelos: null, modelo: '', versiones: null, version: '', anios: null, anio: '', buscaVer: '',
   plazo: 0, monto: '', cargando: '', res: null,
   foto: null, // { ref, src }: la foto de la versión elegida (src null si no hay); la pide `cargarFoto`
   cuit: '', bcra: null, bcraError: '', continuo: false, confirmarOtro: false, sols: null,
@@ -123,7 +123,7 @@ async function cambiarClave(a, b) {
 
 async function salir() {
   try { await sb?.auth.signOut(); } catch { /* igual se limpia */ }
-  Object.assign(S, { fase: 'ingreso', yo: null, error: '', marcas: null, marca: '', modelos: null, modelo: '', versiones: null, version: '', anios: null, anio: '', res: null, vista: 'cotizar', cuit: '', bcra: null, bcraError: '', continuo: false, confirmarOtro: false, sols: null, sol: nuevaSol() });
+  Object.assign(S, { fase: 'ingreso', yo: null, error: '', marcas: null, marca: '', modelos: null, modelo: '', versiones: null, version: '', anios: null, anio: '', buscaVer: '', res: null, vista: 'cotizar', cuit: '', bcra: null, bcraError: '', continuo: false, confirmarOtro: false, sols: null, sol: nuevaSol() });
   render();
 }
 
@@ -295,7 +295,7 @@ async function cargarMarcas() {
 }
 
 async function elegirMarca(id) {
-  Object.assign(S, { marca: id, modelos: null, modelo: '', versiones: null, version: '', anios: null, anio: '', res: null, error: '' });
+  Object.assign(S, { marca: id, modelos: null, modelo: '', versiones: null, version: '', anios: null, anio: '', buscaVer: '', res: null, error: '' });
   if (!id) { render(); return; }
   S.cargando = 'modelos'; render();
   try { S.modelos = (await fn({ accion: 'modelos', marca: Number(id) })).modelos || []; } catch (e) { S.cargando = ''; falla(e); return; }
@@ -303,20 +303,70 @@ async function elegirMarca(id) {
 }
 
 async function elegirModelo(id) {
-  Object.assign(S, { modelo: id, versiones: null, version: '', anios: null, anio: '', res: null, error: '' });
+  Object.assign(S, { modelo: id, versiones: null, version: '', anios: null, anio: '', buscaVer: '', res: null, error: '' });
   if (!id) { render(); return; }
   S.cargando = 'versiones'; render();
   try { S.versiones = (await fn({ accion: 'versiones', marca: Number(S.marca), grupo: Number(id) })).versiones || []; } catch (e) { S.cargando = ''; falla(e); return; }
   S.cargando = ''; render();
 }
 
+/** Primero el año: el que se elige filtra las versiones. Si la versión ya elegida no anda para ese año, se borra. */
+function elegirAnio(anio) {
+  S.anio = anio; S.res = null; S.error = '';
+  const v = (S.versiones || []).find((x) => x.ref === S.version);
+  if (v && !(v.anios || []).includes(anio)) Object.assign(S, { version: '', anios: null, buscaVer: '' });
+  render();
+}
+
+/** Los años que ofrece el modelo: los de todas sus versiones (0 km primero, después del más nuevo al más viejo). */
+function aniosDelModelo() {
+  if (!S.versiones) return null;
+  const set = new Set(S.versiones.flatMap((v) => v.anios || []));
+  return [...set].sort((x, y) => (x === '0km' ? -1 : y === '0km' ? 1 : Number(y) - Number(x)));
+}
+
+/** Las versiones que hay para el año elegido. */
+const versionesDelAnio = () => (S.versiones || []).filter((v) => !S.anio || (v.anios || []).includes(S.anio));
+
+/** Al elegir la versión se confirma con InfoAuto que tenga valor para ese año (el listado da solo el rango). */
 async function elegirVersion(ref) {
-  Object.assign(S, { version: ref, anios: null, anio: '', res: null, error: '' });
+  Object.assign(S, { version: ref, anios: null, res: null, error: '', buscaVer: '' });
   if (!ref) { render(); return; }
   S.cargando = 'anios'; render();
   try { S.anios = (await fn({ accion: 'anios', ref })).anios || []; } catch (e) { S.cargando = ''; falla(e); return; }
-  S.anio = S.anios[0] || '';
-  S.cargando = ''; render();
+  S.cargando = '';
+  if (!S.anios.includes(S.anio)) {
+    S.error = `Esa versión no se puede financiar para ${etiquetaAnio(S.anio)}. Elegí otra versión u otro año.`;
+    S.version = '';
+  }
+  render();
+}
+
+/** Para buscar sin importar mayúsculas ni acentos, y con las palabras en cualquier orden. */
+const normal = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+function filtrarVersiones(q) {
+  const palabras = normal(q).split(/\s+/).filter(Boolean);
+  return versionesDelAnio().filter((v) => { const n = normal(v.nombre); return palabras.every((p) => n.includes(p)); });
+}
+function htmlListaVersiones(q) {
+  const xs = filtrarVersiones(q);
+  if (!xs.length) return '<p class="combo-vacio">No hay versiones con ese texto.</p>';
+  return xs.map((v) => `<button type="button" role="option" data-ver="${esc(v.ref)}" aria-selected="${v.ref === S.version}">${esc(v.nombre)}</button>`).join('');
+}
+/** Saca de la pantalla lo que venía después del formulario (el crédito anterior), sin redibujar. */
+function quitarDespues(el) {
+  for (let n = el?.nextElementSibling; n;) { const x = n.nextElementSibling; n.remove(); n = x; }
+}
+function abrirLista(q) {
+  const l = $('#listaVersiones');
+  if (!l) return;
+  l.innerHTML = htmlListaVersiones(q); l.hidden = false;
+  $('#inVersion')?.setAttribute('aria-expanded', 'true');
+}
+function cerrarLista() {
+  const l = $('#listaVersiones');
+  if (l) l.hidden = true;
+  $('#inVersion')?.setAttribute('aria-expanded', 'false');
 }
 
 const nombreDe = (xs, id, k = 'id') => (xs || []).find((x) => String(x[k]) === String(id))?.nombre || '';
@@ -389,6 +439,18 @@ function selector(id, etiqueta, xs, valor, clave, cargando, deshabilitado) {
     <option value="">${esc(vacio)}</option>${(xs || []).map((x) => `<option value="${esc(x[clave])}"${String(x[clave]) === String(valor) ? ' selected' : ''}>${esc(x.nombre)}</option>`).join('')}</select></label>`;
 }
 
+/** La versión: un campo donde se escribe para buscar y, debajo, la lista que se va achicando. */
+function buscadorVersion() {
+  const c = S.cargando, sinAnio = !S.anio, cargando = c === 'versiones' || c === 'anios';
+  const valor = S.version ? nombreDe(S.versiones, S.version, 'ref') : S.buscaVer;
+  const ph = c === 'versiones' ? 'Cargando…' : c === 'anios' ? 'Confirmando…' : !S.modelo ? '—' : sinAnio ? 'Primero elegí el año' : 'Escribí para buscar (ej.: SRX 4x4)';
+  return `<div class="f combo">Versión
+    <input id="inVersion" type="search" role="combobox" aria-expanded="false" aria-controls="listaVersiones" autocomplete="off" autocorrect="off" spellcheck="false"
+      placeholder="${esc(ph)}" value="${esc(valor)}" ${!S.versiones || sinAnio || cargando ? 'disabled' : ''}>
+    <div id="listaVersiones" class="combo-lista" role="listbox" hidden></div>
+  </div>`;
+}
+
 function vistaCliente() {
   const B = S.bcra, c = S.cargando;
   if (!B) {
@@ -450,8 +512,9 @@ function vistaCotizar() {
       Las solicitudes, los parámetros y las agencias se manejan en <a href="../cobranzas/#agencias">Créditos y Cobros → Agencias</a>.</p>` : '';
   if (!S.bcra || !S.continuo) return aviso + vistaCliente();
   const c = S.cargando;
-  const anios = S.anios ? S.anios.map((a) => ({ id: a, nombre: etiquetaAnio(a) })) : null;
-  const sinAnios = S.anios && !S.anios.length;
+  const delModelo = aniosDelModelo();
+  const anios = delModelo ? delModelo.map((a) => ({ id: a, nombre: etiquetaAnio(a) })) : null;
+  const sinAnios = delModelo && S.versiones.length && !delModelo.length;
   const plazos = Y.plazos || [];
   const plazo = plazos.length > 6
     ? `<label class="f">Cuotas<select id="selPlazo">${plazos.map((n) => `<option value="${n}"${n === S.plazo ? ' selected' : ''}>${n} ${n === 1 ? 'cuota' : 'cuotas'}</option>`).join('')}</select></label>`
@@ -461,9 +524,10 @@ function vistaCotizar() {
     <div class="grilla">
       ${selector('selMarca', 'Marca', S.marcas, S.marca, 'id', c === 'marcas', false)}
       ${selector('selModelo', 'Modelo', S.modelos, S.modelo, 'id', c === 'modelos', !S.marca)}
-      ${selector('selVersion', 'Versión', S.versiones, S.version, 'ref', c === 'versiones', !S.modelo)}
-      ${selector('selAnio', 'Año', anios, S.anio, 'id', c === 'anios', !S.version)}
-      ${sinAnios ? '<p class="aviso suave ancho m0">Esta versión no se puede financiar. Probá con otra.</p>' : ''}
+      ${selector('selAnio', 'Año', anios, S.anio, 'id', c === 'versiones', !S.modelo)}
+      ${buscadorVersion()}
+      ${sinAnios ? '<p class="aviso suave ancho m0">Este modelo no tiene años para financiar. Probá con otro.</p>' : ''}
+      ${S.anio && S.versiones && !versionesDelAnio().length ? '<p class="aviso suave ancho m0">No hay versiones para ese año.</p>' : ''}
       ${S.modelos && !S.modelos.length ? '<p class="aviso suave ancho m0">Esta marca no tiene modelos para financiar.</p>' : ''}
       ${plazo}
       <label class="f">Monto a pedir (opcional)<input id="inMonto" inputmode="numeric" autocomplete="off" placeholder="Vacío = el máximo" value="${esc(S.monto)}"></label>
@@ -646,8 +710,7 @@ document.addEventListener('change', (e) => {
   const t = e.target;
   if (t.id === 'selMarca') elegirMarca(t.value);
   else if (t.id === 'selModelo') elegirModelo(t.value);
-  else if (t.id === 'selVersion') elegirVersion(t.value);
-  else if (t.id === 'selAnio') { S.anio = t.value; S.res = null; render(); }
+  else if (t.id === 'selAnio') elegirAnio(t.value);
   else if (t.id === 'selPlazo') { S.plazo = Number(t.value); if (S.res) cotizar(); }
   else if (t.dataset.slot && t.files?.length) { const xs = [...t.files]; t.value = ''; agregarArchivos(t.dataset.slot, xs); }
   else if (t.id === 'chkConformidad') S.sol.conformidad = t.checked;
@@ -659,6 +722,11 @@ document.addEventListener('input', (e) => {
     const n = soloNumero(t.value);
     S.monto = n ? n.toLocaleString('es-AR') : '';
     if (t.value !== S.monto) { t.value = S.monto; }
+  } else if (t.id === 'inVersion') {
+    // Se escribe para buscar: si había una versión elegida, deja de estarlo. Solo se redibuja la lista (no se pierde el teclado).
+    S.buscaVer = t.value;
+    if (S.version) { S.version = ''; S.anios = null; S.res = null; const b = $('#btnCotizar'); if (b) b.disabled = true; quitarDespues(t.closest('section')); }
+    abrirLista(t.value);
   } else if (t.id === 'inCuit') S.cuit = t.value;
   else if (t.id === 'inIngreso') {
     const antes = relacionOk(), n = soloNumero(t.value);
@@ -677,9 +745,35 @@ document.addEventListener('input', (e) => {
   } else if (t.dataset.campo) S.sol[t.dataset.campo] = t.value;
 });
 
+// La lista de versiones: se abre al entrar al campo (completa, para mirar) y se cierra al tocar afuera.
+document.addEventListener('focusin', (e) => {
+  if (e.target.id === 'inVersion') { e.target.select(); abrirLista(S.version ? '' : e.target.value); }
+});
+document.addEventListener('pointerdown', (e) => {
+  if (!e.target.closest('.combo')) cerrarLista();
+  else if (e.target.closest('#listaVersiones')) e.preventDefault(); // que el campo no pierda el foco antes del toque
+});
+document.addEventListener('keydown', (e) => {
+  if (e.target.id !== 'inVersion') return;
+  if (e.key === 'Escape') cerrarLista();
+  else if (e.key === 'Enter') { // Enter elige la primera de la lista
+    e.preventDefault();
+    const b = $('#listaVersiones [data-ver]');
+    if (b) elegirVersion(b.dataset.ver);
+  } else if (e.key === 'ArrowDown') { e.preventDefault(); abrirLista(e.target.value); $('#listaVersiones [data-ver]')?.focus(); }
+});
+document.addEventListener('keydown', (e) => {
+  const t = e.target;
+  if (!t.dataset?.ver) return;
+  if (e.key === 'ArrowDown') { e.preventDefault(); t.nextElementSibling?.focus(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); (t.previousElementSibling || $('#inVersion'))?.focus(); }
+  else if (e.key === 'Escape') { cerrarLista(); $('#inVersion')?.focus(); }
+});
+
 document.addEventListener('click', (e) => {
   const t = e.target.closest('button');
   if (!t) return;
+  if (t.dataset.ver) { elegirVersion(t.dataset.ver); return; }
   if (t.id === 'btnSalir') salir();
   else if (t.id === 'btnCotizar') cotizar();
   else if (t.dataset.plazo) { S.plazo = Number(t.dataset.plazo); if (S.res) cotizar(); else render(); }

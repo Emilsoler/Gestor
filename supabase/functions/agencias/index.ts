@@ -278,6 +278,20 @@ async function aniosDe(codia: number, a: any): Promise<{ anios: string[]; precio
   return { anios, precios };
 }
 
+/** Los años que abarca una versión según el listado (`prices_from`–`prices_to` y '0km' si tiene precio de lista), sin
+ *  precios: sirven para elegir primero el año y después la versión. Es el rango del listado; el año exacto lo confirma
+ *  `aniosDe` al elegir la versión (puede haber años sueltos sin precio). */
+function aniosDeVersion(m: any, minimo: number, actual: number): string[] {
+  const xs: string[] = [];
+  if (m?.list_price) xs.push('0km');
+  if (m?.prices) {
+    const hasta = Math.min(Math.trunc(Number(m.prices_to)) || 0, actual + 1);
+    const desde = Math.max(Math.trunc(Number(m.prices_from)) || hasta, minimo || 0, 1990);
+    for (let y = hasta; y >= desde; y--) xs.push(String(y));
+  }
+  return xs;
+}
+
 function plazosValidos(a: any): number[] {
   return (Array.isArray(a.plazos) ? a.plazos : []).map(Number).filter((n: number) => Number.isInteger(n) && n >= 1 && n <= 120).sort((x: number, y: number) => x - y);
 }
@@ -393,14 +407,14 @@ export async function manejar(req: Request): Promise<Response> {
     if (accion === 'versiones') {
       const marca = Math.trunc(Number(pedido.marca)), grupo = Math.trunc(Number(pedido.grupo));
       if (!(marca > 0) || !(grupo > 0)) throw new Falla('Elegí la marca y el modelo.', 400, 'pedido');
-      const minimo = anioMinimo(a, await anioActual());
+      const actual = await anioActual(), minimo = anioMinimo(a, actual);
       const xs = await todas(`/brands/${marca}/groups/${grupo}/models/`);
       const versiones = [];
       for (const m of xs) {
         const codia = Math.trunc(Number(m?.codia));
         if (!(codia > 0) || !texto(m.description)) continue;
         if (!m.list_price && !(m.prices && (!minimo || Number(m.prices_to) >= minimo))) continue;
-        versiones.push({ ref: await cifrar(codia), nombre: texto(m.description) });
+        versiones.push({ ref: await cifrar(codia), nombre: texto(m.description), anios: aniosDeVersion(m, minimo, actual) });
       }
       versiones.sort((x, y) => x.nombre.localeCompare(y.nombre, 'es'));
       return responder({ versiones }, 200, cors);
