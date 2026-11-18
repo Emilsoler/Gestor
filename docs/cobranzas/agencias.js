@@ -8,13 +8,15 @@ import { CATEGORIAS, DOCS, docsRequeridos, dniDelCuit } from '../agencias/solici
 
 export const TABS_AGENCIAS = [['solicitudes', 'Solicitudes'], ['parametros', 'Parámetros'], ['agencias', 'Agencias'], ['cotizaciones', 'Cotizaciones']];
 
-/** Lo que vio la agencia según el color del BCRA, y la marca para la Mutual. */
+/** El color del BCRA como un círculo (pedido de la persona, nov 2026: sin el texto de lo que vio la agencia).
+ *  Sin antecedentes va en amarillo, como la agencia lo ve («Sujeto a revisión»); el nombre queda para lectores de pantalla. */
 const SEM = {
-  verde: ['Verde · Continuar', 't-plan'],
-  amarillo: ['Amarillo · Sujeto a revisión', 't-prom'],
-  sin_datos: ['Sin antecedentes · Sujeto a revisión', 't-prom'],
-  rojo: ['Rojo · No apto', 't-mal'],
+  verde: ['verde', 'Verde'],
+  amarillo: ['amarillo', 'Amarillo'],
+  sin_datos: ['amarillo', 'Sin antecedentes'],
+  rojo: ['rojo', 'Rojo'],
 };
+const circulo = (s) => { const [c, nombre] = SEM[s] || ['', String(s ?? '')]; return `<span class="sem-punto ${c}" role="img" aria-label="BCRA: ${esc(nombre)}" title="${esc(nombre)}"></span>`; };
 const ESTADO = { pendiente: ['Pendiente', 't-prom'], aprobada: ['Aprobada', 't-plan'], rechazada: ['Rechazada', 't-mal'] };
 
 const etiqueta = ([texto, clase]) => `<span class="tag ${clase}">${esc(texto)}</span>`;
@@ -140,7 +142,7 @@ function solicitud(x, A, est, notas) {
       ${etiqueta(ESTADO[x.estado] || [x.estado, ''])}</div>
     <div class="ag-bloque"><span class="ag-rotulo">Cliente</span>
       <b class="ag-nombre">${esc(x.denominacion || cuitLindo(x.cuit))}</b>
-      <div>CUIT ${esc(cuitLindo(x.cuit))} · ${etiqueta(SEM[x.semaforo] || [x.semaforo, ''])}</div>
+      <div>CUIT ${esc(cuitLindo(x.cuit))} · ${circulo(x.semaforo)}</div>
       ${motivos.length ? `<div class="hint">${esc(motivos.join(' · '))}</div>` : ''}</div>
     <div class="ag-bloque"><span class="ag-rotulo">Crédito</span>
       <div><b>${plata(x.monto)}</b>${pctValor}</div>

@@ -86,10 +86,13 @@ test('Créditos y Cobros: la solapa Agencias avisa, muestra la solicitud con sus
   await p.waitForSelector(`#sol-${idSolicitud}`);
   assert.equal(await p.textContent('#tVista'), 'Agencias');
   const texto = norm(await p.textContent(`#sol-${idSolicitud}`));
-  for (const t of ['Salón Prueba', '27-22222222-8', 'Amarillo · Sujeto a revisión', 'MARCA UNO SEDAN 1.6 (2024)', '$ 4.000.000', 'Empleado en relación de dependencia',
+  for (const t of ['Salón Prueba', '27-22222222-8', 'MARCA UNO SEDAN 1.6 (2024)', '$ 4.000.000', 'Empleado en relación de dependencia',
     '22.222.222', 'Bv. Colón 135', 'Soltero/a', '3534123456', '2850590940090418135201', 'De un tercero', 'Autos del Sur SA', '30-44444444-0', 'Ver documentos (5)']) {
     assert.ok(texto.includes(t), `falta «${t}» en: ${texto}`);
   }
+  // El BCRA se ve solo como un círculo de color, sin «Continuar» ni «Sujeto a revisión».
+  assert.ok(await p.$(`#sol-${idSolicitud} .sem-punto.amarillo`), 'falta el círculo amarillo del BCRA');
+  assert.ok(!/Sujeto a revisión|Continuar/.test(texto), 'quedó el texto del semáforo');
   // Documentos: enlaces que abren el archivo.
   await p.click(`#sol-${idSolicitud} [data-a="ag-docs"]`);
   await p.waitForSelector(`#sol-${idSolicitud} .ag-docs a`);

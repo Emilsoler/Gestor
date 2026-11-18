@@ -737,3 +737,7 @@ body:has(#drawer:not([hidden])) #btnClaudeWeb,body:has(#menu:not([hidden])) #btn
 .ag-acceso{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;margin:0;padding:12px;border-radius:10px;background:var(--surface-2,rgba(255,255,255,.06))}
 .ag-acceso dt{color:var(--muted);font-size:13px}
 .ag-acceso dd{margin:0;font-size:17px;overflow-wrap:anywhere;user-select:all}
+
+/* Semáforo del BCRA en las solicitudes de agencias: solo un círculo de color */
+.sem-punto{display:inline-block;width:14px;height:14px;border-radius:50%;vertical-align:-2px;background:var(--soft)}
+.sem-punto.verde{background:var(--ok)} .sem-punto.amarillo{background:var(--warn)} .sem-punto.rojo{background:var(--bad)}
