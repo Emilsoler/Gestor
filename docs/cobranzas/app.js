@@ -577,9 +577,9 @@ async function accionAgencias(act, b) {
   }
   if (act === 'ag-crear') {
     const al = G.alta, email = String(al.email || '').trim(), nombre = String(al.nombre || '').trim();
-    if (!email || !nombre || !al.informada) { G.msg = 'Completá nombre, email y la fecha en que se informó a la guía de precios.'; render(); return; }
+    if (!email || !nombre) { G.msg = 'Completá el nombre y el email.'; render(); return; }
     let r;
-    try { r = await crearAgencia(nombre, email, al.informada, String(al.notas || '').trim()); } catch (e) { G.msg = mensaje(e); render(); return; }
+    try { r = await crearAgencia(nombre, email, String(al.notas || '').trim()); } catch (e) { G.msg = mensaje(e); render(); return; }
     // La clave solo vive en esta pantalla: no se guarda en el dispositivo y desaparece al cambiar de solapa.
     G.alta = {}; G.msg = ''; G.nueva = { nombre, email: r.email || email, clave: r.clave };
     toast('Agencia creada');
@@ -593,8 +593,8 @@ async function accionAgencias(act, b) {
   if (act === 'ag-listo') { G.nueva = null; render(); return; }
   if (act === 'ag-alta') {
     const al = G.alta, email = String(al.email || '').trim(), nombre = String(al.nombre || '').trim();
-    if (!email || !nombre || !al.informada) { G.msg = 'Completá nombre, email y la fecha en que se informó a la guía de precios.'; render(); return; }
-    try { await altaAgencia(email, nombre, al.informada, String(al.notas || '').trim()); } catch (e) { G.msg = mensaje(e); render(); return; }
+    if (!email || !nombre) { G.msg = 'Completá el nombre y el email.'; render(); return; }
+    try { await altaAgencia(email, nombre, String(al.notas || '').trim()); } catch (e) { G.msg = mensaje(e); render(); return; }
     G.alta = {}; G.msg = ''; toast('Agencia habilitada');
     await cargarAgencias();
   }

@@ -222,7 +222,10 @@ test('reglas de la licencia en la base: aviso a InfoAuto, tope de 20 y cuentas s
   // Sin la fecha del aviso a InfoAuto no se activa.
   const { error } = await servicio().auth.admin.createUser({ email: 'sinaviso@test.local', password: 'Agencia-123456', email_confirm: true });
   assert.ifError(error);
-  assert.match(sqlFalla(`select gestor.autorizar_agencia('sinaviso@test.local', 'Sin aviso', null)`), /informó por escrito a InfoAuto/);
+  // Sin fecha de aviso a InfoAuto se puede activar (migración 0034: InfoAuto dijo que no hace falta avisarles).
+  sql(`insert into public.agencias (nombre, email) values ('Sin aviso', 'sinaviso@x.local')`);
+  assert.equal(sql(`select activa from public.agencias where email = 'sinaviso@x.local'`), 't');
+  sql(`delete from public.agencias where email = 'sinaviso@x.local'`);
   assert.match(sqlFalla(`select gestor.autorizar_agencia('sinaviso@test.local', 'Sin aviso', gestor.hoy() + 3)`), /no puede ser futura/);
   // Una cuenta del gestor no puede ser agencia.
   assert.match(sqlFalla(`select gestor.autorizar_agencia('emi@test.local', 'Emi', gestor.hoy())`), /usuario del gestor/);
@@ -540,14 +543,13 @@ test('solicitud completa: ingresos, 45 %, datos, documentos a la carpeta privada
 });
 
 test('crear una agencia desde la app: cuenta con clave provisoria al azar, habilitada, y la agencia elige la suya', async () => {
-  const datos = { accion: 'crear_agencia', nombre: 'Salón Nuevo', email: 'Nuevo@Salon.Test', informada: sql('select gestor.hoy()'), notas: 'prueba' };
+  const datos = { accion: 'crear_agencia', nombre: 'Salón Nuevo', email: 'Nuevo@Salon.Test', notas: 'prueba' };
   // Una agencia no puede crear otras agencias.
   assert.equal((await pedir(agencia, datos)).status, 400);
   assert.equal(sql(`select count(*) from public.agencias where email = 'nuevo@salon.test'`), '0');
   // Datos que faltan o están mal.
   assert.equal((await pedir(emi, { ...datos, email: 'sin-arroba' })).status, 400);
   assert.equal((await pedir(emi, { ...datos, nombre: '' })).status, 400);
-  assert.equal((await pedir(emi, { ...datos, informada: '' })).status, 400);
   // El alta: devuelve la clave una sola vez y la agencia queda habilitada, con clave temporal.
   const r = await pedir(emi, datos);
   assert.equal(r.status, 200, r.texto);
@@ -572,12 +574,14 @@ test('crear una agencia desde la app: cuenta con clave provisoria al azar, habil
   const dup = await pedir(emi, datos);
   assert.equal(dup.status, 409);
   assert.match(dup.texto, /Ya existe una cuenta/);
-  // Si no se puede habilitar (fecha futura), la cuenta recién creada no queda suelta.
-  const futura = await pedir(emi, { ...datos, email: 'futura@salon.test', informada: '2099-01-01' });
-  assert.equal(futura.status, 400);
-  assert.match(futura.texto, /futura/);
+  // Si no se puede habilitar (ya hay 20 activas), la cuenta recién creada no queda suelta.
+  sql(`insert into public.agencias (nombre, email) select 'L' || g, 'l' || g || '@x.local' from generate_series(1, 20 - (select count(*)::int from public.agencias where activa)) g`);
+  const llena = await pedir(emi, { ...datos, email: 'llena@salon.test' });
+  assert.equal(llena.status, 400);
+  assert.match(llena.texto, /20 agencias activas/);
+  sql(`delete from public.agencias where email like '%@x.local'`);
   const { data } = await servicio().auth.admin.listUsers({ perPage: 200 });
-  assert.ok(!data.users.some((u) => u.email === 'futura@salon.test'), 'la cuenta de un alta fallida se borra');
+  assert.ok(!data.users.some((u) => u.email === 'llena@salon.test'), 'la cuenta de un alta fallida se borra');
   // La clave no queda en los registros de la función.
   const logs = (await import('node:fs')).existsSync(`${process.env.STACK || ''}/logs/agencias.log`) ? (await import('node:fs')).readFileSync(`${process.env.STACK}/logs/agencias.log`, 'utf8') : '';
   assert.ok(!logs.includes(r.datos.clave), 'la clave provisoria no se registra');

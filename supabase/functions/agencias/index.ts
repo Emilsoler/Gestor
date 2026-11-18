@@ -16,7 +16,7 @@
 // Pedido: { accion, ... }. Acciones: yo, clave_definida, marcas, modelos {marca}, versiones {marca, grupo},
 // anios {ref}, cotizar {ref, anio, cuotas, monto?, vehiculo?}, bcra {cuit}, solicitar {consulta, ref, anio,
 // cuotas, monto?, vehiculo?, ingresos, ingreso, categoria, datos, consentimiento}, archivo (multipart: id, slot,
-// archivo), enviar {id}, solicitudes; y para la Mutual, archivos {id}, eliminar {id} y crear_agencia {nombre, email, informada, notas}.
+// archivo), enviar {id}, solicitudes; y para la Mutual, archivos {id}, eliminar {id} y crear_agencia {nombre, email, notas}.
 //
 // BCRA: la agencia consulta el CUIT de su cliente en la Central de Deudores (API pública). La consulta queda
 // guardada entera en consultas_bcra para la Mutual; a la agencia se le devuelven el color, el nombre y, del último
@@ -572,16 +572,16 @@ export async function manejar(req: Request): Promise<Response> {
       // UNA vez (no se guarda ni se registra en ningún lado). La agencia tiene que elegir la suya al entrar.
       if (!ag.miembro) throw new Falla('Pedido desconocido.', 400, 'accion');
       const email = String(pedido.email || '').trim().toLowerCase(), nombre = String(pedido.nombre || '').trim();
-      const informada = String(pedido.informada || ''), notas = String(pedido.notas || '').trim().slice(0, 500);
+      // Sin fecha de aviso a InfoAuto: desde el 18/11/2026 no hace falta avisarles (migración 0034).
+      const notas = String(pedido.notas || '').trim().slice(0, 500);
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 200) throw new Falla('El email no es válido.', 400, 'pedido');
       if (!nombre || nombre.length > 120) throw new Falla('Falta el nombre de la agencia.', 400, 'pedido');
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(informada)) throw new Falla('Falta la fecha en que se informó a la guía de precios.', 400, 'pedido');
       const clave = claveProvisoria();
       const c = await fetch(`${URL_BASE}/auth/v1/admin/users`, { method: 'POST', headers: servicio, body: JSON.stringify({ email, password: clave, email_confirm: true }) });
       if (c.status === 409 || c.status === 422) throw new Falla('Ya existe una cuenta con ese email. Si es de una agencia, usá «Ya tiene cuenta: solo habilitar».', 409, 'existe');
       if (!c.ok) throw new Falla('No se pudo crear la cuenta. Probá de nuevo en un momento.', 502, 'cuenta');
       const creado = await c.json();
-      const alta = await fetch(`${URL_BASE}/rest/v1/rpc/agencia_alta`, { method: 'POST', headers: servicio, body: JSON.stringify({ p_user: uid, p_email: email, p_nombre: nombre, p_informada: informada, p_notas: notas }) });
+      const alta = await fetch(`${URL_BASE}/rest/v1/rpc/agencia_alta`, { method: 'POST', headers: servicio, body: JSON.stringify({ p_user: uid, p_email: email, p_nombre: nombre, p_informada: null, p_notas: notas }) });
       if (!alta.ok) {
         // Si no se pudo habilitar (por ejemplo, ya hay 20 activas), la cuenta recién creada no queda suelta.
         if (esUuid(creado?.id)) await fetch(`${URL_BASE}/auth/v1/admin/users/${creado.id}`, { method: 'DELETE', headers: servicio }).catch(() => {});

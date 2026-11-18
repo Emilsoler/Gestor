@@ -179,7 +179,7 @@ function solicitud(x, A, est, notas) {
 
 /**
  * Toda la vista. `est`: { tab, msg, docs: Map(id → {cargando}|{lista}|{error}), notas: {id: texto}, p: parámetros en texto,
- * alta: {email, nombre, informada, notas} }.
+ * alta: {email, nombre, notas} }.
  */
 export function htmlAgencias(A, est) {
   const tabs = `<nav class="tabs" role="tablist" aria-label="Agencias">${TABS_AGENCIAS.map(([k, l]) => {
@@ -217,7 +217,7 @@ export function htmlAgencias(A, est) {
   } else if (est.tab === 'agencias') {
     const al = est.alta;
     const filas = A.agencias.map((x) => `<tr><td><b>${esc(x.nombre)}</b><br><span class="hint">${esc(x.email)}</span>${x.notas ? `<br><span class="hint">${esc(x.notas)}</span>` : ''}</td>
-      <td>${x.activa ? '<span class="tag t-plan">Activa</span>' : '<span class="tag t-mal">Pausada</span>'}<br><span class="hint">Informada: ${esc(String(x.informada_infoauto || '—').split('-').reverse().join('/'))}</span></td>
+      <td>${x.activa ? '<span class="tag t-plan">Activa</span>' : '<span class="tag t-mal">Pausada</span>'}</td>
       <td class="num"><button class="btn small" data-a="ag-activa" data-id="${esc(x.id)}" data-valor="${x.activa ? '0' : '1'}">${x.activa ? 'Pausar' : 'Activar'}</button></td></tr>`).join('');
     const nueva = est.nueva ? `<section class="card ag-nueva"><div class="card-cab"><h3>Agencia creada: ${esc(est.nueva.nombre)}</h3></div>
         <p class="m0">Pasale estos datos a la agencia. <b>La contraseña se muestra una sola vez</b>: si cerrás esta pantalla, no se puede volver a ver.</p>
@@ -230,14 +230,12 @@ export function htmlAgencias(A, est) {
         ${msg}</section>
       <section class="card"><div class="card-cab"><h3>Agregar una agencia</h3></div>
         <ol class="campos">
-          <li>Avisale por escrito a la guía de precios que vas a sumar esta agencia (lo exige la licencia; tope: 20).</li>
-          <li>Completá esto y tocá «Crear agencia»: se crea su cuenta con una contraseña provisoria que vas a ver una sola vez.</li>
+          <li>Completá esto y tocá «Crear agencia» (hasta 20 activas): se crea su cuenta con una contraseña provisoria que vas a ver una sola vez.</li>
           <li>Pasásela a la agencia: al entrar, va a tener que elegir su propia contraseña.</li>
         </ol>
         <div class="grid2">
           <label class="f">Nombre de la agencia<input data-k="ag.alta.nombre" value="${esc(al.nombre || '')}" maxlength="120" autocomplete="off"></label>
           <label class="f">Email de la cuenta<input type="email" data-k="ag.alta.email" value="${esc(al.email || '')}" autocomplete="off"></label>
-          <label class="f">Fecha en que se informó a la guía de precios<input type="date" data-k="ag.alta.informada" value="${esc(al.informada || '')}"></label>
           <label class="f">Notas<input data-k="ag.alta.notas" value="${esc(al.notas || '')}" maxlength="500" autocomplete="off"></label>
         </div>
         <div class="actions"><button class="btn primary" data-a="ag-crear">Crear agencia</button><button class="btn" data-a="ag-alta">Ya tiene cuenta: solo habilitar</button></div>

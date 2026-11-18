@@ -761,8 +761,8 @@ Mutual y no nombra a InfoAuto.
   su `informada_infoauto` es la fecha del alta (17/11/2026), no un aviso real (lo dice su nota). Ocupa uno de los 20 lugares:
   pausarla (`gestor.pausar_agencia`) cuando no se use.
 - **Tablas** (migración 0025): `public.agencias` (nombre, email, cuenta, `activa`, `informada_infoauto` —fecha
-  del aviso por escrito a InfoAuto, obligatoria para activar; desde el 18/11/2026 InfoAuto dice que no hace falta avisarles, pero la
-  base todavía la pide—, `clave_temporal`; tope de 20 activas y una cuenta
+  del aviso por escrito a InfoAuto; **opcional desde la migración 0034** (18/11/2026: InfoAuto dijo que no hace falta avisarles) y la
+  app ya no la pide; queda la de las agencias viejas—, `clave_temporal`; tope de 20 activas y una cuenta
   del gestor no puede ser agencia, lo controla `gestor.tg_agencias_reglas`), `public.ajustes_agencias` (una fila:
   `habilitado` —arranca en false—, `pct_financiable`, `tasa_mensual`, `plazos`, `antiguedad_max`, montos mínimo y
   máximo, `redondeo`, `gastos` con la forma de `GASTOS_DEFECTO`, `tope_diario` por agencia, `leyenda`, `contacto`) y
@@ -833,7 +833,7 @@ Para Claude, por el conector:
 ```sql
 -- alta: lo normal es el botón «Crear agencia» de Créditos y Cobros → Agencias → Agencias (ver abajo). Si la cuenta ya existe
 -- (creada en el panel de Supabase: Add user, Auto Confirm), solo se habilita con esto:
-select gestor.autorizar_agencia('ventas@agencia.com', 'Agencia X', '2026-11-20');  -- fecha del aviso a InfoAuto
+select gestor.autorizar_agencia('ventas@agencia.com', 'Agencia X', null);  -- 3.º: fecha del aviso a InfoAuto, ya no hace falta
 select gestor.pausar_agencia('ventas@agencia.com');
 select nombre, email, activa, informada_infoauto from public.agencias order by nombre;
 select momento, agencia, vehiculo, anio, monto, cuotas, cuota from public.cotizaciones_agencia order by momento desc limit 50;
@@ -848,13 +848,13 @@ Desde SQL no se abren los documentos: los enlaces los da la función (botón «V
   de los parámetros en `docs/cobranzas/agencias.js`, que importa los casilleros de `../agencias/solicitud.js`; lo que habla con la
   base y con la función en `docs/cobranzas/datos.js`: `leerAgencias`, `contarSolicitudes`, `guardarAjustesAgencias`, `altaAgencia`,
   `activarAgencia`, `resolverSolicitud`, `documentosSolicitud`). Cuatro pestañas: Solicitudes (pendientes primero, con BCRA,
-  crédito, ingresos, datos, «Ver documentos», nota y Aprobar/Rechazar; abajo las resueltas), Parámetros, Agencias (alta con la
-  fecha del aviso a InfoAuto, pausar y activar) y Cotizaciones. Las solicitudes pendientes se cuentan al entrar, cada minuto y al
+  crédito, ingresos, datos, «Ver documentos», nota y Aprobar/Rechazar; abajo las resueltas), Parámetros, Agencias (alta, pausar y
+  activar) y Cotizaciones. Las solicitudes pendientes se cuentan al entrar, cada minuto y al
   volver a la app: insignia en la solapa y aviso arriba de Inicio. `cobranzas/#agencias` abre la solapa. Usa la sesión de la
   persona (las mismas barreras); los documentos los pide a la función `agencias`. Pruebas en el navegador:
   `dev/tests/agencias-admin.test.mjs` (dentro de `npm run test:agencias`).
 - **Crear agencia desde la app** (migración 0032, pedido de la persona del 17/11/2026): en la pestaña Agencias, «Crear agencia» pide
-  nombre, email, fecha del aviso a InfoAuto y notas; la función `agencias` (acción `crear_agencia`, solo miembros) crea la cuenta
+  nombre, email y notas (sin fecha de aviso a InfoAuto desde la migración 0034); la función `agencias` (acción `crear_agencia`, solo miembros) crea la cuenta
   con la API de administración del login (`/auth/v1/admin/users`, clave de servicio), con una **contraseña provisoria al azar de
   12 caracteres**, y la habilita con `public.agencia_alta` (solo `service_role`; firma con el nombre del miembro y llama a
   `gestor.autorizar_agencia`, que deja `clave_temporal`). Si la habilitación falla (por ejemplo, ya hay 20 activas), borra la cuenta

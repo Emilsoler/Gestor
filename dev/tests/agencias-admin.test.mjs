@@ -138,7 +138,6 @@ test('Créditos y Cobros: parámetros del cotizador y agencias, desde la solapa'
   // Crear una agencia desde la solapa: la clave provisoria se ve una sola vez.
   await p.fill('[data-k="ag.alta.nombre"]', 'Salón Botón');
   await p.fill('[data-k="ag.alta.email"]', 'boton@test.local');
-  await p.fill('[data-k="ag.alta.informada"]', sql('select gestor.hoy()'));
   await p.click('[data-a="ag-crear"]');
   await p.waitForSelector('.ag-nueva .ag-acceso');
   const clave = (await p.textContent('.ag-nueva .ag-acceso dd:last-of-type')).trim();

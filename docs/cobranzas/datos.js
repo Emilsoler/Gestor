@@ -517,11 +517,12 @@ export async function contarSolicitudes() {
 }
 
 export const guardarAjustesAgencias = (fila) => pedir(sb.from('ajustes_agencias').update(fila).eq('id', 1));
-export const altaAgencia = (email, nombre, informada, notas) =>
-  pedir(sb.rpc('alta_agencia', { p_email: email, p_nombre: nombre, p_informada: informada, p_notas: notas }));
+// Sin fecha de aviso a InfoAuto: desde el 18/11/2026 no hace falta (migración 0034).
+export const altaAgencia = (email, nombre, notas) =>
+  pedir(sb.rpc('alta_agencia', { p_email: email, p_nombre: nombre, p_informada: null, p_notas: notas }));
 /** Crea la cuenta de la agencia con una clave provisoria al azar y la habilita; devuelve {email, clave} (la clave se ve una sola vez). */
-export async function crearAgencia(nombre, email, informada, notas) {
-  return invocarBCRA({ accion: 'crear_agencia', nombre, email, informada, notas }, 'agencias');
+export async function crearAgencia(nombre, email, notas) {
+  return invocarBCRA({ accion: 'crear_agencia', nombre, email, notas }, 'agencias');
 }
 export const activarAgencia = (id, activa) => pedir(sb.from('agencias').update({ activa }).eq('id', id));
 /** La Mutual solo cambia el estado y la nota; quién y cuándo resolvió lo pone la base. */
