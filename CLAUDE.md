@@ -796,7 +796,7 @@ Mutual y no nombra a InfoAuto.
   su `informada_infoauto` es la fecha del alta (17/11/2026), no un aviso real (lo dice su nota). Ocupa uno de los 20 lugares:
   pausarla (`gestor.pausar_agencia`) cuando no se use.
 - **Simulación rápida** (migración 0036, pedido de la persona del 19/11/2026): solapa «Simulación rápida» del cotizador, **solo para
-  la agencia con `agencias.simulacion_rapida = true`** (hoy PROPIO y DARIO SOSA, a esta desde el 19/11/2026). Capital, cuotas, tasa mensual y los gastos de
+  la agencia con `agencias.simulacion_rapida = true`** (hoy PROPIO, DARIO SOSA y TOMAS MALBRAN; estas dos desde el 19/11/2026). Capital, cuotas, tasa mensual y los gastos de
   `GASTOS_DEFECTO` escritos a mano (arrancan en la tasa del 0 km y los gastos de los parámetros), sin CUIT, sin BCRA y sin vehículo.
   Acción `rapida` de la función (a cualquier otra agencia o a la vista previa le contesta «Pedido desconocido»); no usa InfoAuto, no
   se registra en `cotizaciones_agencia` ni cuenta para el tope. `vistaRapida` y `simularRapida` en `docs/agencias/app.js`. Al lado del sellado y del arancel se ve el monto que dio la última simulación (la función devuelve `sellado` y `arancel`), y seguro, administrativos, cuota social e IGR van plegados en «Gastos que se reparten en las cuotas» (pedido del 19/11/2026). Para dársela
