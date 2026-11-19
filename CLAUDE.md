@@ -755,7 +755,7 @@ App web para las agencias y concesionarias que ofrecen los créditos prendarios 
 Publicada en https://emilsoler.github.io/Gestor/agencias/. El vendedor entra con su usuario, elige marca,
 modelo, versión y año, y ve **solo las condiciones del crédito**: monto máximo, cuota por plazo, total, y TNA,
 TEA y CFT en letra chica al pie (pedido de la persona, nov 2026); lo puede mandar por WhatsApp (lo envía él, con `wa.me`; el
-mensaje lleva solo vehículo, monto y cuotas: sin total ni tasas, pedido de la persona; el de la simulación rápida es el mismo, sin la línea del vehículo) o imprimir. La marca de la app es la de la
+mensaje lleva solo vehículo, monto y cuotas: sin total ni tasas, pedido de la persona; el de la simulación rápida es el mismo, sin la línea del vehículo y con la lista de lo que el cliente tiene que mandar, `DOCS_RAPIDA`) o imprimir. La marca de la app es la de la
 Mutual y no nombra a InfoAuto.
 
 - **Licencia de InfoAuto** (presupuesto 63.199 del 04/11/2026, "Licencia Agencias/Concesionarias", tope 20

@@ -400,12 +400,13 @@ async function cargarFoto(ref) {
 
 /** El mensaje de WhatsApp. Sin `r.vehiculo` (simulación rápida) sale igual, sin la línea del vehículo; la leyenda y el
  *  contacto, si la respuesta no los trae, se toman de los parámetros que llegaron al entrar. */
-function textoParaComprador(r) {
+function textoParaComprador(r, extra = '') {
   const leyenda = r.leyenda ?? S.yo?.leyenda, contacto = r.contacto ?? S.yo?.contacto;
   return `Te paso las condiciones del crédito prendario de la Asociación Mutual Bell:\n\n`
     + (r.vehiculo ? `Vehículo: ${r.vehiculo} (${etiquetaAnio(r.anio)})\n` : '')
     + `Monto del crédito: ${plata(r.monto)}\n`
     + `${r.cuotas} cuotas de ${plata(r.cuota)}\n\n`
+    + (extra ? `${extra}\n\n` : '')
     + (leyenda ? `${leyenda}\n` : '') + (contacto ? `${contacto}\n` : '') + (S.yo?.agencia && !S.yo.miembro ? `\nAtentamente, ${S.yo.agencia}` : '');
 }
 
@@ -449,8 +450,19 @@ async function simularRapida() {
   $('#resultado')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-// El mismo mensaje que el del cotizador, sin la línea del vehículo (pedido de la persona, 19/11/2026).
-const textoRapida = (r) => textoParaComprador({ ...r, vehiculo: '' });
+// El mismo mensaje que el del cotizador, sin la línea del vehículo y con lo que hay que mandar para avanzar
+// (pedidos de la persona, 19/11/2026; el texto es el suyo).
+const DOCS_RAPIDA = `Recordá que para avanzar en tu crédito debes enviarnos por acá:
+1) Foto de DNI (ambos lados)
+2) Foto de un impuesto o Servicio para constatar el domicilio
+3) A) En caso de ser empleado en relación de dependencia: Últimos 6 recibos de sueldo.
+    B) En caso de ser Monotributista: Constancia de Inscripción y últimos 3 pagos.
+    C) En caso de ser Responsable Inscripto: Constancia de Inscripción, últimas 3 DDJJ de IVA y Ganancias.
+4) Título del automotor.
+5) Estado civil; en caso de ser casado/a: menciona el lugar y fecha de matrimonio
+6) Nro. de celular
+7) CBU dónde se va a depositar el crédito`;
+const textoRapida = (r) => textoParaComprador({ ...r, vehiculo: '' }, DOCS_RAPIDA);
 
 function vistaRapida() {
   const R = S.rap ||= nuevaRapida(), r = R.res;
