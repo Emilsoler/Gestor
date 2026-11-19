@@ -591,7 +591,8 @@ async function accionAgencias(act, b) {
   }
   if (act === 'ag-copiar-acceso') {
     const n = G.nueva; if (!n) return;
-    copiar(`Cotizador de créditos prendarios · Mutual Bell\nIngresá en: ${location.origin}${location.pathname.replace(/cobranzas\/?$/, '')}agencias/\nUsuario: ${n.email}\nContraseña provisoria: ${n.clave}\nLa primera vez que entres, el cotizador te va a pedir que elijas tu propia contraseña.`);
+    // Sin el enlace: la persona se lo manda a la agencia con el QR (pedido del 19/11/2026).
+    copiar(`Cotizador de créditos prendarios · Mutual Bell\nUsuario: ${n.email}\nContraseña provisoria: ${n.clave}\nLa primera vez que entres, el cotizador te va a pedir que elijas tu propia contraseña.`);
     return;
   }
   if (act === 'ag-listo') { G.nueva = null; render(); return; }

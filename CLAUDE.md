@@ -894,7 +894,7 @@ Desde SQL no se abren los documentos: los enlaces los da la función (botón «V
   12 caracteres**, y la habilita con `public.agencia_alta` (solo `service_role`; firma con el nombre del miembro y llama a
   `gestor.autorizar_agencia`, que deja `clave_temporal`). Si la habilitación falla (por ejemplo, ya hay 20 activas), borra la cuenta
   recién creada. La contraseña se muestra **una sola vez** en pantalla (`S.ag.nueva`, nunca en el chat ni en la base ni en los
-  registros): la persona se la manda a la agencia ella misma («Copiar los datos para enviar» arma el mensaje con el enlace) y la
+  registros): la persona se la manda a la agencia ella misma («Copiar los datos para enviar» arma el mensaje con usuario y contraseña, sin el enlace: la persona manda el QR aparte) y la
   agencia elige la suya al entrar (`clave_definida`). «Ya tiene cuenta: solo habilitar» sigue disponible. Prueba 18 de `agencias.test.mjs`.
 - **Eliminar cotizaciones** (migración 0033, pedido de la persona del 17/11/2026): en la pestaña Cotizaciones, «Eliminar» en cada
   fila y «Eliminar todas», con confirmación. Se borra por la API con la sesión de la persona (política `miembros_eliminan`, con
