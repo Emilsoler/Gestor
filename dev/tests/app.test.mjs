@@ -106,10 +106,10 @@ test('listado: todas las causas sin filtros, menos las archivadas, y búsqueda',
   assert.equal(await page.locator('#main .causa').count(), 3);
   // sin filtros ni resumen: lo que se ve es la lista entera y el buscador
   for (const sel of ['#chips', '#fEstado', '#fNom', '#btnFiltros']) assert.equal(await page.locator(sel).isVisible(), false, sel + ' no se muestra');
-  // debajo del buscador: Casillero, A despacho y Acuerdos, que filtran la lista al tocarlas
-  assert.deepEqual(await page.locator('#stats .stat span').allTextContents(), ['Casillero', 'A despacho', 'Acuerdos']);
+  // debajo del buscador: Casillero, A despacho, Martillero designado y Acuerdos, que filtran la lista al tocarlas
+  assert.deepEqual(await page.locator('#stats .stat span').allTextContents(), ['Casillero', 'A despacho', 'Martillero designado', 'Acuerdos']);
   const n = async (k) => Number(await page.textContent(`#stats .stat[data-q="${k}"] b`));
-  for (const k of ['u:Casillero', 'u:A despacho', 'acu']) {
+  for (const k of ['u:Casillero', 'u:A despacho', 'mart', 'acu']) {
     await page.click(`#stats .stat[data-q="${k}"]`);
     assert.equal(await page.locator('#main .causa').count(), await n(k), k + ': la lista tiene tantas como dice la tarjeta');
     await page.click(`#stats .stat[data-q="${k}"]`); // tocarla de nuevo saca el filtro

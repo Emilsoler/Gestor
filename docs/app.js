@@ -14,6 +14,7 @@ const VERSION = '1.15.0';
 
 // Cuatro datos de cada causa, con valores fijos: los mismos que acepta la base (supabase/migrations/0007).
 const UBICACIONES = ['Casillero', 'A despacho'];
+const ESTADO_MARTILLERO = '5. Martillero Designado'; // la tarjeta «Martillero designado» agrupa las causas en esa etapa
 const ESTADOS = ['0. Iniciamos', '1.1 Demanda', '1.2 Contestación', '2. No oposición de excepciones', '3. Sentencia', '4. Ejecución de Sentencia', '5. Martillero Designado'];
 const CAUTELARES = ['Sin Cautelar', 'Embargo de sueldo', 'Vehículo secuestrado'];
 const SITUACIONES = ['En trámite', 'Acuerdo', 'Archivada'];
@@ -224,6 +225,7 @@ function filtered() {
     // Las tarjetas de abajo del buscador: Casillero / A despacho (ubicación) o Acuerdos (situación).
     if (S.tag.startsWith('u:') && (isArch(c) || isAcu(c) || c.ubicacion !== S.tag.slice(2))) return false;
     if (S.quick === 'acu' && !isAcu(c)) return false;
+    if (S.quick === 'mart' && (isAcu(c) || c.estado !== ESTADO_MARTILLERO)) return false;
     return true;
   });
   const { k, dir } = S.sort;
@@ -238,6 +240,7 @@ function renderStats() {
   const items = [
     { id: 'u:Casillero', n: vivas.filter((c) => c.ubicacion === 'Casillero').length, l: 'Casillero' },
     { id: 'u:A despacho', n: vivas.filter((c) => c.ubicacion === 'A despacho').length, l: 'A despacho' },
+    { id: 'mart', n: vivas.filter((c) => c.estado === ESTADO_MARTILLERO).length, l: 'Martillero designado' },
     { id: 'acu', n: D.causas.filter(isAcu).length, l: 'Acuerdos' }];
   // Casillero y A despacho filtran por la ubicación; las otras, por la situación de la causa.
   const puesta = (id) => (id.startsWith('u:') ? S.tag === id : S.quick === id);
