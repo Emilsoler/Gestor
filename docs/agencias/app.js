@@ -764,7 +764,7 @@ function hojaImprimir(r, vehiculo) {
         <span class="hoja-plan">en <b>${r.cuotas} ${r.cuotas === 1 ? 'cuota' : 'cuotas'}</b> de <b>${plata(r.cuota)}</b></span>
       </div>
       <div class="hoja-adorno" aria-hidden="true"><i></i><b></b><i></i></div>
-      <p class="hoja-gracias">Gracias por pensar en nosotros para la compra de tu próximo auto. Quedamos a tu disposición para más consultas.</p>
+      <p class="hoja-gracias">Gracias por pensar en nosotros para la compra de tu próximo auto.<br>Quedamos a tu disposición para más consultas.</p>
     </div>
     <p class="hoja-firma">Asociación Mutual Bell</p>
   </div>`;
