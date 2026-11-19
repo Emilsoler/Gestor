@@ -757,7 +757,6 @@ function hojaImprimir(r, vehiculo) {
       <div class="hoja-cabeza"><img class="hoja-escudo" src="logo.svg" alt="" width="84" height="84">${foto}</div>
       <p class="hoja-titulo">Simulación de crédito prendario</p>
       <div class="hoja-adorno" aria-hidden="true"><i></i><b></b><i></i></div>
-      <p class="hoja-saludo">Hola, acá te informamos cómo quedaría el crédito que solicitaste:</p>
       ${vehiculo ? `<p class="hoja-vehiculo">${esc(vehiculo)}</p>` : ''}
       <div class="hoja-monto">
         <span class="hoja-rotulo">Crédito de</span>

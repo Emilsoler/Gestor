@@ -174,12 +174,11 @@ tr.elegido td{background:#e9e9e9;color:#000;font-weight:600}
   .hoja-adorno{display:flex;align-items:center;justify-content:center;gap:4mm;width:100%}
   .hoja-adorno i{flex:1;max-width:55mm;height:0;border-top:.35mm solid #000}
   .hoja-adorno b{width:2.6mm;height:2.6mm;background:#000;transform:rotate(45deg)}
-  .hoja-saludo{font-size:17pt;line-height:1.45;max-width:140mm}
   .hoja-vehiculo{font-family:"Cinzel",Georgia,serif;font-size:19pt;line-height:1.3;letter-spacing:.06em}
-  .hoja-monto{display:flex;flex-direction:column;align-items:center;gap:2mm;padding:9mm 12mm;border:.6mm solid #000;outline:.25mm solid #000;outline-offset:1.6mm;}
-  .hoja-rotulo{font-family:"Cinzel",Georgia,serif;font-size:11pt;letter-spacing:.3em;text-transform:uppercase;padding-left:.3em}
-  .hoja-cifra{font-family:"Cinzel",Georgia,serif;font-size:46pt;line-height:1.1;letter-spacing:.02em}
-  .hoja-plan{font-size:21pt;line-height:1.4}
+  .hoja-monto{display:flex;flex-direction:column;align-items:center;gap:2mm;padding:6mm 9mm;border:.6mm solid #000;border-radius:5mm;box-shadow:0 0 0 1.3mm #fff,0 0 0 1.6mm #000}
+  .hoja-rotulo{font-family:"Cinzel",Georgia,serif;font-size:10pt;letter-spacing:.3em;text-transform:uppercase;padding-left:.3em}
+  .hoja-cifra{font-family:"Cinzel",Georgia,serif;font-size:36pt;line-height:1.1;letter-spacing:.02em}
+  .hoja-plan{font-size:17pt;line-height:1.4}
   .hoja-plan b{font-weight:700}
   .hoja-gracias{font-size:15pt;line-height:1.55;max-width:130mm}
   .hoja-firma{flex:none;font-style:italic;font-size:30pt;line-height:1;padding-top:12mm}
