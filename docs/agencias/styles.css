@@ -164,7 +164,12 @@ tr.elegido td{background:#e9e9e9;color:#000;font-weight:600}
   /* La foto del vehículo (si la hay): un poco más grande que el escudo, a su lado. */
   .hoja-foto{margin:0;height:34mm;max-width:62mm;display:flex;align-items:center}
   .hoja-foto:empty{display:none}
-  .hoja-foto img{height:100%;max-width:100%;object-fit:contain}
+  /* Bordes difuminados (máscara de dos degradés cruzados): la foto se funde con la hoja y no se nota el recuadro. */
+  .hoja-foto img{height:100%;max-width:100%;object-fit:contain;
+    -webkit-mask-image:linear-gradient(to right,transparent,#000 22%,#000 78%,transparent),linear-gradient(to bottom,transparent,#000 22%,#000 78%,transparent);
+    -webkit-mask-composite:source-in;
+    mask-image:linear-gradient(to right,transparent,#000 22%,#000 78%,transparent),linear-gradient(to bottom,transparent,#000 22%,#000 78%,transparent);
+    mask-composite:intersect}
   .hoja-titulo{font-weight:700;font-size:15pt;letter-spacing:.3em;text-transform:uppercase;line-height:1.4;padding-left:.3em}
   .hoja-adorno{display:flex;align-items:center;justify-content:center;gap:4mm;width:100%}
   .hoja-adorno i{flex:1;max-width:55mm;height:0;border-top:.35mm solid #000}
