@@ -577,7 +577,7 @@ function vistaCliente() {
       ${S.confirmarOtro ? '<span class="aviso suave m0">Se borra todo lo que cargaste de este cliente (datos y documentos). Tocá de nuevo para confirmarlo.</span>' : ''}
       <button class="btn chico" type="button" id="btnOtroCliente">${S.confirmarOtro ? 'Sí, empezar con otro' : 'Otro cliente'}</button>
     </div>
-    <section class="card semaforo s-${esc(B.semaforo)}">
+    <section class="card semaforo no-imprimir s-${esc(B.semaforo)}">
     <div class="cliente-cols">
       <div class="cliente-izq">
         <h2>1 · El cliente</h2>

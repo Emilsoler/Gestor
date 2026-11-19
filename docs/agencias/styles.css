@@ -143,7 +143,7 @@ tr.elegido td{background:#e9e9e9;color:#000;font-weight:600}
 @font-face{font-family:"EB Garamond";font-style:italic;font-weight:400;font-display:swap;src:url(../fonts/eb-garamond-latin-400-italic.woff2) format("woff2")}
 @font-face{font-family:"Cinzel";font-style:normal;font-weight:400;font-display:swap;src:url(../fonts/cinzel-latin-400-normal.woff2) format("woff2")}
 .hoja-imprimir{display:none}
-@page{size:A4;margin:0}
+@page{margin:0}
 @media print{
   .cab,.pie,.no-imprimir{display:none !important}
   html,body{margin:0;padding:0;background:#fff;color:#000}
@@ -152,13 +152,13 @@ tr.elegido td{background:#e9e9e9;color:#000;font-weight:600}
   .card{border:1px solid #999;background:#fff;color:#000}
   .hint,.leyenda,.destacado .titulo,th{color:#333}
   tr.elegido td{color:#000}
-  /* Hoja impresa: una sola página A4 con la simulación. */
+  /* Hoja impresa: una sola página con la simulación, en carta o A4 (no fija el alto: se acomoda al papel que use el navegador). */
   .resultado{border:0;padding:0;margin:0;background:#fff;display:block}
   .resultado > :not(.hoja-imprimir){display:none !important}
   .hoja-imprimir{-webkit-print-color-adjust:exact;print-color-adjust:exact;display:flex;flex-direction:column;position:relative;overflow:hidden;
-    width:210mm;height:296mm;box-sizing:border-box;font-family:"EB Garamond",Georgia,serif;color:#000;text-align:center;background:#fff}
+    width:100%;box-sizing:border-box;padding:24mm 0 16mm;break-inside:avoid;font-family:"EB Garamond",Georgia,serif;color:#000;text-align:center;background:#fff}
   .hoja-imprimir p{margin:0}
-  .hoja-cuerpo{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:0 24mm;gap:7mm}
+  .hoja-cuerpo{display:flex;flex-direction:column;justify-content:flex-start;align-items:center;padding:0 24mm;gap:7mm}
   .hoja-cabeza{display:flex;align-items:center;justify-content:center;gap:9mm}
   .hoja-escudo{width:28mm;height:28mm}
   /* La foto del vehículo (si la hay): un poco más grande que el escudo, a su lado. */
@@ -177,7 +177,7 @@ tr.elegido td{background:#e9e9e9;color:#000;font-weight:600}
   .hoja-plan{font-size:21pt;line-height:1.4}
   .hoja-plan b{font-weight:700}
   .hoja-gracias{font-size:15pt;line-height:1.55;max-width:130mm}
-  .hoja-firma{flex:none;font-style:italic;font-size:30pt;line-height:1;padding:0 0 9mm;margin:0}
+  .hoja-firma{flex:none;font-style:italic;font-size:30pt;line-height:1;padding-top:12mm}
   .hoja-firma::before{content:"";display:block;width:40mm;margin:0 auto 6mm;border-top:.35mm solid #000}
 }
 
