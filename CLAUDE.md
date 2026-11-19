@@ -755,7 +755,7 @@ App web para las agencias y concesionarias que ofrecen los créditos prendarios 
 Publicada en https://emilsoler.github.io/Gestor/agencias/. El vendedor entra con su usuario, elige marca,
 modelo, versión y año, y ve **solo las condiciones del crédito**: monto máximo, cuota por plazo, total, y TNA,
 TEA y CFT en letra chica al pie (pedido de la persona, nov 2026); lo puede mandar por WhatsApp (lo envía él, con `wa.me`; el
-mensaje lleva solo vehículo, monto y cuotas: sin total ni tasas, pedido de la persona) o imprimir. La marca de la app es la de la
+mensaje lleva solo vehículo, monto y cuotas: sin total ni tasas, pedido de la persona; el de la simulación rápida es el mismo, sin la línea del vehículo) o imprimir. La marca de la app es la de la
 Mutual y no nombra a InfoAuto.
 
 - **Licencia de InfoAuto** (presupuesto 63.199 del 04/11/2026, "Licencia Agencias/Concesionarias", tope 20
@@ -814,7 +814,7 @@ Mutual y no nombra a InfoAuto.
   `tasasDelCredito` (TNA = tasa × 12; TEA = (1 + tasa)^12 − 1; CFT = TEA de la TIR entre lo que recibe el comprador y
   la cuota final, con todos los gastos, sin IVA).
 - **Parámetros de la Mutual** (migración 0027, pedido de la persona del 17/11/2026): 40 % del valor, de 1 a 24 cuotas,
-  modelos 2014 en adelante (`anio_minimo`), tasa mensual según el año del modelo (`tasas`: 2021 en adelante 5 %, 2018 a
+  modelos 2012 en adelante (`anio_minimo`; era 2014, la persona lo bajó el 19/11/2026), tasa mensual según el año del modelo (`tasas`: 2021 en adelante 5 %, 2018 a
   2020 6 %, 2014 a 2017 7 %; el 0 km cuenta como el año en curso; `tasaPara` en `credito.js`) y los gastos del simulador
   interno **sin envío ni gestoría** (en 0). Se cambian en Créditos y Cobros → Agencias → Parámetros (los plazos aceptan un rango, «1-24»,
   y las tasas, «2021=5; 2018=6; 2014=7»).

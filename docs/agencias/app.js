@@ -398,12 +398,15 @@ async function cargarFoto(ref) {
   if (f) f.innerHTML = `<img src="${src}" alt="Foto del vehículo">`; else render();
 }
 
+/** El mensaje de WhatsApp. Sin `r.vehiculo` (simulación rápida) sale igual, sin la línea del vehículo; la leyenda y el
+ *  contacto, si la respuesta no los trae, se toman de los parámetros que llegaron al entrar. */
 function textoParaComprador(r) {
+  const leyenda = r.leyenda ?? S.yo?.leyenda, contacto = r.contacto ?? S.yo?.contacto;
   return `Te paso las condiciones del crédito prendario de la Asociación Mutual Bell:\n\n`
-    + `Vehículo: ${r.vehiculo} (${etiquetaAnio(r.anio)})\n`
+    + (r.vehiculo ? `Vehículo: ${r.vehiculo} (${etiquetaAnio(r.anio)})\n` : '')
     + `Monto del crédito: ${plata(r.monto)}\n`
     + `${r.cuotas} cuotas de ${plata(r.cuota)}\n\n`
-    + (r.leyenda ? `${r.leyenda}\n` : '') + (r.contacto ? `${r.contacto}\n` : '') + (S.yo?.agencia && !S.yo.miembro ? `\nAtentamente, ${S.yo.agencia}` : '');
+    + (leyenda ? `${leyenda}\n` : '') + (contacto ? `${contacto}\n` : '') + (S.yo?.agencia && !S.yo.miembro ? `\nAtentamente, ${S.yo.agencia}` : '');
 }
 
 // ───────────────────────── Simulación rápida ─────────────────────────
@@ -446,10 +449,8 @@ async function simularRapida() {
   $('#resultado')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function textoRapida(r) {
-  return `Te paso las condiciones del crédito prendario de la Asociación Mutual Bell:\n\n`
-    + `Monto del crédito: ${plata(r.monto)}\n${r.cuotas} cuotas de ${plata(r.cuota)}\n`;
-}
+// El mismo mensaje que el del cotizador, sin la línea del vehículo (pedido de la persona, 19/11/2026).
+const textoRapida = (r) => textoParaComprador({ ...r, vehiculo: '' });
 
 function vistaRapida() {
   const R = S.rap ||= nuevaRapida(), r = R.res;
