@@ -586,3 +586,33 @@ test('crear una agencia desde la app: cuenta con clave provisoria al azar, habil
   const logs = (await import('node:fs')).existsSync(`${process.env.STACK || ''}/logs/agencias.log`) ? (await import('node:fs')).readFileSync(`${process.env.STACK}/logs/agencias.log`, 'utf8') : '';
   assert.ok(!logs.includes(r.datos.clave), 'la clave provisoria no se registra');
 });
+
+test('simulación rápida: solo la agencia marcada, con capital, cuotas, tasa y gastos a mano; no se registra', async () => {
+  sql(`update public.ajustes_agencias set habilitado = true, tasas = '[]', tasa_mensual = 7, plazos = '{12,18,24,36}'; delete from public.cotizaciones_agencia;
+       update public.agencias set simulacion_rapida = false;`);
+  const gastos = { sellado: 1.2, arancel: 0.1, arancelMin: 13000, contratos: 20000, envio: 0, gestoria: 0, seguro: 0.1, administrativos: 50, cuotaSocial: 200, igr: 3 };
+  const pedido = { accion: 'rapida', capital: 5_000_000, cuotas: 12, tasa: 6, gastos };
+
+  // Sin la marca: ni la opción en `yo` ni la acción.
+  assert.equal((await pedir(agencia, { accion: 'yo' })).datos.rapida, undefined);
+  assert.equal((await pedir(agencia, pedido)).status, 400);
+  assert.equal((await pedir(emi, pedido)).status, 400, 'la vista previa de la Mutual tampoco');
+
+  sql(`select set_config('gestor.autor', 'Claude', false); update public.agencias set simulacion_rapida = true where email = 'salon@test.local';`);
+  const yo = (await pedir(agencia, { accion: 'yo' })).datos;
+  assert.equal(yo.rapida.tasa, 7);
+  assert.equal(yo.rapida.gastos.contratos, 20000);
+
+  const r = await pedir(agencia, pedido);
+  assert.equal(r.status, 200, r.texto);
+  const esperado = simularCredito({ capital: 5_000_000, cuotas: 12, g: { ...gastos, redondeo: null }, tasa: 6 });
+  assert.equal(r.datos.cuota, esperado.cuota);
+  assert.equal(r.datos.total, esperado.totalCredito);
+  assert.equal(r.datos.gastos_otorgamiento, esperado.gastos);
+  assert.equal(r.datos.tna, 72);
+  assert.equal(sql('select count(*) from public.cotizaciones_agencia'), '0', 'no cuenta para el tope ni queda registrada');
+
+  assert.equal((await pedir(agencia, { ...pedido, capital: 0 })).status, 400);
+  assert.equal((await pedir(agencia, { ...pedido, cuotas: 0 })).status, 400);
+  sql(`update public.agencias set simulacion_rapida = false;`);
+});

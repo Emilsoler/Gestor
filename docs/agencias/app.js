@@ -38,6 +38,7 @@ const S = {
   foto: null, // { ref, src }: la foto de la versión elegida (src null si no hay); la pide `cargarFoto`
   cuit: '', bcra: null, bcraError: '', continuo: false, confirmarOtro: false, sols: null,
   sol: null, // la solicitud que se está armando (nuevaSol)
+  rap: null, // simulación rápida (solo la agencia marcada; `nuevaRapida`)
 };
 
 /** Lo que la agencia va cargando de la solicitud. `docs`: casillero → [{file, nombre}] (los archivos quedan en el
@@ -123,7 +124,7 @@ async function cambiarClave(a, b) {
 
 async function salir() {
   try { await sb?.auth.signOut(); } catch { /* igual se limpia */ }
-  Object.assign(S, { fase: 'ingreso', yo: null, error: '', marcas: null, marca: '', modelos: null, modelo: '', versiones: null, version: '', anios: null, anio: '', buscaVer: '', res: null, vista: 'cotizar', cuit: '', bcra: null, bcraError: '', continuo: false, confirmarOtro: false, sols: null, sol: nuevaSol() });
+  Object.assign(S, { fase: 'ingreso', yo: null, error: '', marcas: null, marca: '', modelos: null, modelo: '', versiones: null, version: '', anios: null, anio: '', buscaVer: '', res: null, vista: 'cotizar', cuit: '', bcra: null, bcraError: '', continuo: false, confirmarOtro: false, sols: null, sol: nuevaSol(), rap: null });
   render();
 }
 
@@ -403,6 +404,81 @@ function textoParaComprador(r) {
     + `Monto del crédito: ${plata(r.monto)}\n`
     + `${r.cuotas} cuotas de ${plata(r.cuota)}\n\n`
     + (r.leyenda ? `${r.leyenda}\n` : '') + (r.contacto ? `${r.contacto}\n` : '') + (S.yo?.agencia && !S.yo.miembro ? `\nAtentamente, ${S.yo.agencia}` : '');
+}
+
+// ───────────────────────── Simulación rápida ─────────────────────────
+// Solo para la cuenta de prueba de la persona («PROPIO», migración 0036): capital, cuotas, tasa y gastos a mano,
+// sin CUIT ni vehículo. La función la rechaza para cualquier otra agencia.
+const GASTOS_RAPIDA = [
+  ['sellado', 'Sellado', '%'], ['arancel', 'Arancel del Registro', '%'], ['arancelMin', 'Arancel mínimo', '$'],
+  ['contratos', 'Contratos', '$'], ['envio', 'Envío', '$'], ['gestoria', 'Gestoría', '$'],
+  ['seguro', 'Seguro (por cuota, sobre el capital)', '%'], ['administrativos', 'Gastos administrativos (por cuota)', '$'],
+  ['cuotaSocial', 'Cuota social (por cuota)', '$'], ['igr', 'IGR (sobre los intereses)', '%'],
+];
+/** Número escrito a la argentina («1.500.000», «1,2») → número. */
+const numAR = (x) => Number(String(x ?? '').trim().replace(/\./g, '').replace(',', '.')) || 0;
+const escribirAR = (n, dec = 2) => (Number(n) || 0).toLocaleString('es-AR', { maximumFractionDigits: dec });
+
+function nuevaRapida() {
+  const R = S.yo?.rapida || {}, g = R.gastos || {};
+  return {
+    capital: '', cuotas: String(S.yo?.plazos?.[S.yo.plazos.length - 1] || 12), tasa: escribirAR(R.tasa ?? 5),
+    g: Object.fromEntries(GASTOS_RAPIDA.map(([k]) => [k, escribirAR(g[k] ?? 0)])),
+    res: null, error: '', cargando: false,
+  };
+}
+
+async function simularRapida() {
+  const R = S.rap, capital = numAR(R.capital), cuotas = Math.trunc(numAR(R.cuotas));
+  if (!(capital > 0)) { R.error = 'Escribí el capital.'; render(); return; }
+  if (!(cuotas >= 1 && cuotas <= 120)) { R.error = 'Las cuotas tienen que ser de 1 a 120.'; render(); return; }
+  R.cargando = true; R.error = ''; render();
+  try {
+    R.res = await fn({ accion: 'rapida', capital, cuotas, tasa: numAR(R.tasa), gastos: Object.fromEntries(GASTOS_RAPIDA.map(([k]) => [k, numAR(R.g[k])])) });
+  } catch (e) { R.cargando = false; R.res = null; R.error = e?.message || 'No se pudo calcular.'; render(); return; }
+  R.cargando = false; render();
+  $('#resultado')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function textoRapida(r) {
+  return `Te paso las condiciones del crédito prendario de la Asociación Mutual Bell:\n\n`
+    + `Monto del crédito: ${plata(r.monto)}\n${r.cuotas} cuotas de ${plata(r.cuota)}\n`;
+}
+
+function vistaRapida() {
+  const R = S.rap ||= nuevaRapida(), r = R.res;
+  const campo = (id, etq, val, pista = '') => `<label class="f">${esc(etq)}<input data-rap="${id}" inputmode="decimal" autocomplete="off" value="${esc(val)}"${pista ? ` placeholder="${esc(pista)}"` : ''}></label>`;
+  const form = `<section class="card no-imprimir">
+    <div class="card-cab"><h2>Simulación rápida</h2></div>
+    <p class="hint">Sin CUIT ni vehículo: escribí el capital, las cuotas, la tasa y los gastos. Solo para tu cuenta.</p>
+    <div class="grilla">
+      ${campo('capital', 'Capital ($)', R.capital, 'Ej.: 5.000.000')}
+      ${campo('cuotas', 'Cantidad de cuotas', R.cuotas)}
+      ${campo('tasa', 'Tasa mensual (%)', R.tasa)}
+    </div>
+    <h3>Gastos</h3>
+    <div class="grilla">${GASTOS_RAPIDA.map(([k, etq, u]) => campo(`g.${k}`, `${etq} (${u})`, R.g[k])).join('')}</div>
+    ${R.error ? `<p class="aviso m0" role="alert">${esc(R.error)}</p>` : ''}
+    <div class="acciones">
+      <button class="btn primario" type="button" id="btnRapida" ${R.cargando ? 'disabled' : ''}>${R.cargando ? 'Calculando…' : 'Simular'}</button>
+      <button class="btn" type="button" id="btnRapidaReset">Volver a los valores de la Mutual</button>
+    </div>
+  </section>`;
+  if (!r) return form;
+  const opciones = opcionesVisibles(r).map((o) => `<tr class="${o.cuotas === r.cuotas ? 'elegido' : ''}"><td>${o.cuotas} ${o.cuotas === 1 ? 'cuota' : 'cuotas'}</td><td class="num">${plata(o.cuota)}</td></tr>`).join('');
+  return form + `<section class="card resultado" id="resultado">
+    <div class="cuota-grande">Crédito de <b>${plata(r.monto)}</b> en ${r.cuotas} ${r.cuotas === 1 ? 'cuota' : 'cuotas'} de <b>${plata(r.cuota)}</b></div>
+    <table><tbody>
+      <tr><td>Total a pagar</td><td class="num">${plata(r.total)}</td></tr>
+      <tr><td>Gastos de otorgamiento (incluidos en las cuotas)</td><td class="num">${plata(r.gastos_otorgamiento)}</td></tr>
+    </tbody></table>
+    ${opciones ? `<div class="scroll"><table><thead><tr><th>Otros plazos con este monto</th><th class="num">Cuota</th></tr></thead><tbody>${opciones}</tbody></table></div>` : ''}
+    <p class="leyenda tasas m0">Tasa mensual ${pct(r.tasa)} · TNA ${pct(r.tna)} · TEA ${pct(r.tea)} · CFT ${pct(r.cft)}. No incluye IVA.</p>
+    <div class="acciones no-imprimir">
+      <button class="btn" type="button" id="btnWhatsappRapida">Enviar por WhatsApp</button>
+      <button class="btn" type="button" id="btnImprimir">Imprimir</button>
+    </div>
+  </section>`;
 }
 
 // ───────────────────────── Pantallas ─────────────────────────
@@ -691,8 +767,9 @@ function render() {
   else if (S.fase === 'clave') m.innerHTML = vistaClave();
   else if (S.fase === 'sinacceso') m.innerHTML = '<section class="card ingreso"><h2>Esta cuenta no está habilitada</h2><p class="hint m0">Consultá con la Asociación Mutual Bell.</p></section>';
   else {
-    const tabs = S.yo.habilitado && !S.yo.miembro ? `<nav class="tabs no-imprimir" role="tablist"><button role="tab" data-vista="cotizar" aria-selected="${S.vista === 'cotizar'}">Cotizar</button><button role="tab" data-vista="solicitudes" aria-selected="${S.vista === 'solicitudes'}">Mis solicitudes</button></nav>` : '';
-    m.innerHTML = tabs + (S.vista === 'solicitudes' && !S.yo.miembro ? vistaSolicitudes() : vistaCotizar());
+    const rapida = S.yo.rapida && !S.yo.miembro;
+    const tabs = S.yo.habilitado && !S.yo.miembro ? `<nav class="tabs no-imprimir" role="tablist"><button role="tab" data-vista="cotizar" aria-selected="${S.vista === 'cotizar'}">Cotizar</button>${rapida ? `<button role="tab" data-vista="rapida" aria-selected="${S.vista === 'rapida'}">Simulación rápida</button>` : ''}<button role="tab" data-vista="solicitudes" aria-selected="${S.vista === 'solicitudes'}">Mis solicitudes</button></nav>` : '';
+    m.innerHTML = tabs + (S.vista === 'solicitudes' && !S.yo.miembro ? vistaSolicitudes() : S.vista === 'rapida' && rapida ? vistaRapida() : vistaCotizar());
   }
   $('#pie').textContent = S.fase === 'app' ? 'Simulación de referencia sujeta a aprobación crediticia de la Asociación Mutual Bell.' : '';
 }
@@ -743,6 +820,12 @@ document.addEventListener('input', (e) => {
       if (b) b.innerHTML = htmlRelacion();
     }
   } else if (t.dataset.campo) S.sol[t.dataset.campo] = t.value;
+  else if (t.dataset.rap && S.rap) {
+    const k = t.dataset.rap;
+    if (k.startsWith('g.')) S.rap.g[k.slice(2)] = t.value;
+    else if (k === 'capital') { const n = soloNumero(t.value); S.rap.capital = n ? n.toLocaleString('es-AR') : ''; if (t.value !== S.rap.capital) t.value = S.rap.capital; }
+    else S.rap[k] = t.value;
+  }
 });
 
 // La lista de versiones: se abre al entrar al campo (completa, para mirar) y se cierra al tocar afuera.
@@ -788,6 +871,9 @@ document.addEventListener('click', (e) => {
   else if (t.dataset.cuenta) { S.sol.cuenta = t.dataset.cuenta; render(); }
   else if (t.dataset.quitar) quitarArchivo(t.dataset.quitar, Number(t.dataset.i));
   else if (t.id === 'btnEnviarSol') enviarSolicitud();
+  else if (t.id === 'btnRapida') simularRapida();
+  else if (t.id === 'btnRapidaReset') { S.rap = { ...nuevaRapida(), capital: S.rap?.capital || '', cuotas: S.rap?.cuotas || nuevaRapida().cuotas }; render(); }
+  else if (t.id === 'btnWhatsappRapida' && S.rap?.res) window.open(`https://wa.me/?text=${encodeURIComponent(textoRapida(S.rap.res))}`, '_blank', 'noopener');
 
   else if (t.dataset.vista) { S.vista = t.dataset.vista; if (S.vista === 'solicitudes') cargarSolicitudes(); else render(); }
 });

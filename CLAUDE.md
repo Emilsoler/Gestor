@@ -795,6 +795,13 @@ Mutual y no nombra a InfoAuto.
 - **Agencia de prueba**: «PROPIO» (emiliano_soler@hotmail.com), cuenta de la persona para probar el recorrido de una agencia;
   su `informada_infoauto` es la fecha del alta (17/11/2026), no un aviso real (lo dice su nota). Ocupa uno de los 20 lugares:
   pausarla (`gestor.pausar_agencia`) cuando no se use.
+- **Simulación rápida** (migración 0036, pedido de la persona del 19/11/2026): solapa «Simulación rápida» del cotizador, **solo para
+  la agencia con `agencias.simulacion_rapida = true`** (hoy únicamente PROPIO). Capital, cuotas, tasa mensual y los gastos de
+  `GASTOS_DEFECTO` escritos a mano (arrancan en la tasa del 0 km y los gastos de los parámetros), sin CUIT, sin BCRA y sin vehículo.
+  Acción `rapida` de la función (a cualquier otra agencia o a la vista previa le contesta «Pedido desconocido»); no usa InfoAuto, no
+  se registra en `cotizaciones_agencia` ni cuenta para el tope. `vistaRapida` y `simularRapida` en `docs/agencias/app.js`. Para dársela
+  o quitársela a otra cuenta: `update public.agencias set simulacion_rapida = … where email = '…'` (con `set_config('gestor.autor', 'Claude', true)`),
+  solo si la persona lo pide.
 - **Tablas** (migración 0025): `public.agencias` (nombre, email, cuenta, `activa`, `informada_infoauto` —fecha
   del aviso por escrito a InfoAuto; **opcional desde la migración 0034** (18/11/2026: InfoAuto dijo que no hace falta avisarles) y la
   app ya no la pide; queda la de las agencias viejas—, `clave_temporal`; tope de 20 activas y una cuenta

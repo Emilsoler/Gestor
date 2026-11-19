@@ -16,7 +16,7 @@
 // Pedido: { accion, ... }. Acciones: yo, clave_definida, marcas, modelos {marca}, versiones {marca, grupo},
 // anios {ref}, cotizar {ref, anio, cuotas, monto?, vehiculo?}, bcra {cuit}, solicitar {consulta, ref, anio,
 // cuotas, monto?, vehiculo?, ingresos, ingreso, categoria, datos, consentimiento}, archivo (multipart: id, slot,
-// archivo), enviar {id}, solicitudes; y para la Mutual, archivos {id}, eliminar {id} y crear_agencia {nombre, email, notas}.
+// archivo), enviar {id}, solicitudes, rapida {capital, cuotas, tasa, gastos} (solo la agencia con simulacion_rapida); y para la Mutual, archivos {id}, eliminar {id} y crear_agencia {nombre, email, notas}.
 //
 // BCRA: la agencia consulta el CUIT de su cliente en la Central de Deudores (API pública). La consulta queda
 // guardada entera en consultas_bcra para la Mutual; a la agencia se le devuelven el color, el nombre y, del último
@@ -380,6 +380,8 @@ export async function manejar(req: Request): Promise<Response> {
         agencia: ag.nombre, miembro: !!ag.miembro, clave_temporal: !!ag.clave_temporal,
         habilitado: !!a.habilitado, plazos: plazosValidos(a), leyenda: String(a.leyenda || ''), contacto: String(a.contacto || ''),
         relacion_max: Number(a.relacion_max) || 45,
+        // Solo la agencia marcada (la de prueba de la persona): los valores con que arranca la simulación rápida.
+        ...(ag.simulacion_rapida ? { rapida: { tasa: tasaPara('0km', a, new Date().getFullYear()), gastos: a.gastos || {} } } : {}),
       }, 200, cors);
     }
     if (accion === 'clave_definida') {
@@ -442,6 +444,28 @@ export async function manejar(req: Request): Promise<Response> {
         financiable: true, anio: c.anio, maximo: c.maximo, monto: c.monto, cuotas: c.cuotas, cuota: c.sim.cuota, total: c.sim.totalCredito,
         gastos_otorgamiento: c.sim.gastos, ...tasasDelCredito(c.sim), opciones: c.opciones,
         leyenda: String(a.leyenda || ''), contacto: String(a.contacto || ''),
+      }, 200, cors);
+    }
+    if (accion === 'rapida') {
+      // Simulación rápida: capital, cuotas, tasa y gastos a mano, sin CUIT ni vehículo. Solo para la agencia marcada
+      // (migración 0036); a las demás se les contesta como a un pedido que no existe. No usa InfoAuto ni se registra.
+      if (!ag.simulacion_rapida) throw new Falla('Pedido desconocido.', 400, 'accion');
+      const capital = Math.round(Number(pedido.capital) || 0), cuotas = Math.trunc(Number(pedido.cuotas));
+      const tasa = Number(pedido.tasa);
+      if (!(capital > 0)) throw new Falla('Escribí el capital.', 400, 'capital');
+      if (!(cuotas >= 1 && cuotas <= 120)) throw new Falla('Las cuotas tienen que ser de 1 a 120.', 400, 'cuotas');
+      if (!(tasa >= 0 && tasa <= 100)) throw new Falla('Revisá la tasa mensual.', 400, 'tasa');
+      const g: Record<string, number | null> = {};
+      for (const k of ['sellado', 'arancel', 'arancelMin', 'contratos', 'envio', 'gestoria', 'seguro', 'administrativos', 'cuotaSocial', 'igr']) {
+        g[k] = Math.max(0, Number(pedido.gastos?.[k]) || 0);
+      }
+      g.redondeo = null; // automático, como en el cotizador
+      const sim = simularCredito({ capital, cuotas, g, tasa });
+      if (!sim) throw new Falla('No se pudo calcular el crédito con estos datos.', 400, 'calculo');
+      const opciones = plazosValidos(a).map((n) => { const s = simularCredito({ capital, cuotas: n, g, tasa }); return s ? { cuotas: n, cuota: s.cuota } : null; }).filter(Boolean);
+      return responder({
+        financiable: true, rapida: true, monto: capital, cuotas, cuota: sim.cuota, total: sim.totalCredito, tasa,
+        gastos_otorgamiento: sim.gastos, ...tasasDelCredito(sim), opciones,
       }, 200, cors);
     }
     if (accion === 'bcra') {
