@@ -42,7 +42,8 @@ const caido = (v) => fetch(`${env.SUPABASE_URL}/__caido`, { method: 'POST', body
 const tiempoReal = (v) => fetch(`${env.SUPABASE_URL}/__realtime`, { method: 'POST', body: JSON.stringify({ activo: v }) });
 const toast = (p, texto) => p.waitForFunction((t) => { const e = document.querySelector('#toast'); return e && !e.hidden && e.textContent.includes(t); }, texto, { timeout: 8000 });
 const fila = (p, expte) => p.locator(`#main .causa[data-id="${expte}"]`);
-const abrir = async (p, expte) => { if (!(await p.locator('#main .causas').count())) { await p.click('#vLista'); await p.waitForSelector('#main .causas'); } await fila(p, expte).locator('.causa-info h3').click(); await p.waitForSelector('.panel'); };
+const sinFiltro = async (p) => { const c = p.locator('#stats .stat[data-q="u:Casillero"][aria-pressed="true"]'); if (await c.count()) await c.click(); }; // Causas abre filtrada por Casillero
+const abrir = async (p, expte) => { if (!(await p.locator('#main .causas').count())) { await p.click('#vLista'); await p.waitForSelector('#main .causas'); } await sinFiltro(p); await fila(p, expte).locator('.causa-info h3').click(); await p.waitForSelector('.panel'); };
 const cerrado = (p) => p.waitForSelector('#drawer', { state: 'hidden' });
 const enfocado = (p) => p.evaluate(() => document.activeElement?.id);
 async function leer(descarga) { const partes = []; for await (const c of await descarga.createReadStream()) partes.push(c); return Buffer.concat(partes); }
@@ -92,7 +93,9 @@ test('ingreso: clave equivocada, clave temporal y elección de la definitiva', a
   assert.equal(await page.locator('#ingresoCuerpo input').count(), 0, 'la clave no queda en la página');
 });
 
-test('listado: todas las causas sin filtros, menos las archivadas, y búsqueda', async () => {
+test('listado: abre en Casillero (sin las de acuerdo) y, sin filtro, todas menos las archivadas', async () => {
+  assert.equal(await page.locator('#stats .stat[data-q="u:Casillero"]').getAttribute('aria-pressed'), 'true', 'abre filtrada por Casillero');
+  await sinFiltro(page);
   assert.equal(await page.locator('#main .causa').count(), 3);
   assert.match(await page.textContent('#sub'), /3 causas/);
   const ids = () => page.locator('#main .causa').evaluateAll((rs) => rs.map((r) => r.dataset.id));
@@ -721,6 +724,7 @@ test('celular: tarjetas, filtros plegados y botón de nueva causa', async () => 
   const { c, p } = await nuevoContexto({ nombre: 'cel', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   await entrar(p, EMAIL, CLAVE + '-2');
   await p.waitForSelector('#main .causas');
+  await sinFiltro(p);
   assert.equal(await p.locator('#main .causa').count(), 3);
   assert.equal(await p.isVisible('#fabNew'), true, 'Nueva causa flota en el celular');
   assert.equal(await p.isVisible('#btnTpl'), true, 'Plantillas está entre las vistas');

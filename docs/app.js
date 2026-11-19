@@ -14,6 +14,8 @@ const VERSION = '1.15.0';
 
 // Cuatro datos de cada causa, con valores fijos: los mismos que acepta la base (supabase/migrations/0007).
 const UBICACIONES = ['Casillero', 'A despacho'];
+// Causas abre en lo que está en el casillero (lo que hay que mirar primero); las de acuerdo van en su tarjeta.
+const TAG_INICIAL = 'u:Casillero';
 const ESTADO_MARTILLERO = '5. Martillero Designado'; // la tarjeta «Martillero designado» agrupa las causas en esa etapa
 const ESTADOS = ['0. Iniciamos', '1.1 Demanda', '1.2 Contestación', '2. No oposición de excepciones', '3. Sentencia', '4. Ejecución de Sentencia', '5. Martillero Designado'];
 const CAUTELARES = ['Sin Cautelar', 'Embargo de sueldo', 'Vehículo secuestrado'];
@@ -37,7 +39,7 @@ const COBRANZAS = 'cobranzas/'; // la app de cobranzas, en la misma base y con l
 
 const S = {
   pantalla: 'arranque',
-  q: '', estado: '', nom: '', tag: '', quick: '', arch: false, view: 'inicio', sort: { k: 'dias', dir: -1 },
+  q: '', estado: '', nom: '', tag: TAG_INICIAL, quick: '', arch: false, view: 'inicio', sort: { k: 'dias', dir: -1 },
   open: null, isNew: false, confirmDel: false, choque: null, // ficha abierta
   fh: 'todo', // qué movimientos se ven en la ficha: todos o un tipo (TIPOS_MOV)
   planilla: false, liqSucia: false, // la planilla de liquidación está a la vista / tiene cambios sin guardar
@@ -453,7 +455,7 @@ function vistaLiq() {
 
 function irA(v) {
   if (v === 'plantillas') { abrirPlantillas(); return; }
-  S.view = v; S.q = ''; S.tag = ''; S.quick = ''; S.arch = false; $('#q').value = '';
+  S.view = v; S.q = ''; S.tag = TAG_INICIAL; S.quick = ''; S.arch = false; $('#q').value = '';
   render(); window.scrollTo(0, 0);
 }
 function accionInicio(k) {
