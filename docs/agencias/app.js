@@ -416,6 +416,8 @@ const GASTOS_RAPIDA = [
   ['cuotaSocial', 'Cuota social (por cuota)', '$'], ['igr', 'IGR (sobre los intereses)', '%'],
 ];
 // Los que se reparten en las cuotas van plegados (pedido de la persona del 19/11/2026); se tocan poco.
+// Se calcula igual con el valor de los parámetros, pero no se muestra (pedido de la persona, 19/11/2026).
+const GASTOS_OCULTOS = ['arancelMin'];
 const GASTOS_PLEGADOS = ['seguro', 'administrativos', 'cuotaSocial', 'igr'];
 // Al lado de estos porcentajes, el monto que dio la última simulación.
 const CON_MONTO = ['sellado', 'arancel'];
@@ -456,7 +458,7 @@ function vistaRapida() {
     return `<label class="f">${esc(etq)}${monto == null ? input : `<span class="con-monto">${input}<span class="monto-calc" title="Monto según la última simulación">${monto === '' ? '' : `= ${plata(monto)}`}</span></span>`}</label>`;
   };
   const gasto = ([k, etq, u]) => campo(`g.${k}`, `${etq} (${u})`, R.g[k], '', CON_MONTO.includes(k) ? (r ? r[k] ?? '' : '') : null);
-  const visibles = GASTOS_RAPIDA.filter(([k]) => !GASTOS_PLEGADOS.includes(k)), plegados = GASTOS_RAPIDA.filter(([k]) => GASTOS_PLEGADOS.includes(k));
+  const visibles = GASTOS_RAPIDA.filter(([k]) => !GASTOS_PLEGADOS.includes(k) && !GASTOS_OCULTOS.includes(k)), plegados = GASTOS_RAPIDA.filter(([k]) => GASTOS_PLEGADOS.includes(k));
   const form = `<section class="card no-imprimir">
     <div class="card-cab"><h2>Simulación rápida</h2></div>
     <p class="hint">Sin CUIT ni vehículo: escribí el capital, las cuotas, la tasa y los gastos. Solo para tu cuenta.</p>
