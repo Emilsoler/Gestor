@@ -747,13 +747,41 @@ function vistaSolicitud() {
 // Lo que sale en papel: solo la simulación hecha, con una introducción y un cierre breves (pedido de la persona, 19/11/2026).
 // En pantalla no se ve; styles.css lo muestra al imprimir y esconde el resto del resultado.
 function hojaImprimir(r, vehiculo) {
+  // Diseño (pedido de la persona, 19/11/2026): franjas blancas y negras como el escudo, el escudo grande y muy tenue de
+  // fondo, letras con estilo (Cinzel y EB Garamond cursiva, que ya trae la app) y el nombre de la Mutual en cursiva al pie.
+  const franja = '<div class="hoja-franja" aria-hidden="true"></div>';
   return `<div class="hoja-imprimir">
-    <p>Hola, acá te informamos cómo quedaría el crédito que solicitaste:</p>
-    ${vehiculo ? `<p class="hoja-dato">${esc(vehiculo)}</p>` : ''}
-    <p class="hoja-dato">Crédito de <b>${plata(r.monto)}</b> en ${r.cuotas} ${r.cuotas === 1 ? 'cuota' : 'cuotas'} de <b>${plata(r.cuota)}</b>.</p>
-    <p>Gracias por pensar en nosotros para la compra de tu próximo auto. Quedamos a tu disposición para más consultas.</p>
-    <p class="hoja-firma">ASOCIACIÓN MUTUAL BELL</p>
+    ${franja}
+    <img class="hoja-fondo" src="logo.svg" alt="">
+    <div class="hoja-cuerpo">
+      <img class="hoja-escudo" src="logo.svg" alt="" width="84" height="84">
+      <p class="hoja-titulo">Simulación de crédito prendario</p>
+      <div class="hoja-adorno" aria-hidden="true"><i></i><b></b><i></i></div>
+      <p class="hoja-saludo">Hola, acá te informamos cómo quedaría el crédito que solicitaste:</p>
+      ${vehiculo ? `<p class="hoja-vehiculo">${esc(vehiculo)}</p>` : ''}
+      <div class="hoja-monto">
+        <span class="hoja-rotulo">Crédito de</span>
+        <span class="hoja-cifra">${plata(r.monto)}</span>
+        <span class="hoja-plan">en <b>${r.cuotas} ${r.cuotas === 1 ? 'cuota' : 'cuotas'}</b> de <b>${plata(r.cuota)}</b></span>
+      </div>
+      <div class="hoja-adorno" aria-hidden="true"><i></i><b></b><i></i></div>
+      <p class="hoja-gracias">Gracias por pensar en nosotros para la compra de tu próximo auto. Quedamos a tu disposición para más consultas.</p>
+    </div>
+    <p class="hoja-firma">Asociación Mutual Bell</p>
+    ${franja}
   </div>`;
+}
+
+// La hoja está oculta en pantalla, así que el navegador no bajó sus tipografías: se piden antes de imprimir
+// (si no llegan a tiempo, se imprime igual con las de reemplazo).
+async function imprimir() {
+  try {
+    await Promise.race([
+      Promise.all(['400 20px "Cinzel"', 'italic 400 20px "EB Garamond"', '400 20px "EB Garamond"', '700 20px "EB Garamond"'].map((f) => document.fonts.load(f))),
+      new Promise((ok) => setTimeout(ok, 2500)),
+    ]);
+  } catch { /* se imprime con lo que haya */ }
+  window.print();
 }
 
 function vistaResultado(r) {
@@ -904,7 +932,7 @@ document.addEventListener('click', (e) => {
   else if (t.id === 'btnCotizar') cotizar();
   else if (t.dataset.plazo) { S.plazo = Number(t.dataset.plazo); if (S.res) cotizar(); else render(); }
   else if (t.id === 'btnWhatsapp' && S.res) window.open(`https://wa.me/?text=${encodeURIComponent(textoParaComprador(S.res))}`, '_blank', 'noopener');
-  else if (t.id === 'btnImprimir') window.print();
+  else if (t.id === 'btnImprimir') imprimir();
   else if (t.id === 'btnOtroCliente') otroCliente();
   else if (t.id === 'btnContinuar') { S.continuo = true; render(); }
   else if (t.id === 'btnAvanzar') abrirSolicitud();
