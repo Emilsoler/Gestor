@@ -487,6 +487,7 @@ function vistaRapida() {
     </tbody></table>
     ${opciones ? `<div class="scroll"><table><thead><tr><th>Otros plazos con este monto</th><th class="num">Cuota</th></tr></thead><tbody>${opciones}</tbody></table></div>` : ''}
     <p class="leyenda tasas m0">Tasa mensual ${pct(r.tasa)} · TNA ${pct(r.tna)} · TEA ${pct(r.tea)} · CFT ${pct(r.cft)}. No incluye IVA.</p>
+    ${hojaImprimir(r, '')}
     <div class="acciones no-imprimir">
       <button class="btn" type="button" id="btnWhatsappRapida">Enviar por WhatsApp</button>
       <button class="btn" type="button" id="btnImprimir">Imprimir</button>
@@ -728,6 +729,18 @@ function vistaSolicitud() {
   return html;
 }
 
+// Lo que sale en papel: solo la simulación hecha, con una introducción y un cierre breves (pedido de la persona, 19/11/2026).
+// En pantalla no se ve; styles.css lo muestra al imprimir y esconde el resto del resultado.
+function hojaImprimir(r, vehiculo) {
+  return `<div class="hoja-imprimir">
+    <p>Hola, acá te informamos cómo quedaría el crédito que solicitaste:</p>
+    ${vehiculo ? `<p class="hoja-dato">${esc(vehiculo)}</p>` : ''}
+    <p class="hoja-dato">Crédito de <b>${plata(r.monto)}</b> en ${r.cuotas} ${r.cuotas === 1 ? 'cuota' : 'cuotas'} de <b>${plata(r.cuota)}</b>.</p>
+    <p>Gracias por pensar en nosotros para la compra de tu próximo auto. Quedamos a tu disposición para más consultas.</p>
+    <p class="hoja-firma">ASOCIACIÓN MUTUAL BELL</p>
+  </div>`;
+}
+
 function vistaResultado(r) {
   if (!r.financiable) return `<section class="card resultado" id="resultado"><h2>No se puede financiar</h2><p class="m0">${esc(r.mensaje || 'Este vehículo no alcanza las condiciones del crédito.')}</p></section>`;
   const opciones = opcionesVisibles(r).map((o) => `<tr class="${o.cuotas === r.cuotas ? 'elegido' : ''}"><td>${o.cuotas} ${o.cuotas === 1 ? 'cuota' : 'cuotas'}</td><td class="num">${plata(o.cuota)}</td></tr>`).join('');
@@ -745,6 +758,7 @@ function vistaResultado(r) {
     <div class="scroll"><table><thead><tr><th>Otros plazos con este monto</th><th class="num">Cuota</th></tr></thead><tbody>${opciones}</tbody></table></div>
     <p class="leyenda tasas m0">TNA ${pct(r.tna)} · TEA ${pct(r.tea)} · CFT ${pct(r.cft)}. El CFT incluye los gastos de otorgamiento, el seguro, los gastos administrativos y la cuota social. No incluye IVA. ${esc(r.leyenda || '')}</p>
     ${r.contacto ? `<p class="leyenda m0">${esc(r.contacto)}</p>` : ''}
+    ${hojaImprimir(r, `${r.vehiculo} · ${etiquetaAnio(r.anio)}`)}
     <div class="acciones no-imprimir">
       <button class="btn" type="button" id="btnWhatsapp">Enviar al cliente por WhatsApp</button>
       <button class="btn" type="button" id="btnImprimir">Imprimir</button>

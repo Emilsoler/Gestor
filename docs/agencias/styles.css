@@ -138,6 +138,10 @@ tr.elegido td{background:#e9e9e9;color:#000;font-weight:600}
 .check{align-items:flex-start}
 .check input{flex:none;margin-top:1px}
 
+@font-face{font-family:"EB Garamond";font-weight:400;font-display:swap;src:url(../fonts/eb-garamond-400.ttf) format("truetype")}
+@font-face{font-family:"EB Garamond";font-weight:700;font-display:swap;src:url(../fonts/eb-garamond-700.ttf) format("truetype")}
+.hoja-imprimir{display:none}
+@page{margin:22mm 20mm}
 @media print{
   .cab,.pie,.no-imprimir{display:none !important}
   body{background:#fff;color:#000}
@@ -145,6 +149,13 @@ tr.elegido td{background:#e9e9e9;color:#000;font-weight:600}
   .card{border:1px solid #999;background:#fff;color:#000}
   .hint,.leyenda,.destacado .titulo,th{color:#333}
   tr.elegido td{color:#000}
+  /* Hoja impresa: solo la carta con la simulación. */
+  .resultado{border:0;padding:0;background:#fff}
+  .resultado > :not(.hoja-imprimir){display:none !important}
+  .hoja-imprimir{display:flex;flex-direction:column;min-height:88vh;font-family:"EB Garamond",Georgia,serif;font-size:22pt;line-height:1.5;color:#000;text-align:justify;hyphens:auto}
+  .hoja-imprimir p{margin:0 0 .9em}
+  .hoja-imprimir .hoja-dato{text-align:center}
+  .hoja-imprimir .hoja-firma{margin:auto 0 0;text-align:center;font-weight:700;letter-spacing:.04em}
 }
 
 /* Foto del vehículo (la trae la función, ver supabase/functions/agencias/foto.js). Si no hay foto, el lugar no se ve. */
