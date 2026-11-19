@@ -609,6 +609,8 @@ test('simulación rápida: solo la agencia marcada, con capital, cuotas, tasa y 
   assert.equal(r.datos.cuota, esperado.cuota);
   assert.equal(r.datos.total, esperado.totalCredito);
   assert.equal(r.datos.gastos_otorgamiento, esperado.gastos);
+  assert.equal(r.datos.sellado, esperado.sellado);
+  assert.equal(r.datos.arancel, esperado.arancel);
   assert.equal(r.datos.tna, 72);
   assert.equal(sql('select count(*) from public.cotizaciones_agencia'), '0', 'no cuenta para el tope ni queda registrada');
 

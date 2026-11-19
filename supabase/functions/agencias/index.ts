@@ -465,7 +465,7 @@ export async function manejar(req: Request): Promise<Response> {
       const opciones = plazosValidos(a).map((n) => { const s = simularCredito({ capital, cuotas: n, g, tasa }); return s ? { cuotas: n, cuota: s.cuota } : null; }).filter(Boolean);
       return responder({
         financiable: true, rapida: true, monto: capital, cuotas, cuota: sim.cuota, total: sim.totalCredito, tasa,
-        gastos_otorgamiento: sim.gastos, ...tasasDelCredito(sim), opciones,
+        gastos_otorgamiento: sim.gastos, sellado: sim.sellado, arancel: sim.arancel, ...tasasDelCredito(sim), opciones,
       }, 200, cors);
     }
     if (accion === 'bcra') {

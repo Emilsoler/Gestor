@@ -799,7 +799,7 @@ Mutual y no nombra a InfoAuto.
   la agencia con `agencias.simulacion_rapida = true`** (hoy únicamente PROPIO). Capital, cuotas, tasa mensual y los gastos de
   `GASTOS_DEFECTO` escritos a mano (arrancan en la tasa del 0 km y los gastos de los parámetros), sin CUIT, sin BCRA y sin vehículo.
   Acción `rapida` de la función (a cualquier otra agencia o a la vista previa le contesta «Pedido desconocido»); no usa InfoAuto, no
-  se registra en `cotizaciones_agencia` ni cuenta para el tope. `vistaRapida` y `simularRapida` en `docs/agencias/app.js`. Para dársela
+  se registra en `cotizaciones_agencia` ni cuenta para el tope. `vistaRapida` y `simularRapida` en `docs/agencias/app.js`. Al lado del sellado y del arancel se ve el monto que dio la última simulación (la función devuelve `sellado` y `arancel`), y seguro, administrativos, cuota social e IGR van plegados en «Gastos que se reparten en las cuotas» (pedido del 19/11/2026). Para dársela
   o quitársela a otra cuenta: `update public.agencias set simulacion_rapida = … where email = '…'` (con `set_config('gestor.autor', 'Claude', true)`),
   solo si la persona lo pide.
 - **Tablas** (migración 0025): `public.agencias` (nombre, email, cuenta, `activa`, `informada_infoauto` —fecha

@@ -415,6 +415,10 @@ const GASTOS_RAPIDA = [
   ['seguro', 'Seguro (por cuota, sobre el capital)', '%'], ['administrativos', 'Gastos administrativos (por cuota)', '$'],
   ['cuotaSocial', 'Cuota social (por cuota)', '$'], ['igr', 'IGR (sobre los intereses)', '%'],
 ];
+// Los que se reparten en las cuotas van plegados (pedido de la persona del 19/11/2026); se tocan poco.
+const GASTOS_PLEGADOS = ['seguro', 'administrativos', 'cuotaSocial', 'igr'];
+// Al lado de estos porcentajes, el monto que dio la última simulación.
+const CON_MONTO = ['sellado', 'arancel'];
 /** Número escrito a la argentina («1.500.000», «1,2») → número. */
 const numAR = (x) => Number(String(x ?? '').trim().replace(/\./g, '').replace(',', '.')) || 0;
 const escribirAR = (n, dec = 2) => (Number(n) || 0).toLocaleString('es-AR', { maximumFractionDigits: dec });
@@ -424,7 +428,7 @@ function nuevaRapida() {
   return {
     capital: '', cuotas: String(S.yo?.plazos?.[S.yo.plazos.length - 1] || 12), tasa: escribirAR(R.tasa ?? 5),
     g: Object.fromEntries(GASTOS_RAPIDA.map(([k]) => [k, escribirAR(g[k] ?? 0)])),
-    res: null, error: '', cargando: false,
+    res: null, error: '', cargando: false, otros: false,
   };
 }
 
@@ -447,7 +451,12 @@ function textoRapida(r) {
 
 function vistaRapida() {
   const R = S.rap ||= nuevaRapida(), r = R.res;
-  const campo = (id, etq, val, pista = '') => `<label class="f">${esc(etq)}<input data-rap="${id}" inputmode="decimal" autocomplete="off" value="${esc(val)}"${pista ? ` placeholder="${esc(pista)}"` : ''}></label>`;
+  const campo = (id, etq, val, pista = '', monto = null) => {
+    const input = `<input data-rap="${id}" inputmode="decimal" autocomplete="off" value="${esc(val)}"${pista ? ` placeholder="${esc(pista)}"` : ''}>`;
+    return `<label class="f">${esc(etq)}${monto == null ? input : `<span class="con-monto">${input}<span class="monto-calc" title="Monto según la última simulación">${monto === '' ? '' : `= ${plata(monto)}`}</span></span>`}</label>`;
+  };
+  const gasto = ([k, etq, u]) => campo(`g.${k}`, `${etq} (${u})`, R.g[k], '', CON_MONTO.includes(k) ? (r ? r[k] ?? '' : '') : null);
+  const visibles = GASTOS_RAPIDA.filter(([k]) => !GASTOS_PLEGADOS.includes(k)), plegados = GASTOS_RAPIDA.filter(([k]) => GASTOS_PLEGADOS.includes(k));
   const form = `<section class="card no-imprimir">
     <div class="card-cab"><h2>Simulación rápida</h2></div>
     <p class="hint">Sin CUIT ni vehículo: escribí el capital, las cuotas, la tasa y los gastos. Solo para tu cuenta.</p>
@@ -457,7 +466,11 @@ function vistaRapida() {
       ${campo('tasa', 'Tasa mensual (%)', R.tasa)}
     </div>
     <h3>Gastos</h3>
-    <div class="grilla">${GASTOS_RAPIDA.map(([k, etq, u]) => campo(`g.${k}`, `${etq} (${u})`, R.g[k])).join('')}</div>
+    <div class="grilla">${visibles.map(gasto).join('')}</div>
+    <details class="plegado" id="rapOtros"${R.otros ? ' open' : ''}>
+      <summary>Gastos que se reparten en las cuotas <span class="hint">(seguro ${esc(R.g.seguro)} %, administrativos $ ${esc(R.g.administrativos)}, cuota social $ ${esc(R.g.cuotaSocial)}, IGR ${esc(R.g.igr)} %)</span></summary>
+      <div class="grilla">${plegados.map(gasto).join('')}</div>
+    </details>
     ${R.error ? `<p class="aviso m0" role="alert">${esc(R.error)}</p>` : ''}
     <div class="acciones">
       <button class="btn primario" type="button" id="btnRapida" ${R.cargando ? 'disabled' : ''}>${R.cargando ? 'Calculando…' : 'Simular'}</button>
@@ -832,6 +845,7 @@ document.addEventListener('input', (e) => {
 document.addEventListener('focusin', (e) => {
   if (e.target.id === 'inVersion') { e.target.select(); abrirLista(S.version ? '' : e.target.value); }
 });
+document.addEventListener('toggle', (e) => { if (e.target.id === 'rapOtros' && S.rap) S.rap.otros = e.target.open; }, true);
 document.addEventListener('pointerdown', (e) => {
   if (!e.target.closest('.combo')) cerrarLista();
   else if (e.target.closest('#listaVersiones')) e.preventDefault(); // que el campo no pierda el foco antes del toque
