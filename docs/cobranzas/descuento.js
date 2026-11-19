@@ -9,6 +9,7 @@ import { soloDigitos, avisoCuit } from './creditos.js';
 export const ES_FECHA = /^\d{4}-\d{2}-\d{2}$/;
 export const ESTADOS_CHEQUE = { cartera: 'En cartera', cobrado: 'Cobrado', rechazado: 'Rechazado' };
 const DIA = 86_400_000;
+export const DIAS_EXTRA_MAX = 5;
 
 /** Días corridos de a hasta b (fechas AAAA-MM-DD, sin husos horarios). */
 export const diasEntre = (a, b) => Math.round((Date.UTC(...partes(b)) - Date.UTC(...partes(a))) / DIA);
@@ -20,7 +21,7 @@ const num = (s) => (typeof s === 'number' ? s : pct(s));
 export const nuevoCheque = () => ({ id: idNuevo(), entidad: '', banco: '', numero: '', librador: '', cuit: '', importe: '', vence: '', estado: 'cartera', fecha_estado: '', nota: '' });
 
 /**
- * El formulario de una operación nueva. Las condiciones (tasa, comisión, sellado, gastos, días de acreditación)
+ * El formulario de una operación nueva. Las condiciones (tasa, comisión, sellado, gastos, días extra de clearing)
  * arrancan como las de la última operación guardada, que suelen repetirse; sin ninguna, vacías: no se inventan tasas.
  */
 export function nuevoDescuento(hoy, ultima = null) {
@@ -60,7 +61,7 @@ const chequeVacio = (c) => !String(c.numero || '').trim() && !(importe(c.importe
 
 /**
  * La liquidación de una operación (fila de la base o filaDeForm). Por cada cheque:
- *   días      = de la fecha de la liquidación al vencimiento (0 si ya venció o vence hoy) + días de acreditación
+ *   días      = de la fecha de la liquidación al vencimiento (0 si ya venció o vence hoy) + días extra de clearing (0 a 5)
  *   interés   = valor × tasa % mensual / 30 × días   (interés simple, adelantado, sobre el valor del cheque)
  *   comisión  = valor × comisión %
  *   sellado   = valor × sellado %
@@ -77,7 +78,7 @@ export function liquidarDescuento(op) {
     const dias = plazo + extra;
     const interes = r2(valor * tasa / 100 / 30 * dias), comision = r2(valor * com / 100), sellado = r2(valor * sel / 100), g = valor > 0 ? r2(gastos) : 0;
     const descuento = r2(interes + comision + sellado + g);
-    return { ...c, importe: valor, vence, dias, interes, comision, sellado, gastos: g, descuento, neto: r2(valor - descuento) };
+    return { ...c, importe: valor, vence, plazo, extra, dias, interes, comision, sellado, gastos: g, descuento, neto: r2(valor - descuento) };
   });
   const suma = (k) => r2(cheques.reduce((a, c) => a + c[k], 0));
   const total = { importe: suma('importe'), interes: suma('interes'), comision: suma('comision'), sellado: suma('sellado'), gastos: suma('gastos'), descuento: suma('descuento'), neto: suma('neto') };
@@ -93,6 +94,8 @@ function problemasDescuento(op, cheques) {
   if (soloDigitos(op.cuit) && !avisoCuit(op.cuit).ok) p.push('El CUIT del cliente no es válido');
   if (!ES_FECHA.test(op.fecha || '')) p.push('Falta la fecha de la liquidación');
   for (const [k, t] of [['tasa', 'La tasa'], ['comision', 'La comisión'], ['sellado', 'El sellado']]) { const v = num(op[k]); if (!(v >= 0 && v <= 100)) p.push(`${t} tiene que ser un porcentaje de 0 a 100`); }
+  // Los días extra son los del clearing (0 a 2, a lo sumo unos pocos), no el plazo del cheque: ese sale de la fecha de pago.
+  if (!(+op.dias_extra >= 0 && +op.dias_extra <= DIAS_EXTRA_MAX)) p.push(`Los días extra de clearing van de 0 a ${DIAS_EXTRA_MAX} (el plazo del cheque ya sale de la fecha de pago)`);
   if (!cheques.length) p.push('Cargá al menos un cheque');
   cheques.forEach((c, i) => {
     const n = `Cheque ${i + 1}`;
@@ -135,9 +138,9 @@ export function htmlLiquidacionDescuento(e) {
   const validos = e.cheques.filter((c) => c.importe > 0);
   if (!validos.length) return '<p class="hint m0">Cargá el importe y la fecha de pago de cada cheque para ver la liquidación.</p>';
   const col = (x) => `<td class="num mono">${esc(plata(x))}</td>`;
-  const filas = validos.map((c, i) => `<tr><td>${i + 1}</td><td>${esc(c.vence ? fmt(c.vence) : '—')}</td><td class="num mono">${c.dias}</td>${col(c.importe)}${col(c.interes)}${col(c.comision)}${col(c.sellado)}${col(c.gastos)}<td class="num mono"><b>${esc(plata(c.neto))}</b></td></tr>`).join('');
+  const filas = validos.map((c, i) => `<tr><td>${i + 1}</td><td>${esc(c.vence ? fmt(c.vence) : '—')}</td><td class="num mono">${c.extra ? `${c.plazo} + ${c.extra}` : c.dias}</td>${col(c.importe)}${col(c.interes)}${col(c.comision)}${col(c.sellado)}${col(c.gastos)}<td class="num mono"><b>${esc(plata(c.neto))}</b></td></tr>`).join('');
   const t = e.total;
-  const condiciones = [`interés ${porciento(e.tasa)} mensual`, e.comisionPct ? `comisión ${porciento(e.comisionPct)}` : '', e.selladoPct ? `sellado ${porciento(e.selladoPct)}` : '', e.gastosFijos ? `gastos ${plata(e.gastosFijos)} por cheque` : '', e.diasExtra ? `${cuantos(e.diasExtra, 'día', 'días')} de acreditación` : ''].filter(Boolean).join(' · ');
+  const condiciones = [`interés ${porciento(e.tasa)} mensual`, e.comisionPct ? `comisión ${porciento(e.comisionPct)}` : '', e.selladoPct ? `sellado ${porciento(e.selladoPct)}` : '', e.gastosFijos ? `gastos ${plata(e.gastosFijos)} por cheque` : '', e.diasExtra ? `${cuantos(e.diasExtra, 'día extra', 'días extra')} de clearing por cheque` : ''].filter(Boolean).join(' · ');
   return `<div class="scrollx"><table class="tabla sim-tabla dc-tabla">
     <thead><tr><th>#</th><th>Vence</th><th class="num">Días</th><th class="num">Valor</th><th class="num">Interés</th><th class="num">Comisión</th><th class="num">Sellado</th><th class="num">Gastos</th><th class="num">Neto</th></tr></thead>
     <tbody>${filas}</tbody>
@@ -159,7 +162,7 @@ export function hojaDescuento(op, e, hoy) {
     [{ v: 'Comisión (%)' }, { v: e.comisionPct, s: 'texto' }],
     [{ v: 'Sellado (%)' }, { v: e.selladoPct, s: 'texto' }],
     [{ v: 'Gastos por cheque ($)' }, { v: e.gastosFijos, s: 'pesos' }],
-    [{ v: 'Días de acreditación' }, { v: e.diasExtra, s: 'texto' }],
+    [{ v: 'Días extra de clearing' }, { v: e.diasExtra, s: 'texto' }],
     [],
     ['Banco', 'N° de cheque', 'Librador', 'CUIT librador', 'Vence', 'Días', 'Valor', 'Interés', 'Comisión', 'Sellado', 'Gastos', 'Neto'].map((v) => ({ v, s: 'cab' })),
   ];

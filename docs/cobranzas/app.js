@@ -28,7 +28,7 @@ import { nuevaDemanda, nuevoDemandado, demandaDesdeDeudor, estadoDemanda, datosD
 import { abrirChat } from './chat.js';
 import { nuevoDescuento, nuevoCheque, formDeFila, filaDeForm, liquidarDescuento, cartera, resumenCartera, cuandoVence, bancoDe, htmlLiquidacionDescuento, hojaDescuento, ESTADOS_CHEQUE } from './descuento.js';
 
-const VERSION = '1.11.0';
+const VERSION = '1.11.1';
 const CLAVE_MIN = 10;
 const TIPOS_GESTION = ['Llamada', 'WhatsApp', 'Visita', 'Email', 'Carta documento', 'Promesa de pago', 'Nota'];
 const MEDIOS = ['Efectivo', 'Transferencia', 'Depósito', 'Cheque', 'Débito', 'Otro'];
@@ -1083,9 +1083,9 @@ function formDescuento() {
       ${campo('comision', 'Comisión (%)', ' placeholder="0"')}
       ${campo('sellado', 'Sellado (%)', ' placeholder="0"')}
       ${campo('gastos', 'Gastos por cheque ($)', ' data-importe placeholder="0"')}
-      ${campo('dias', 'Días de acreditación', ' maxlength="2" placeholder="0"', 'numeric')}
+      ${campo('dias', 'Días extra de clearing (0 a 5)', ' maxlength="1" placeholder="0"', 'numeric')}
     </div>
-    <p class="hint m0">El interés es simple, por cada 30 días, sobre el valor del cheque, desde la fecha de la liquidación hasta la fecha de pago (más los días de acreditación). Sin IVA.</p>
+    <p class="hint m0">Los días de cada cheque se cuentan solos, de la fecha de la liquidación a la fecha de pago. «Días extra de clearing» es solo lo que tarda el banco en acreditarlo después de esa fecha (casi siempre 0, 1 o 2). El interés es simple, por cada 30 días, sobre el valor del cheque. Sin IVA.</p>
     <datalist id="dcBancos">${bancos}</datalist>
     ${cheques}
     <div><button class="btn small" type="button" data-a="dc-cheque-mas">+ Agregar otro cheque</button></div>

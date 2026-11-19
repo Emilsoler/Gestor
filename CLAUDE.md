@@ -643,7 +643,8 @@ abajo, plegados, los rechazados con «¿Denunciado?» —abre la consulta de Che
 cartera») y **Operaciones** (las guardadas, con buscador; tocarla la abre en Liquidar para editarla o eliminarla).
 
 - **Cuentas** (`docs/cobranzas/descuento.js`, `liquidarDescuento`): por cheque, días = de la fecha de la liquidación a la fecha
-  de pago (0 si ya venció) + días de acreditación; interés = valor × tasa % mensual / 30 × días (simple, sobre el valor);
+  de pago (0 si ya venció) + días extra de clearing (0 a 5, `DIAS_EXTRA_MAX`; la columna Días muestra «30 + 2»: en nov 2026 la persona puso
+  el plazo del cheque en ese campo y le daba el doble de días); interés = valor × tasa % mensual / 30 × días (simple, sobre el valor);
   comisión y sellado = % sobre el valor; gastos = fijos por cheque; neto = valor − todo. Cada concepto se redondea a centavos
   cheque por cheque. Las condiciones de una operación nueva arrancan como las de la última guardada (no hay tasas por defecto:
   no inventarlas). **No se guardan cuentas**: con la misma fecha y condiciones da siempre lo mismo.

@@ -39,6 +39,18 @@ test('sin IVA: los descuentos son exactamente interés + comisión + sellado + g
   }
 });
 
+test('los días extra de clearing se ven aparte («30 + 2») y no pasan de 5: el plazo sale de la fecha de pago', () => {
+  const e = liquidarDescuento(op({ cheques: [cheque(1_000_000, '2026-12-18')] }));
+  assert.deepEqual([e.cheques[0].plazo, e.cheques[0].extra, e.cheques[0].dias], [30, 2, 32]);
+  assert.match(htmlLiquidacionDescuento(e), /30 \+ 2/);
+  const sin = liquidarDescuento(op({ dias_extra: 0, cheques: [cheque(1_000_000, '2026-12-18')] }));
+  assert.match(htmlLiquidacionDescuento(sin), />30</);
+  assert.doesNotMatch(htmlLiquidacionDescuento(sin), /\+ 0/);
+  // El caso que llevó a esto: el plazo escrito también como días extra daba el doble.
+  const mal = liquidarDescuento(op({ dias_extra: 30, cheques: [cheque(1_000_000, '2026-12-18')] }));
+  assert.ok(mal.problemas.some((p) => /clearing van de 0 a 5/.test(p)));
+});
+
 test('días entre fechas, sin husos horarios (también con el cambio de año)', () => {
   assert.equal(diasEntre('2026-11-18', '2026-12-18'), 30);
   assert.equal(diasEntre('2026-12-31', '2027-01-01'), 1);
