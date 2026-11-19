@@ -225,7 +225,7 @@ function filtered() {
   const r = D.causas.filter((c) => {
     if (q) { const h = [c.actor, c.demandado, c.tipo, c.expte, c.ultima, c.proxima, c.oficina, c.notas, c.ubicacion, c.estado, c.cautelar].join(' ').toLowerCase(); if (!h.includes(q)) return false; }
     // Las tarjetas de abajo del buscador: Casillero / A despacho (ubicación) o Acuerdos (situación).
-    if (S.tag.startsWith('u:') && (isArch(c) || isAcu(c) || c.ubicacion !== S.tag.slice(2) || (S.tag === 'u:Casillero' && c.estado === ESTADO_MARTILLERO))) return false; // con martillero designado van en su tarjeta, no en Casillero
+    if (S.tag.startsWith('u:') && (isArch(c) || isAcu(c) || c.ubicacion !== S.tag.slice(2) || c.estado === ESTADO_MARTILLERO)) return false; // con martillero designado van solo en su tarjeta, no en Casillero ni en A despacho
     if (S.quick === 'acu' && !isAcu(c)) return false;
     if (S.quick === 'mart' && (isAcu(c) || c.estado !== ESTADO_MARTILLERO)) return false;
     return true;
@@ -241,7 +241,7 @@ function renderStats() {
   const vivas = D.causas.filter((c) => !isArch(c) && !isAcu(c));
   const items = [
     { id: 'u:Casillero', n: vivas.filter((c) => c.ubicacion === 'Casillero' && c.estado !== ESTADO_MARTILLERO).length, l: 'Casillero' },
-    { id: 'u:A despacho', n: vivas.filter((c) => c.ubicacion === 'A despacho').length, l: 'A despacho' },
+    { id: 'u:A despacho', n: vivas.filter((c) => c.ubicacion === 'A despacho' && c.estado !== ESTADO_MARTILLERO).length, l: 'A despacho' },
     { id: 'mart', n: vivas.filter((c) => c.estado === ESTADO_MARTILLERO).length, l: 'Martillero designado' },
     { id: 'acu', n: D.causas.filter(isAcu).length, l: 'Acuerdos' }];
   // Casillero y A despacho filtran por la ubicación; las otras, por la situación de la causa.
