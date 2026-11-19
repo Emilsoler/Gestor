@@ -158,28 +158,26 @@ tr.elegido td{background:#e9e9e9;color:#000;font-weight:600}
   .hoja-imprimir{-webkit-print-color-adjust:exact;print-color-adjust:exact;display:flex;flex-direction:column;position:relative;overflow:hidden;
     width:210mm;height:296mm;box-sizing:border-box;font-family:"EB Garamond",Georgia,serif;color:#000;text-align:center;background:#fff}
   .hoja-imprimir p{margin:0}
-  /* Franja como el escudo: negro con barras blancas verticales. */
-  .hoja-franja{flex:none;height:16mm;background:
-    repeating-linear-gradient(90deg,#000 0,#000 9mm,#fff 9mm,#fff 15mm,#000 15mm,#000 24mm);
-    border-bottom:1.2mm solid #000;box-shadow:inset 0 -3.5mm 0 #000}
-  .hoja-franja:last-child{border-bottom:0;border-top:1.2mm solid #000;box-shadow:inset 0 3.5mm 0 #000}
-  /* Escudo enorme y muy tenue detrás de todo. */
-  .hoja-fondo{position:absolute;left:50%;top:50%;width:175mm;height:175mm;transform:translate(-50%,-48%);opacity:.045;z-index:0}
-  .hoja-cuerpo{position:relative;z-index:1;flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:0 24mm;gap:7mm}
-  .hoja-escudo{width:26mm;height:26mm}
-  .hoja-titulo{font-family:"Cinzel",Georgia,serif;font-size:15pt;letter-spacing:.32em;text-transform:uppercase;line-height:1.4;padding-left:.32em}
+  .hoja-cuerpo{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:0 24mm;gap:7mm}
+  .hoja-cabeza{display:flex;align-items:center;justify-content:center;gap:9mm}
+  .hoja-escudo{width:28mm;height:28mm}
+  /* La foto del vehículo (si la hay): un poco más grande que el escudo, a su lado. */
+  .hoja-foto{margin:0;height:34mm;max-width:62mm;display:flex;align-items:center}
+  .hoja-foto:empty{display:none}
+  .hoja-foto img{height:100%;max-width:100%;object-fit:contain}
+  .hoja-titulo{font-weight:700;font-size:15pt;letter-spacing:.3em;text-transform:uppercase;line-height:1.4;padding-left:.3em}
   .hoja-adorno{display:flex;align-items:center;justify-content:center;gap:4mm;width:100%}
   .hoja-adorno i{flex:1;max-width:55mm;height:0;border-top:.35mm solid #000}
   .hoja-adorno b{width:2.6mm;height:2.6mm;background:#000;transform:rotate(45deg)}
-  .hoja-saludo{font-style:italic;font-size:17pt;line-height:1.45;max-width:140mm}
+  .hoja-saludo{font-size:17pt;line-height:1.45;max-width:140mm}
   .hoja-vehiculo{font-family:"Cinzel",Georgia,serif;font-size:19pt;line-height:1.3;letter-spacing:.06em}
-  .hoja-monto{display:flex;flex-direction:column;align-items:center;gap:2mm;padding:9mm 12mm;border:.6mm solid #000;outline:.25mm solid #000;outline-offset:1.6mm;background:rgba(255,255,255,.82)}
+  .hoja-monto{display:flex;flex-direction:column;align-items:center;gap:2mm;padding:9mm 12mm;border:.6mm solid #000;outline:.25mm solid #000;outline-offset:1.6mm;}
   .hoja-rotulo{font-family:"Cinzel",Georgia,serif;font-size:11pt;letter-spacing:.3em;text-transform:uppercase;padding-left:.3em}
   .hoja-cifra{font-family:"Cinzel",Georgia,serif;font-size:46pt;line-height:1.1;letter-spacing:.02em}
   .hoja-plan{font-size:21pt;line-height:1.4}
   .hoja-plan b{font-weight:700}
   .hoja-gracias{font-size:15pt;line-height:1.55;max-width:130mm}
-  .hoja-firma{position:relative;z-index:1;flex:none;font-style:italic;font-size:30pt;line-height:1;padding:0 0 9mm;margin:0}
+  .hoja-firma{flex:none;font-style:italic;font-size:30pt;line-height:1;padding:0 0 9mm;margin:0}
   .hoja-firma::before{content:"";display:block;width:40mm;margin:0 auto 6mm;border-top:.35mm solid #000}
 }
 

@@ -395,6 +395,8 @@ async function cargarFoto(ref) {
   if (S.foto?.ref !== ref || !/^data:image\/(jpeg|png|webp);base64,/.test(String(src || ''))) return;
   S.foto.src = src;
   const f = $('#fotoVehiculo');
+  const h = $('#hojaFoto');
+  if (h) h.innerHTML = `<img src="${src}" alt="">`;
   if (f) f.innerHTML = `<img src="${src}" alt="Foto del vehículo">`; else render();
 }
 
@@ -747,14 +749,12 @@ function vistaSolicitud() {
 // Lo que sale en papel: solo la simulación hecha, con una introducción y un cierre breves (pedido de la persona, 19/11/2026).
 // En pantalla no se ve; styles.css lo muestra al imprimir y esconde el resto del resultado.
 function hojaImprimir(r, vehiculo) {
-  // Diseño (pedido de la persona, 19/11/2026): franjas blancas y negras como el escudo, el escudo grande y muy tenue de
-  // fondo, letras con estilo (Cinzel y EB Garamond cursiva, que ya trae la app) y el nombre de la Mutual en cursiva al pie.
-  const franja = '<div class="hoja-franja" aria-hidden="true"></div>';
+  // Diseño (pedido de la persona, 19/11/2026): el escudo arriba, con la foto del vehículo al lado si la hay, letras con estilo
+  // (Cinzel y EB Garamond, que ya trae la app) y el nombre de la Mutual en cursiva al pie. Sin franjas ni imagen de fondo.
+  const foto = vehiculo ? `<figure class="hoja-foto" id="hojaFoto">${S.foto?.ref === S.version && S.foto.src ? `<img src="${S.foto.src}" alt="">` : ''}</figure>` : '';
   return `<div class="hoja-imprimir">
-    ${franja}
-    <img class="hoja-fondo" src="logo.svg" alt="">
     <div class="hoja-cuerpo">
-      <img class="hoja-escudo" src="logo.svg" alt="" width="84" height="84">
+      <div class="hoja-cabeza"><img class="hoja-escudo" src="logo.svg" alt="" width="84" height="84">${foto}</div>
       <p class="hoja-titulo">Simulación de crédito prendario</p>
       <div class="hoja-adorno" aria-hidden="true"><i></i><b></b><i></i></div>
       <p class="hoja-saludo">Hola, acá te informamos cómo quedaría el crédito que solicitaste:</p>
@@ -768,7 +768,6 @@ function hojaImprimir(r, vehiculo) {
       <p class="hoja-gracias">Gracias por pensar en nosotros para la compra de tu próximo auto. Quedamos a tu disposición para más consultas.</p>
     </div>
     <p class="hoja-firma">Asociación Mutual Bell</p>
-    ${franja}
   </div>`;
 }
 
