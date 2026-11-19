@@ -28,7 +28,7 @@ import { nuevaDemanda, nuevoDemandado, demandaDesdeDeudor, estadoDemanda, datosD
 import { abrirChat } from './chat.js';
 import { nuevoDescuento, nuevoCheque, formDeFila, filaDeForm, liquidarDescuento, cartera, resumenCartera, cuandoVence, bancoDe, htmlLiquidacionDescuento, hojaDescuento, ESTADOS_CHEQUE } from './descuento.js';
 
-const VERSION = '1.11.1';
+const VERSION = '1.11.2';
 const CLAVE_MIN = 10;
 const TIPOS_GESTION = ['Llamada', 'WhatsApp', 'Visita', 'Email', 'Carta documento', 'Promesa de pago', 'Nota'];
 const MEDIOS = ['Efectivo', 'Transferencia', 'Depósito', 'Cheque', 'Débito', 'Otro'];
@@ -1056,13 +1056,13 @@ function formDescuento() {
   const C = S.cred.dc, F = C.f, abierta = dcAbierta(), k = (c) => 'cred.dc.f.' + c;
   if (C.id && !abierta) C.id = ''; // la eliminaron desde otro lugar: lo escrito queda como operación nueva
   const campo = (c, t, extra = '', modo = 'decimal') => `<label class="f">${t}<input id="dc_${c.replace(/\./g, '_')}" ${atar(k(c))} inputmode="${modo}" autocomplete="off"${extra}></label>`;
-  const bancos = (S.cred.bancos || []).map((b) => `<option value="${esc(b.nombre)}"></option>`).join('');
   const cheques = F.cheques.map((c, i) => {
     const est = c.estado && c.estado !== 'cartera' ? ' ' + pill(ESTADOS_CHEQUE[c.estado] + (c.fecha_estado ? ' el ' + fmt(c.fecha_estado) : ''), c.estado === 'cobrado' ? 's-ok' : 's-bad') : '';
     return `<div class="dc-cheque"><h4>Cheque ${i + 1}${est}</h4><div class="sim-form rf-pago">
       ${campo(`cheques.${i}.importe`, 'Importe ($)', ' data-importe')}
       <label class="f">Fecha de pago<input type="date" data-k="${k(`cheques.${i}.vence`)}" value="${esc(c.vence)}"></label>
-      <label class="f dc-largo">Banco<input list="dcBancos" ${atar(k(`cheques.${i}.banco`))} autocomplete="off" placeholder="${S.cred.bancos ? 'Escribí para buscar' : ''}"></label>
+      <div class="dc-largo dc-banco"><label class="f">Banco<input id="dc_banco_${i}" ${atar(k(`cheques.${i}.banco`))} data-dc-i="${i}" autocomplete="off" autocorrect="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-controls="dcSug${i}" aria-expanded="false" placeholder="${S.cred.bancos ? 'Escribí para buscar' : ''}"></label>
+        <div class="dc-sug" id="dcSug${i}" role="listbox" hidden></div></div>
       ${campo(`cheques.${i}.numero`, 'N° de cheque', ' maxlength="24"', 'numeric')}
       ${campo(`cheques.${i}.librador`, 'Librador', ' maxlength="200"', 'text').replace('class="f"', 'class="f dc-largo"')}
       ${campo(`cheques.${i}.cuit`, 'CUIT del librador', ' maxlength="20"', 'numeric')}
@@ -1086,7 +1086,6 @@ function formDescuento() {
       ${campo('dias', 'Días extra de clearing (0 a 5)', ' maxlength="1" placeholder="0"', 'numeric')}
     </div>
     <p class="hint m0">Los días de cada cheque se cuentan solos, de la fecha de la liquidación a la fecha de pago. «Días extra de clearing» es solo lo que tarda el banco en acreditarlo después de esa fecha (casi siempre 0, 1 o 2). El interés es simple, por cada 30 días, sobre el valor del cheque. Sin IVA.</p>
-    <datalist id="dcBancos">${bancos}</datalist>
     ${cheques}
     <div><button class="btn small" type="button" data-a="dc-cheque-mas">+ Agregar otro cheque</button></div>
     <label class="f">Notas<input id="dc_notas" ${atar(k('notas'))} maxlength="4000" autocomplete="off" placeholder="Opcional"></label>
@@ -1147,6 +1146,35 @@ function operacionesDescuento() {
 }
 
 /** Al escribir el banco: si es uno de la lista del BCRA, se guarda también su código (para consultar si está denunciado). */
+// Lista propia debajo del campo Banco: la sugerencia nativa (datalist) en el iPhone aparece arriba del teclado, cortada
+// a dos opciones. Primero los bancos ya usados en operaciones guardadas; las palabras se buscan en cualquier orden y sin tildes.
+function bancosParaElegir(texto) {
+  const todos = S.cred.bancos || [], usados = new Set();
+  for (const op of D.descuentos_cheques) for (const c of op.cheques || []) if (c.entidad) usados.add(+c.entidad);
+  const xs = todos.filter((b) => coincide(b.nombre, texto));
+  return [...xs.filter((b) => usados.has(b.codigo)), ...xs.filter((b) => !usados.has(b.codigo))].slice(0, 8);
+}
+function mostrarBancos(i) {
+  const caja = $('#dcSug' + i), campo = $('#dc_banco_' + i); if (!caja || !campo) return;
+  const texto = campo.value.trim(), xs = texto ? bancosParaElegir(texto) : [];
+  const exacto = xs.length === 1 && xs[0].nombre.toLowerCase() === texto.toLowerCase();
+  const ver = xs.length > 0 && !exacto;
+  caja.innerHTML = ver ? xs.map((b) => `<button type="button" role="option" class="dc-sug-op" data-dc-banco="${b.codigo}" data-i="${i}">${esc(b.nombre)}</button>`).join('') : '';
+  caja.hidden = !ver; campo.setAttribute('aria-expanded', String(ver));
+}
+function elegirBancoDc(codigo, i) {
+  const b = (S.cred.bancos || []).find((x) => x.codigo === +codigo), c = S.cred.dc.f?.cheques[+i]; if (!b || !c) return;
+  Object.assign(c, { banco: b.nombre, entidad: String(b.codigo) });
+  const campo = $('#dc_banco_' + i); if (campo) campo.value = b.nombre;
+  const caja = $('#dcSug' + i); if (caja) { caja.hidden = true; caja.innerHTML = ''; }
+  campo?.setAttribute('aria-expanded', 'false');
+  actualizarDescuento();
+  $(`#dc_cheques_${i}_numero`)?.focus();
+}
+document.addEventListener('focusin', (e) => { if (e.target.matches?.('[data-dc-i]')) mostrarBancos(e.target.dataset.dcI); });
+// Al salir del campo se cierra, con una espera corta para que el toque en una opción llegue antes.
+document.addEventListener('focusout', (e) => { if (e.target.matches?.('[data-dc-i]')) { const i = e.target.dataset.dcI; setTimeout(() => { const c = $('#dcSug' + i); if (c && !c.contains(document.activeElement)) { c.hidden = true; $('#dc_banco_' + i)?.setAttribute('aria-expanded', 'false'); } }, 200); } });
+
 function bancoDelCheque(k, texto) {
   const t = String(texto || '').trim().toLowerCase(), b = (S.cred.bancos || []).find((x) => x.nombre.toLowerCase() === t);
   poner(k.replace(/\.banco$/, '.entidad'), b ? String(b.codigo) : '');
@@ -2607,6 +2635,7 @@ document.addEventListener('click', async (e) => {
   const rf = t.closest('[data-refi]'); if (rf) { elegirRefi(rf.dataset.refi); return; }
   const dpd = t.closest('[data-dp-deudor]'); if (dpd) { elegirDemanda(dpd.dataset.dpDeudor); return; }
   const cs = t.closest('[data-caso]'); if (cs) { abrirCaso(cs.dataset.caso); return; }
+  const dcb = t.closest('[data-dc-banco]'); if (dcb) { elegirBancoDc(dcb.dataset.dcBanco, dcb.dataset.i); return; }
   const chq = t.closest('[data-cheque]'); if (chq) { abrirCheque(chq.dataset.cheque); return; }
   const a = t.closest('[data-a]'); if (!a) return;
   const act = a.dataset.a;
@@ -2651,7 +2680,7 @@ document.addEventListener('input', (e) => {
   if (k === 'cred.refi.q' || k === 'cred.dp.q') { render(); return; }
   if (k.startsWith('cred.refi.')) { actualizarRefi(k); return; }
   if (k === 'cred.dc.q') { render(); return; }
-  if (k.startsWith('cred.dc.f.')) { if (/\.banco$/.test(k)) bancoDelCheque(k, el.value); actualizarDescuento(); return; }
+  if (k.startsWith('cred.dc.f.')) { if (/\.banco$/.test(k)) { bancoDelCheque(k, el.value); mostrarBancos(el.dataset.dcI); } actualizarDescuento(); return; }
   if (k === 'cred.cuit') { actualizarCuit(); return; }
   if (k === 'cred.numero' || k === 'cred.entidad') { actualizarCheque(); return; }
   if (k === 'cred.filtro' || k === 'cred.chFiltro' || k === 'cred.veh.fm' || k === 'cred.veh.fv') { render(); return; }

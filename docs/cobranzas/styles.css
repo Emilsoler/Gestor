@@ -771,3 +771,11 @@ body:has(#drawer:not([hidden])) #btnClaudeWeb,body:has(#menu:not([hidden])) #btn
 }
 .cr-fila-t .dc-monto{font-size:14px;color:var(--fg)}
 @media (min-width:721px){.dc-cheque .dc-largo{grid-column:span 2}}
+/* Bancos sugeridos: una lista propia debajo del campo (la nativa del iPhone sale cortada arriba del teclado). */
+.dc-banco{position:relative;display:grid}
+.dc-sug{position:absolute;left:0;right:0;top:100%;z-index:30;margin-top:4px;display:grid;max-height:260px;overflow-y:auto;
+  background:var(--raised,var(--surface));border:1px solid var(--line);border-radius:var(--r-s);box-shadow:0 12px 30px rgba(0,0,0,.45);padding:4px}
+.dc-sug[hidden]{display:none}
+.dc-sug-op{border:0;background:none;color:var(--fg);text-align:left;padding:10px 10px;border-radius:8px;font:inherit;font-size:14px;cursor:pointer}
+.dc-sug-op:hover,.dc-sug-op:focus{background:var(--accent-soft)}
+@media (max-width:720px){.dc-cheque .dc-banco{grid-column:1 / -1}}

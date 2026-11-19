@@ -136,4 +136,23 @@ test('celular: todo entra a lo ancho', async () => {
   await p.context().close();
 });
 
+test('banco: al escribir se despliega la lista debajo del campo y al tocar uno queda elegido con su código', async () => {
+  await page.click('[data-a="dc-sub"][data-sub="liquidar"]');
+  await page.click('[data-a="dc-limpiar"]');
+  await page.fill('#dc_banco_0', 'cordoba');
+  await page.waitForSelector('#dcSug0:not([hidden])');
+  const ops = await page.locator('#dcSug0 .dc-sug-op').allTextContents();
+  assert.deepEqual(ops, ['BANCO DE LA PROVINCIA DE CORDOBA S.A.']);
+  await page.fill('#dc_banco_0', 'banco');
+  assert.equal(await page.locator('#dcSug0 .dc-sug-op').count(), 2);
+  await page.locator('#dcSug0 .dc-sug-op', { hasText: 'CORDOBA' }).click();
+  assert.equal(await page.inputValue('#dc_banco_0'), 'BANCO DE LA PROVINCIA DE CORDOBA S.A.');
+  assert.equal(await page.isHidden('#dcSug0'), true);
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'dc_cheques_0_numero', 'sigue en el N° de cheque');
+  await page.fill('#dc_cliente', 'Prueba'); await page.fill('#dc_cheques_0_importe', '1000'); await page.fill('[data-k="cred.dc.f.cheques.0.vence"]', enDias(10));
+  await page.click('[data-a="dc-guardar"]');
+  await toast(page, 'Operación guardada');
+  assert.equal(sql(`select cheques->0->>'entidad' from public.descuentos_cheques where cliente = 'Prueba'`), '20');
+});
+
 test('sin errores en la consola', () => { assert.deepEqual(errores, []); });
