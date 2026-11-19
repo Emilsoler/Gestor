@@ -166,8 +166,8 @@ tr.elegido td{background:#e9e9e9;color:#000;font-weight:600}
 
 /* Simulación rápida: el monto calculado al lado del porcentaje, y los gastos por cuota plegados. */
 .con-monto{display:flex;align-items:center;gap:10px}
-.con-monto input{flex:1 1 auto;min-width:0}
-.monto-calc{flex:0 0 auto;font-family:var(--mono, ui-monospace, monospace);font-size:14px;color:var(--fg);white-space:nowrap}
+.con-monto input{flex:0 0 84px;width:84px;min-width:0;text-align:center}
+.monto-calc{flex:1 1 auto;min-width:0;display:flex;align-items:center;min-height:44px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--raised);font-family:var(--mono, ui-monospace, monospace);font-size:16px;color:var(--fg);white-space:nowrap}
 .plegado{border:1px solid var(--line);border-radius:10px;padding:10px 12px}
 .plegado summary{cursor:pointer;font-weight:500;color:var(--fg)}
 .plegado[open] summary{margin-bottom:12px}
