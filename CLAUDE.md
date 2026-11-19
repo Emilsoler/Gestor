@@ -214,7 +214,7 @@ aplicarla con `apply_migration` y pasar `get_advisors` (seguridad).
      (`pgrst.db_pre_request` en el rol `authenticator`) y rechaza a quien no es miembro.
   2. Las políticas de filas de `causas`, `acuerdos`, `plantillas`, `agenda` y las de cobranzas
      (`deudores`, `modelos_mensaje`, `ajustes_cobranzas`, `consultas_bcra`, `consultas_cheques`,
-     `vehiculos`, `ubicaciones`, `ajustes_prenda`), todas con `public.es_miembro()`.
+     `casos_refi`, `descuentos_cheques`, `vehiculos`, `ubicaciones`, `ajustes_prenda`), todas con `public.es_miembro()`.
   3. Las estadísticas del planificador desactivadas en todas las columnas de esas tablas,
      para que los conteos estimados de la API no revelen contenido. Si una migración agrega
      columnas, termina con `select gestor.sin_estadisticas();`.
@@ -632,6 +632,40 @@ siempre editable) o se toman de un deudor ya cargado: "Tomar los datos de un deu
 - **Más de un demandado**: el formulario tiene una tarjeta por demandado (nombre, DNI, calle y número, ciudad) y «+ Agregar otro demandado» (`F.demandados`; de un deudor sale el primero, los demás se escriben). En el modelo, los datos de los demandados son un solo campo (`{{demandados}}`, de «CALDERON…, DNI Nº … con domicilio en calle … de la ciudad de …, Provincia de Córdoba», unidos con «y»; con tres o más, con «;») y hay dos campos de concordancia: `{{sea_condenado}}` («sea condenado» / «sean condenados») y `{{al_demandado}}` («al demandado» / «a los demandados», en el apartado III y en el petitorio). Con un solo demandado el texto queda idéntico al del modelo; el resto del texto no cambia (ya decía «los demandados» en VII y en el petitorio).
 - **Lo que falta se avisa en pantalla**, arriba del botón de descarga: `faltanDemanda` (en `demanda.js`) lista por su nombre todo dato que va a salir entre corchetes, y `htmlEstadoDemanda` lo muestra y se actualiza al escribir. Salió de que el ejemplo en gris del Registro («Bell Ville N°1») se leía como un dato ya cargado y la demanda se bajó sin él; ahora el ejemplo dice «Ej.: …». **No poner valores por defecto** en el Registro ni en nada del contrato: cambian según la prenda y un dato equivocado va a un escrito judicial.
 - Lo que falte queda como `[nombre del dato]` en el Word. Pruebas: `node --test tests/demanda.test.mjs` (sin stack).
+
+### Descuento de cheques (última pestaña de «Créditos», migración 0035)
+
+La Mutual le compra cheques a un cliente (un socio) y le paga hoy el valor menos lo que se descuenta (pedido de la persona
+del 18/11/2026): **interés por días, comisión, sellado y gastos fijos por cheque; sin IVA**. Tres partes:
+**Liquidar** (cliente, condiciones, un bloque por cheque y la liquidación en vivo; «Guardar operación», «Descargar en Excel»),
+**Cartera** (los cheques sin cobrar de todas las operaciones, por fecha de pago, con «Cobrado», «Rechazado» y «Ver operación»;
+abajo, plegados, los rechazados con «¿Denunciado?» —abre la consulta de Cheques denunciados—, «BCRA del librador» y «Volver a
+cartera») y **Operaciones** (las guardadas, con buscador; tocarla la abre en Liquidar para editarla o eliminarla).
+
+- **Cuentas** (`docs/cobranzas/descuento.js`, `liquidarDescuento`): por cheque, días = de la fecha de la liquidación a la fecha
+  de pago (0 si ya venció) + días de acreditación; interés = valor × tasa % mensual / 30 × días (simple, sobre el valor);
+  comisión y sellado = % sobre el valor; gastos = fijos por cheque; neto = valor − todo. Cada concepto se redondea a centavos
+  cheque por cheque. Las condiciones de una operación nueva arrancan como las de la última guardada (no hay tasas por defecto:
+  no inventarlas). **No se guardan cuentas**: con la misma fecha y condiciones da siempre lo mismo.
+- **Tabla** `public.descuentos_cheques`: una fila por operación (`cliente`, `cuit`, `socio`, `fecha`, `tasa`, `comision`,
+  `sellado`, `gastos`, `dias_extra`, `notas`) y `cheques`, lista jsonb de
+  `{id, entidad, banco, numero, librador, cuit, importe, vence, estado, fecha_estado, nota}` con `estado` `cartera`, `cobrado` o
+  `rechazado`. `entidad` es el código de banco del BCRA si el banco se eligió de la lista (sirve para consultar si está
+  denunciado). Mismas barreras, `rev`, historial y `gestor.deshacer`. Tabla opcional en `datos.js` (`D.descuentos`): sin ella la
+  pestaña avisa «Falta activar el descuento de cheques». Marcar un cheque (`estadoCheque`) se reaplica sobre la última versión,
+  como `cambiarDeudor`.
+- Para Claude, por el conector:
+
+  ```sql
+  select fecha, cliente, jsonb_array_length(cheques) cheques from public.descuentos_cheques order by fecha desc;
+  -- la cartera: cheques sin cobrar, por fecha de pago
+  select d.cliente, c->>'librador' librador, c->>'banco' banco, c->>'numero' numero, (c->>'importe')::numeric importe, c->>'vence' vence
+    from public.descuentos_cheques d, jsonb_array_elements(d.cheques) c where c->>'estado' = 'cartera' order by c->>'vence';
+  ```
+  Para marcar un cheque o cambiar una operación, `update` con `set_config('gestor.autor', 'Claude', true)`, cuidando la forma de la
+  lista. El neto se calcula con las fórmulas de arriba (no está guardado).
+- Pruebas: `node --test tests/descuento.test.mjs` (cuentas sin stack; permisos y deshacer con stack) y
+  `node --test tests/descuento-app.test.mjs` (en el navegador, PC y celular).
 
 ### Vehículo (pestaña de «Créditos»): búsqueda asistida
 

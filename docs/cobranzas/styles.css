@@ -753,3 +753,21 @@ body:has(#drawer:not([hidden])) #btnClaudeWeb,body:has(#menu:not([hidden])) #btn
 
 /* Importe de cada cuota del plan, editable en la tabla. */
 .tabla input.imp-cuota{width:130px;max-width:100%;text-align:right;padding:6px 8px;font-size:13px}
+
+/* Descuento de cheques: un bloque por cheque y, en la cartera, los botones al lado de cada cheque. */
+.dc-cheque{border-top:1px solid var(--line-soft);padding-top:6px}
+.dc-cheque h4{display:flex;align-items:center;gap:8px}
+.dc-fila{cursor:default}
+.dc-fila:hover{background:none}
+.dc-fila .cr-fila-f{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:6px}
+.dc-botones{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end}
+.dc-tabla{min-width:600px}
+#crDescuento>*,#dcResultado>*{min-width:0}
+.cifras dd.malo{color:var(--bad)}
+@media (max-width:720px){
+  .dc-fila{grid-template-columns:auto minmax(0,1fr)}
+  .dc-fila .cr-fila-f{grid-column:1 / -1;justify-content:flex-start}
+  .dc-botones{justify-content:flex-start}
+}
+.cr-fila-t .dc-monto{font-size:14px;color:var(--fg)}
+@media (min-width:721px){.dc-cheque .dc-largo{grid-column:span 2}}

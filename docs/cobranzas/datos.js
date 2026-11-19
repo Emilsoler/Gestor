@@ -31,13 +31,13 @@ const SONDEO_LENTO = 5 * 60_000; // con tiempo real, por si se perdió algún av
 const CACHE = 'cb.cache';
 const CHAT = 'cb.chat'; // la conversación con Claude, en este dispositivo
 const FORMA = 2; // sube cuando cambia la forma de lo que se guarda en el dispositivo
-const TABLAS = ['deudores', 'modelos_mensaje', 'ajustes_cobranzas', 'consultas_bcra', 'consultas_cheques', 'casos_refi'];
+const TABLAS = ['deudores', 'modelos_mensaje', 'ajustes_cobranzas', 'consultas_bcra', 'consultas_cheques', 'casos_refi', 'descuentos_cheques'];
 // Las consultas al BCRA se leen sin `resultado` (lo que respondió el BCRA, que puede ser largo): el
 // detalle se pide al abrir una. Las de cheques son cortas y vienen enteras.
 const COLUMNAS = { consultas_bcra: 'id,cuit,denominacion,momento,consultado_por,periodo,semaforo,peor_situacion,entidades,deuda_total,cheques,cheques_impagos,motivos,rev' };
 // Tablas que la base puede no tener todavía (migración sin aplicar): el resto de la app sigue andando, y
 // esta marca de D dice si está.
-const OPCIONALES = new Map([['consultas_bcra', 'creditos'], ['consultas_cheques', 'denunciados'], ['casos_refi', 'casos']]);
+const OPCIONALES = new Map([['consultas_bcra', 'creditos'], ['consultas_cheques', 'denunciados'], ['casos_refi', 'casos'], ['descuentos_cheques', 'descuentos']]);
 const faltaTabla = (e) => e?.code === 'PGRST205' || e?.code === '42P01' || e?.status === 404;
 const DETALLES = new Map(); // id de consulta → resultado
 
@@ -53,9 +53,11 @@ export const D = {
   consultas_bcra: [], // sin `resultado` (ver detalleConsulta)
   consultas_cheques: [],
   casos_refi: [], // casos guardados de Estado de Deuda y Refinanciación
+  descuentos_cheques: [], // operaciones de descuento de cheques, con sus cheques
   creditos: true, // la base tiene la tabla de consultas al BCRA
   denunciados: true, // la base tiene la de consultas de cheques denunciados
   casos: true, // la base tiene la de casos guardados de refinanciación
+  descuentos: true, // la base tiene la de descuento de cheques (migración 0035)
   cargado: false, // hay algo para mostrar (de la base o de la copia local)
   leido: null, // Date de la última lectura buena
   deCache: false, // lo que se ve es la copia del dispositivo
@@ -132,6 +134,8 @@ const DE = {
   ajustes_cobranzas: (f) => ({ ...f, tasa: +f.tasa, contado_pct: +f.contado_pct }),
   consultas_bcra: ({ resultado, ...f }) => ({ ...f, deuda_total: +f.deuda_total || 0, motivos: lista(f.motivos) }),
   casos_refi: (f) => ({ ...f, nombre: String(f.nombre ?? ''), deudor: f.deudor || '', archivado: f.archivado || '', datos: f.datos && typeof f.datos === 'object' && !Array.isArray(f.datos) ? f.datos : {} }),
+  descuentos_cheques: (f) => ({ ...f, cliente: String(f.cliente ?? ''), cuit: f.cuit || '', socio: f.socio || '', notas: f.notas || '', tasa: +f.tasa || 0, comision: +f.comision || 0,
+    sellado: +f.sellado || 0, gastos: +f.gastos || 0, dias_extra: +f.dias_extra || 0, cheques: lista(f.cheques).filter((c) => c && typeof c === 'object') }),
   consultas_cheques: (f) => ({ ...f, numero: String(f.numero ?? ''), resultado: f.resultado && typeof f.resultado === 'object' ? f.resultado : {} }),
 };
 export const ESTADOS = ['En gestión', 'En juicio', 'Cancelado', 'Incobrable', 'Archivado'];
@@ -152,6 +156,7 @@ const ORDEN = {
   consultas_bcra: (a, b) => String(b.momento).localeCompare(String(a.momento)) || a.id.localeCompare(b.id), // la más nueva primero
   consultas_cheques: (a, b) => String(b.momento).localeCompare(String(a.momento)) || a.id.localeCompare(b.id),
   casos_refi: (a, b) => String(b.actualizado).localeCompare(String(a.actualizado)) || a.id.localeCompare(b.id), // el último tocado primero
+  descuentos_cheques: (a, b) => String(b.fecha).localeCompare(String(a.fecha)) || String(b.creado).localeCompare(String(a.creado)) || a.id.localeCompare(b.id), // la más nueva primero
 };
 const firma = (filas) => JSON.stringify([...filas].sort((a, b) => String(a.id).localeCompare(String(b.id))));
 
@@ -175,7 +180,7 @@ function guardarCache() {
     localStorage.setItem(CACHE, JSON.stringify({
       forma: FORMA, uid: D.usuario.id, email: D.usuario.email, ts: (D.leido || new Date()).getTime(),
       deudores: D.deudores, modelos_mensaje: D.modelos_mensaje, ajustes_cobranzas: D.ajustes_cobranzas, consultas_bcra: D.consultas_bcra,
-      consultas_cheques: D.consultas_cheques, casos_refi: D.casos_refi,
+      consultas_cheques: D.consultas_cheques, casos_refi: D.casos_refi, descuentos_cheques: D.descuentos_cheques,
     }));
   } catch { /* sin espacio o modo privado: la app sigue andando sin copia local */ }
 }
@@ -619,6 +624,29 @@ export const actualizarCasoRefi = (id, rev, campos) => modificar('casos_refi', i
 export const borrarCasoRefi = (id) => eliminar('casos_refi', id);
 /** Archiva un caso (convenio ya firmado) o lo vuelve a poner en curso. No toca el formulario guardado. */
 export const archivarCasoRefi = (id, rev, archivar) => modificar('casos_refi', id, rev, { archivado: archivar ? new Date().toISOString() : null });
+
+// ───────────────────────── Descuento de cheques ─────────────────────────
+// Una fila por operación (filaDeForm de descuento.js); las cuentas las hace liquidarDescuento al mostrarla.
+
+export const crearDescuento = (fila) => agregar('descuentos_cheques', fila);
+export const guardarDescuento = (id, rev, fila) => modificar('descuentos_cheques', id, rev, fila);
+export const borrarDescuento = (id) => eliminar('descuentos_cheques', id);
+/**
+ * Cobrado, rechazado o de vuelta en cartera, para un cheque. Como cambiarDeudor: si la operación cambió en otro
+ * lado, se vuelve a aplicar sobre la versión nueva, así marcar un cheque nunca pisa lo que hizo el otro.
+ */
+export async function estadoCheque(opId, chequeId, estado, fecha, nota) {
+  let actual = D.descuentos_cheques.find((x) => x.id === opId);
+  for (let intento = 0; intento < 3; intento++) {
+    if (!actual) throw Object.assign(new Error('Esta operación fue eliminada desde otro lugar'), { code: 'no-existe' });
+    const cheques = actual.cheques.map((c) => (c.id === chequeId ? { ...c, estado, fecha_estado: estado === 'cartera' ? '' : fecha, ...(nota != null ? { nota } : {}) } : c));
+    if (!cheques.some((c) => c.id === chequeId)) throw Object.assign(new Error('Ese cheque ya no está en la operación'), { code: 'no-existe' });
+    const r = await modificar('descuentos_cheques', opId, actual.rev, { cheques });
+    if (r.fila) return r;
+    actual = r.actual;
+  }
+  throw new Error('La operación cambió varias veces seguidas desde otro lugar. Probá de nuevo.');
+}
 
 /** Lo que respondió el BCRA en una consulta (se lee una vez y queda en memoria). */
 export async function detalleConsulta(id) {

@@ -4,6 +4,7 @@ import {
   D, iniciar, reconectar, entrar, salir, cambiarClave, alCambiar, mensaje, ajustes, ESTADOS,
   crearDeudor, cambiarDeudor, borrarDeudor, crearModelo, guardarModelo, borrarModelo, guardarAjustes,
   consultarInfoAuto, consultarInfoAutoTodo, consultarBCRA, detalleConsulta, detalleGuardado, borrarConsulta, consultarCheque, entidadesCheques, borrarConsultaCheque, crearCasoRefi, actualizarCasoRefi, borrarCasoRefi, archivarCasoRefi,
+  crearDescuento, guardarDescuento, borrarDescuento, estadoCheque,
   leerAgencias, contarSolicitudes, guardarAjustesAgencias, altaAgencia, crearAgencia, activarAgencia, resolverSolicitud, documentosSolicitud, eliminarSolicitud, eliminarCotizaciones,
 } from './datos.js';
 import { htmlAgencias, avisoInicio, parametrosEnTexto, leerParametros, TABS_AGENCIAS } from './agencias.js';
@@ -25,8 +26,9 @@ import { xlsx } from '../excel.js';
 import { datosAcuerdo, avisosAcuerdo, armarAcuerdo, hojasRefinanciacion, CAMPOS_ACUERDO } from './acuerdo.js';
 import { nuevaDemanda, nuevoDemandado, demandaDesdeDeudor, estadoDemanda, datosDemanda, avisosDemanda, faltanDemanda, CAMPOS_DEMANDA } from './demanda.js';
 import { abrirChat } from './chat.js';
+import { nuevoDescuento, nuevoCheque, formDeFila, filaDeForm, liquidarDescuento, cartera, resumenCartera, cuandoVence, bancoDe, htmlLiquidacionDescuento, hojaDescuento, ESTADOS_CHEQUE } from './descuento.js';
 
-const VERSION = '1.10.0';
+const VERSION = '1.11.0';
 const CLAVE_MIN = 10;
 const TIPOS_GESTION = ['Llamada', 'WhatsApp', 'Visita', 'Email', 'Carta documento', 'Promesa de pago', 'Nota'];
 const MEDIOS = ['Efectivo', 'Transferencia', 'Depósito', 'Cheque', 'Débito', 'Otro'];
@@ -37,7 +39,7 @@ const CHIPS = [['activos', 'Activos'], ['mora', 'En mora'], ['plan', 'Con plan']
 const VISTAS = { inicio: 'Inicio', deudores: 'Deudores', planes: 'Planes', creditos: 'Aprobación de créditos', agencias: 'Agencias' };
 const AYUDA_CUIT = 'La situación en cada banco o financiera, los últimos 24 meses y los cheques rechazados.';
 const AYUDA_CHEQUE = 'Si el cheque fue denunciado como extraviado, robado o adulterado.';
-const MODOS_CREDITO = [['cuit', 'Deudas por CUIT'], ['cheque', 'Cheques denunciados'], ['vehiculo', 'Vehículo'], ['simulacion', 'Simulación'], ['refi', 'Estado de Deuda y Refinanciación'], ['dp', 'Demanda prendaria']];
+const MODOS_CREDITO = [['cuit', 'Deudas por CUIT'], ['cheque', 'Cheques denunciados'], ['vehiculo', 'Vehículo'], ['simulacion', 'Simulación'], ['refi', 'Estado de Deuda y Refinanciación'], ['dp', 'Demanda prendaria'], ['descuento', 'Descuento de cheques']];
 const JUICIOS = '../'; // el gestor de juicios, en la misma base
 
 const nuevaSim = () => ({ valor: '', capital: '', capitalManual: false, cuotas: '24', tasa: '7', g: { ...GASTOS_DEFECTO } });
@@ -65,6 +67,8 @@ const S = {
     dp: nuevaDemanda(), // «Demanda prendaria» (haz DP): lo escrito para armar la demanda en Word
     caso: { id: '', nombre: '', confirmar: false }, // el caso guardado que está abierto (si hay) y el nombre con que se guarda
     gastosAbierto: false, // «Gastos y honorarios de juicio» empieza plegado; si se despliega, queda así al redibujar
+    // Descuento de cheques: qué se ve (liquidar, cartera, operaciones), el formulario (null hasta entrar), la operación abierta.
+    dc: { sub: 'liquidar', f: null, id: '', confirmar: false, q: '' },
   },
   // Agencias (el cotizador para agencias): lo leído, la pestaña, los enlaces a documentos ya pedidos, lo que se escribe
   // (notas para la agencia, parámetros y alta, atados con data-k) y cuántas solicitudes esperan respuesta.
@@ -72,7 +76,7 @@ const S = {
 };
 try { S.vista = VISTAS[localStorage.getItem('cb.vista')] ? localStorage.getItem('cb.vista') : 'inicio'; } catch { /* sin almacenamiento */ }
 try { if (localStorage.getItem('cb.simOrigen') === 'mano') S.cred.simOrigen = 'mano'; } catch { /* sin almacenamiento */ }
-try { const m = localStorage.getItem('cb.credModo'); if (m === 'cheque' || m === 'vehiculo' || m === 'refi' || m === 'simulacion' || m === 'dp') S.cred.modo = m; } catch { /* sin almacenamiento */ }
+try { const m = localStorage.getItem('cb.credModo'); if (m === 'cheque' || m === 'vehiculo' || m === 'refi' || m === 'simulacion' || m === 'dp' || m === 'descuento') S.cred.modo = m; } catch { /* sin almacenamiento */ }
 try { S.maxi = localStorage.getItem('cb.maxi') === '1'; } catch { /* sin almacenamiento */ }
 try { const t = localStorage.getItem('cb.agTab'); if (TABS_AGENCIAS.some(([k]) => k === t)) S.ag.tab = t; } catch { /* sin almacenamiento */ }
 
@@ -602,7 +606,7 @@ async function accionAgencias(act, b) {
 
 function vistaCreditos() {
   const modos = `<nav class="tabs cr-modos" role="tablist" aria-label="Qué consultar">${MODOS_CREDITO.map(([k, l]) => `<button role="tab" data-cr-modo="${k}" aria-selected="${S.cred.modo === k}">${esc(l)}</button>`).join('')}</nav>`;
-  return `<div class="creditos">${modos}${S.cred.modo === 'cheque' ? vistaCheques() : S.cred.modo === 'vehiculo' ? vistaVehiculo() : S.cred.modo === 'refi' ? vistaRefi() : S.cred.modo === 'dp' ? vistaDemanda() : S.cred.modo === 'simulacion' ? vistaSimulacion() : vistaCuit()}</div>`;
+  return `<div class="creditos">${modos}${S.cred.modo === 'cheque' ? vistaCheques() : S.cred.modo === 'vehiculo' ? vistaVehiculo() : S.cred.modo === 'refi' ? vistaRefi() : S.cred.modo === 'dp' ? vistaDemanda() : S.cred.modo === 'descuento' ? vistaDescuento() : S.cred.modo === 'simulacion' ? vistaSimulacion() : vistaCuit()}</div>`;
 }
 
 function cambiarModo(m) {
@@ -1021,6 +1025,178 @@ function accionRefi(act, a) {
     if (!S.f?.plan) return; // ya tiene un plan vigente: la ficha lo muestra
     Object.assign(S.f.plan, { monto: enCelda(e.deuda), anticipo: e.entrega ? enCelda(e.entrega) : '', n: String(e.n), cada: e.cada, primerVto: e.primerVto, tasa: String(R.tasa).trim() || '0' });
     renderFicha(false, true);
+  }
+}
+
+
+// ───────────────────────── Descuento de cheques ─────────────────────────
+// La Mutual le compra cheques a un cliente y le paga hoy el valor menos interés por días, comisión, sellado y
+// gastos fijos (sin IVA). Tres partes: Liquidar (cargar y guardar una operación), Cartera (los cheques a cobrar,
+// por fecha, para marcarlos cobrados o rechazados) y Operaciones (las guardadas). Cuentas en descuento.js.
+
+const SUBS_DC = [['liquidar', 'Liquidar'], ['cartera', 'Cartera'], ['operaciones', 'Operaciones']];
+const dcAbierta = () => (S.cred.dc.id ? D.descuentos_cheques.find((x) => x.id === S.cred.dc.id) || null : null);
+const dcNuevo = () => nuevoDescuento(hoy(), D.descuentos_cheques[0] || null); // condiciones de la última operación
+const dcEstado = () => liquidarDescuento(filaDeForm(S.cred.dc.f));
+
+function vistaDescuento() {
+  const C = S.cred.dc;
+  if (!D.descuentos) { subtitulo('Descuento de cheques'); return vacio('Falta activar el descuento de cheques', 'La base todavía no tiene dónde guardar las operaciones. Pedile a Claude que lo active.'); }
+  if (!C.f) C.f = dcNuevo();
+  if (!S.cred.bancos && !S.cred.bancosCargando && !S.cred.bancosError) setTimeout(pedirBancos, 0); // para sugerir el banco
+  const rc = resumenCartera(D.descuentos_cheques, hoy());
+  subtitulo(rc.cant ? `${cuantos(rc.cant, 'cheque', 'cheques')} en cartera · ${plata(rc.total)}` : 'Descuento de cheques');
+  const n = { cartera: rc.cant, operaciones: D.descuentos_cheques.length };
+  const subs = `<nav class="tabs" role="tablist" aria-label="Descuento de cheques">${SUBS_DC.map(([k, l]) => `<button role="tab" data-a="dc-sub" data-sub="${k}" aria-selected="${C.sub === k}">${esc(l)}${n[k] ? ` <span class="hint mono">${n[k]}</span>` : ''}</button>`).join('')}</nav>`;
+  const cuerpo = C.sub === 'cartera' ? carteraDescuento(rc) : C.sub === 'operaciones' ? operacionesDescuento() : formDescuento();
+  return `<section class="card cr-simulador cr-sim-vista" id="crDescuento"><div class="card-cab"><h3>Descuento de cheques</h3></div>${subs}${cuerpo}</section>`;
+}
+
+function formDescuento() {
+  const C = S.cred.dc, F = C.f, abierta = dcAbierta(), k = (c) => 'cred.dc.f.' + c;
+  if (C.id && !abierta) C.id = ''; // la eliminaron desde otro lugar: lo escrito queda como operación nueva
+  const campo = (c, t, extra = '', modo = 'decimal') => `<label class="f">${t}<input id="dc_${c.replace(/\./g, '_')}" ${atar(k(c))} inputmode="${modo}" autocomplete="off"${extra}></label>`;
+  const bancos = (S.cred.bancos || []).map((b) => `<option value="${esc(b.nombre)}"></option>`).join('');
+  const cheques = F.cheques.map((c, i) => {
+    const est = c.estado && c.estado !== 'cartera' ? ' ' + pill(ESTADOS_CHEQUE[c.estado] + (c.fecha_estado ? ' el ' + fmt(c.fecha_estado) : ''), c.estado === 'cobrado' ? 's-ok' : 's-bad') : '';
+    return `<div class="dc-cheque"><h4>Cheque ${i + 1}${est}</h4><div class="sim-form rf-pago">
+      ${campo(`cheques.${i}.importe`, 'Importe ($)', ' data-importe')}
+      <label class="f">Fecha de pago<input type="date" data-k="${k(`cheques.${i}.vence`)}" value="${esc(c.vence)}"></label>
+      <label class="f dc-largo">Banco<input list="dcBancos" ${atar(k(`cheques.${i}.banco`))} autocomplete="off" placeholder="${S.cred.bancos ? 'Escribí para buscar' : ''}"></label>
+      ${campo(`cheques.${i}.numero`, 'N° de cheque', ' maxlength="24"', 'numeric')}
+      ${campo(`cheques.${i}.librador`, 'Librador', ' maxlength="200"', 'text').replace('class="f"', 'class="f dc-largo"')}
+      ${campo(`cheques.${i}.cuit`, 'CUIT del librador', ' maxlength="20"', 'numeric')}
+      ${F.cheques.length > 1 ? `<button class="btn small" type="button" data-a="dc-cheque-menos" data-i="${i}" aria-label="Quitar el cheque ${i + 1}">Quitar</button>` : ''}
+    </div></div>`;
+  }).join('');
+  const titulo = abierta ? `<p class="hint m0">Operación guardada de <b>${esc(abierta.cliente)}</b> del ${esc(fmtLargo(abierta.fecha))}. Lo que cambies se guarda con «Guardar cambios».</p>` : '';
+  return `${titulo}<h4>Cliente</h4>
+    <div class="sim-form">
+      ${campo('cliente', 'Apellido y nombre', ' maxlength="200" placeholder="A quién se le compran los cheques"', 'text')}
+      ${campo('cuit', 'CUIT o CUIL', ' maxlength="20"', 'numeric')}
+      ${campo('socio', 'N° de socio', ' maxlength="40"', 'text')}
+      <label class="f">Fecha de la liquidación<input type="date" data-k="${k('fecha')}" value="${esc(F.fecha)}"></label>
+    </div>
+    <h4>Condiciones</h4>
+    <div class="sim-form">
+      ${campo('tasa', 'Interés (% mensual)', ' placeholder="ej.: 4"')}
+      ${campo('comision', 'Comisión (%)', ' placeholder="0"')}
+      ${campo('sellado', 'Sellado (%)', ' placeholder="0"')}
+      ${campo('gastos', 'Gastos por cheque ($)', ' data-importe placeholder="0"')}
+      ${campo('dias', 'Días de acreditación', ' maxlength="2" placeholder="0"', 'numeric')}
+    </div>
+    <p class="hint m0">El interés es simple, por cada 30 días, sobre el valor del cheque, desde la fecha de la liquidación hasta la fecha de pago (más los días de acreditación). Sin IVA.</p>
+    <datalist id="dcBancos">${bancos}</datalist>
+    ${cheques}
+    <div><button class="btn small" type="button" data-a="dc-cheque-mas">+ Agregar otro cheque</button></div>
+    <label class="f">Notas<input id="dc_notas" ${atar(k('notas'))} maxlength="4000" autocomplete="off" placeholder="Opcional"></label>
+    <h4>Liquidación</h4>
+    <div id="dcResultado" aria-live="polite">${resultadoDescuento()}</div>
+    <div class="actions">${accionesDescuento(abierta)}</div>`;
+}
+function resultadoDescuento() {
+  const e = dcEstado();
+  const faltan = e.problemas.length ? `<p class="hint m0 malo">Para guardar: ${esc(e.problemas.slice(0, 3).join(' · '))}${e.problemas.length > 3 ? '…' : ''}</p>` : '';
+  return htmlLiquidacionDescuento(e) + faltan;
+}
+function accionesDescuento(abierta) {
+  const C = S.cred.dc, bajar = '<button class="btn" type="button" data-a="dc-excel">Descargar en Excel</button>';
+  if (!abierta) return `<button class="btn primary" type="button" data-a="dc-guardar">Guardar operación</button>${bajar}<button class="btn" type="button" data-a="dc-limpiar">Borrar todo</button>`;
+  if (C.confirmar) return `<span class="hint">¿Eliminar la operación de ${esc(abierta.cliente)} con sus ${abierta.cheques.length} cheques? Se puede recuperar pidiéndoselo a Claude.</span><button class="btn danger small" type="button" data-a="dc-borrar">Sí, eliminar</button><button class="btn small" type="button" data-a="dc-no">No</button>`;
+  return `<button class="btn primary" type="button" data-a="dc-guardar">Guardar cambios</button>${bajar}<button class="btn" type="button" data-a="dc-nueva">Nueva operación</button><button class="btn" type="button" data-a="dc-confirmar">Eliminar</button>`;
+}
+function actualizarDescuento() {
+  const r = $('#dcResultado'); if (r) r.innerHTML = resultadoDescuento();
+}
+
+function carteraDescuento(rc) {
+  const xs = cartera(D.descuentos_cheques, hoy()), rech = cartera(D.descuentos_cheques, hoy(), 'rechazado');
+  const cifras = `<dl class="cifras grandes sim-cifras"><div><dt>En cartera</dt><dd>${esc(plata(rc.total))}</dd></div>
+    <div><dt>Se cobran en 7 días</dt><dd>${esc(plata(rc.semana))}</dd></div>${rc.cantVencidos ? `<div><dt>Vencidos sin marcar</dt><dd class="malo">${esc(plata(rc.vencidos))}</dd></div>` : ''}</dl>`;
+  const fila = ({ op, c, falta }, acciones) => `<div class="cr-fila dc-fila">
+      <span class="mono">${esc(c.vence ? fmt(c.vence) : '—')}</span>
+      <span class="cr-fila-t"><b>${esc(c.librador || bancoDe(c))}</b><span class="mono dc-monto">${esc(plata(+c.importe || 0))}</span>
+        <span class="sub">${esc([bancoDe(c), c.numero ? 'N° ' + c.numero : '', 'de ' + op.cliente].filter(Boolean).join(' · '))}</span></span>
+      <span class="cr-fila-f">${acciones}</span></div>`;
+  const marca = (falta) => pill(cuandoVence(falta), falta == null ? '' : falta < 0 ? 's-bad' : falta <= 7 ? 's-warn' : '');
+  const lista = xs.length ? `<div class="cr-lista">${xs.map((x) => fila(x, `${marca(x.falta)}<span class="dc-botones">
+      <button class="btn small" type="button" data-a="dc-cobrado" data-op="${esc(x.op.id)}" data-ch="${esc(x.c.id)}">Cobrado</button>
+      <button class="btn small" type="button" data-a="dc-rechazado" data-op="${esc(x.op.id)}" data-ch="${esc(x.c.id)}">Rechazado</button>
+      <button class="btn small" type="button" data-a="dc-abrir" data-op="${esc(x.op.id)}">Ver operación</button></span>`)).join('')}</div>`
+    : `<p class="hint m0">${D.descuentos_cheques.length ? 'No hay cheques por cobrar.' : 'Cuando guardes una operación, sus cheques quedan acá hasta que los marques como cobrados o rechazados.'}</p>`;
+  const rechazados = rech.length ? `<details class="rf-casos"><summary>Rechazados <b class="mono">${rech.length}</b></summary><div class="cr-lista">${rech.map((x) => fila(x, `${pill('Rechazado' + (x.c.fecha_estado ? ' el ' + fmt(x.c.fecha_estado) : ''), 's-bad')}<span class="dc-botones">
+      ${x.c.entidad && x.c.numero ? `<button class="btn small" type="button" data-a="dc-denunciado" data-op="${esc(x.op.id)}" data-ch="${esc(x.c.id)}">¿Denunciado?</button>` : ''}
+      ${x.c.cuit ? `<button class="btn small" type="button" data-a="dc-bcra" data-cuit="${esc(x.c.cuit)}">BCRA del librador</button>` : ''}
+      <button class="btn small" type="button" data-a="dc-cartera" data-op="${esc(x.op.id)}" data-ch="${esc(x.c.id)}">Volver a cartera</button></span>`)).join('')}</div></details>` : '';
+  return cifras + lista + rechazados;
+}
+
+function operacionesDescuento() {
+  const C = S.cred.dc, q = C.q.trim().toLowerCase();
+  const xs = D.descuentos_cheques.filter((x) => !q || x.cliente.toLowerCase().includes(q) || x.cuit.includes(q.replace(/\D/g, '') || '§') || x.socio.toLowerCase().includes(q)
+    || x.cheques.some((c) => String(c.librador || '').toLowerCase().includes(q) || (q.length >= 3 && String(c.numero || '').includes(q))));
+  if (!D.descuentos_cheques.length) return '<p class="hint m0">Todavía no hay operaciones guardadas. Se cargan en «Liquidar».</p>';
+  return `<input type="search" class="cr-filtro" ${atar('cred.dc.q')} placeholder="Buscar por cliente, CUIT, socio, librador o N° de cheque" aria-label="Buscar operaciones" autocomplete="off">
+    ${xs.length ? `<div class="cr-lista">${xs.slice(0, 200).map((x) => {
+      const e = liquidarDescuento(x), cart = x.cheques.filter((c) => (c.estado || 'cartera') === 'cartera').length, rech = x.cheques.filter((c) => c.estado === 'rechazado').length;
+      return `<button type="button" class="cr-fila${x.id === C.id ? ' elegida' : ''}" data-a="dc-abrir" data-op="${esc(x.id)}">
+        <span class="mono">${esc(fmt(x.fecha))}</span>
+        <span class="cr-fila-t"><b>${esc(x.cliente)}</b><span class="sub">${esc([cuantos(x.cheques.length, 'cheque', 'cheques'), cart ? `${cart} en cartera` : 'todos cobrados o rechazados', rech ? cuantos(rech, 'rechazado', 'rechazados') : ''].filter(Boolean).join(' · '))}</span></span>
+        <span class="cr-fila-f"><span class="mono">${esc(plata(e.total.neto))}</span><small>de ${esc(plata(e.total.importe))}</small></span></button>`;
+    }).join('')}</div>` : '<p class="hint m0">Ninguna operación coincide.</p>'}`;
+}
+
+/** Al escribir el banco: si es uno de la lista del BCRA, se guarda también su código (para consultar si está denunciado). */
+function bancoDelCheque(k, texto) {
+  const t = String(texto || '').trim().toLowerCase(), b = (S.cred.bancos || []).find((x) => x.nombre.toLowerCase() === t);
+  poner(k.replace(/\.banco$/, '.entidad'), b ? String(b.codigo) : '');
+}
+async function accionDescuento(act, a) {
+  const C = S.cred.dc;
+  if (act === 'dc-sub') { C.sub = a.dataset.sub; render(); return; }
+  if (act === 'dc-cheque-mas') { C.f.cheques.push(nuevoCheque()); render(); $(`#dc_cheques_${C.f.cheques.length - 1}_importe`)?.focus(); return; }
+  if (act === 'dc-cheque-menos') { C.f.cheques.splice(+a.dataset.i, 1); render(); return; }
+  if (act === 'dc-limpiar' || act === 'dc-nueva') { Object.assign(C, { f: dcNuevo(), id: '', confirmar: false }); render(); return; }
+  if (act === 'dc-confirmar' || act === 'dc-no') { C.confirmar = act === 'dc-confirmar'; render(); return; }
+  if (act === 'dc-abrir') { const x = D.descuentos_cheques.find((o) => o.id === a.dataset.op); if (!x) return; Object.assign(C, { f: formDeFila(x), id: x.id, sub: 'liquidar', confirmar: false }); render(); window.scrollTo(0, 0); return; }
+  if (act === 'dc-excel') {
+    const fila = filaDeForm(C.f), e = liquidarDescuento(fila);
+    if (!(e.total.importe > 0)) { toast('Cargá al menos un cheque con su importe'); return; }
+    bajar(hojaDescuento(fila, e, hoy()), `descuento-cheques-${slug(fila.cliente) || 'cliente'}-${e.fecha || hoy()}.xlsx`); return;
+  }
+  if (act === 'dc-bcra') { Object.assign(S.cred, { cuit: a.dataset.cuit }); cambiarModo('cuit'); await consultarCuit(a.dataset.cuit); return; }
+  if (act === 'dc-denunciado') {
+    const op = D.descuentos_cheques.find((o) => o.id === a.dataset.op), c = op?.cheques.find((x) => x.id === a.dataset.ch); if (!c) return;
+    Object.assign(S.cred, { entidad: String(c.entidad), numero: String(c.numero) }); cambiarModo('cheque'); await consultarChequeDe(c.entidad, c.numero); return;
+  }
+  if (act === 'dc-cobrado' || act === 'dc-rechazado' || act === 'dc-cartera') {
+    const estado = act.slice(3);
+    try {
+      await estadoCheque(a.dataset.op, a.dataset.ch, estado, hoy());
+      toast(estado === 'cobrado' ? 'Cheque cobrado' : estado === 'rechazado' ? 'Cheque rechazado: queda en «Rechazados», abajo' : 'El cheque volvió a la cartera');
+    } catch (e) { toast(mensaje(e, 'no se guardó')); }
+    // Si esa operación está abierta en Liquidar, se ve el estado nuevo sin perder lo escrito en los demás campos.
+    if (C.id === a.dataset.op) { const x = dcAbierta(); const ch = x?.cheques.find((c) => c.id === a.dataset.ch), f = C.f.cheques.find((c) => c.id === a.dataset.ch); if (ch && f) Object.assign(f, { estado: ch.estado, fecha_estado: ch.fecha_estado }); }
+    render(); return;
+  }
+  if (act === 'dc-borrar') {
+    const x = dcAbierta(); if (!x) return;
+    try { await borrarDescuento(x.id); Object.assign(C, { f: dcNuevo(), id: '', confirmar: false }); toast('Operación eliminada'); } catch (e) { toast(mensaje(e, 'no se eliminó')); }
+    render(); return;
+  }
+  if (act === 'dc-guardar') {
+    const fila = filaDeForm(C.f), e = liquidarDescuento(fila);
+    if (e.problemas.length) { toast(e.problemas[0]); return; }
+    try {
+      const x = dcAbierta();
+      if (!x) { const f = await crearDescuento(fila); Object.assign(C, { id: f.id, f: formDeFila(f) }); toast(`Operación guardada: se le pagan ${plata(e.total.neto)}`); }
+      else {
+        const r = await guardarDescuento(x.id, x.rev, fila);
+        if (r.conflicto) toast(r.actual ? 'Esta operación cambió desde otro lugar (por ejemplo, un cheque marcado). Abrila de nuevo para ver la última versión.' : 'Esta operación fue eliminada desde otro lugar.');
+        else { C.f = formDeFila(r.fila); toast('Cambios guardados'); }
+      }
+    } catch (err) { toast(mensaje(err, 'no se guardó')); }
+    render();
   }
 }
 
@@ -2442,6 +2618,10 @@ document.addEventListener('click', async (e) => {
   if (act.startsWith('rf-') && !S.panel && !S.abierto) { accionRefi(act, a); return; }
   if (act.startsWith('ag-') && !S.panel && !S.abierto) { await unaVez(a, (b) => accionAgencias(act, b)); return; }
   if (act.startsWith('dp-') && !S.panel && !S.abierto) { accionDemanda(act, a); return; }
+  if (act.startsWith('dc-') && !S.panel && !S.abierto) {
+    if (act === 'dc-excel') { accionDescuento(act, a); return; } // sin esperas: el menú de compartir del celular lo exige
+    await unaVez(a, () => accionDescuento(act, a)); return;
+  }
   if (act === 'ficha-dp') { demandaDeLaFicha(S.abierto); return; }
   if (act.startsWith('ve-') && !S.panel && !S.abierto) { await unaVez(a, () => accionVehiculo(act)); return; }
   if (act.startsWith('ch-') && !S.panel && !S.abierto) {
@@ -2470,6 +2650,8 @@ document.addEventListener('input', (e) => {
   if (k.startsWith('cred.veh.sim.') || k.startsWith('cred.simMan.')) { actualizarSimulador(k); return; }
   if (k === 'cred.refi.q' || k === 'cred.dp.q') { render(); return; }
   if (k.startsWith('cred.refi.')) { actualizarRefi(k); return; }
+  if (k === 'cred.dc.q') { render(); return; }
+  if (k.startsWith('cred.dc.f.')) { if (/\.banco$/.test(k)) bancoDelCheque(k, el.value); actualizarDescuento(); return; }
   if (k === 'cred.cuit') { actualizarCuit(); return; }
   if (k === 'cred.numero' || k === 'cred.entidad') { actualizarCheque(); return; }
   if (k === 'cred.filtro' || k === 'cred.chFiltro' || k === 'cred.veh.fm' || k === 'cred.veh.fv') { render(); return; }
@@ -2496,6 +2678,7 @@ document.addEventListener('change', (e) => {
   if (k === 'cred.refi.moraTipo') { S.cred.refi.mora = ''; render(); return; } // la fecha y el N° de cuota son campos distintos
   if (k.startsWith('cred.refi.') && k !== 'cred.refi.q') { actualizarRefi(k); return; }
   if (k.startsWith('cred.dp.') && k !== 'cred.dp.q') { actualizarDemanda(); return; }
+  if (k.startsWith('cred.dc.f.')) { actualizarDescuento(); return; }
   if (k === 'cred.entidad') { actualizarCheque(); return; } // por si el navegador no avisa con "input"
   if (k === 'f.msg.modelo') { const d = deudor(S.abierto); S.f.msg.propuesta = S.f.msg.propuesta && el.value === 'plan'; S.f.msg.texto = S.f.msg.base = generar(d, S.f.msg); renderFicha(); return; }
   if (k === 'f.msg.numero') { actualizarEnlace(); return; }
