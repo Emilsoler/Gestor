@@ -637,7 +637,7 @@ function vistaCotizar() {
       ${S.anio && S.versiones && !versionesDelAnio().length ? '<p class="aviso suave ancho m0">No hay versiones para ese año.</p>' : ''}
       ${S.modelos && !S.modelos.length ? '<p class="aviso suave ancho m0">Esta marca no tiene modelos para financiar.</p>' : ''}
       ${plazo}
-      <label class="f">Monto solicitado<input id="inMonto" inputmode="numeric" autocomplete="off" placeholder="Si dejas este espacio vacío se hará la simulación por el máximo permitido" value="${esc(S.monto)}"></label>
+      <label class="f">Monto solicitado<input id="inMonto" inputmode="numeric" autocomplete="off" value="${esc(S.monto)}"><small class="ayuda-monto">Si dejas este espacio vacío se hará la simulación por el máximo permitido</small></label>
     </div>
     ${S.error ? `<p class="aviso m0" role="alert">${esc(S.error)}</p>` : ''}
     <div class="acciones"><button class="btn primario" type="button" id="btnCotizar" ${!S.version || !S.anio || c ? 'disabled' : ''}>${c === 'cotizar' ? 'Calculando…' : 'Ver crédito'}</button></div>

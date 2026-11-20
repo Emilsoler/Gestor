@@ -20,6 +20,7 @@ body{margin:0;min-height:100dvh;color:var(--fg);font:15px/1.5 var(--f-body);
 h1,h2,h3{margin:0;font-weight:600;line-height:1.25}
 h2{font-size:18px} h3{font-size:15px}
 .hint{color:var(--muted);font-size:13px}
+.ayuda-monto{color:var(--muted);font-size:11px;line-height:1.35;white-space:normal}
 .m0{margin:0}
 .mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
 
