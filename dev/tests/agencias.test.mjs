@@ -372,9 +372,15 @@ test('las reglas de la solicitud: copia igual en la función, casilleros como en
     assert.deepEqual(JSON.parse(sql(`select to_json(gestor.docs_requeridos('${cat}', '${anio}'))`)).sort(), SOL.docsRequeridos(cat, anio).sort(), `${cat} ${anio}`);
   }
   for (const [k, d] of Object.entries(SOL.DOCS)) assert.equal(Number(sql(`select gestor.docs_maximo('${k}')`)), d.max, k);
-  assert.deepEqual(SOL.docsRequeridos('dependencia', '2020'), ['recibos', 'dni', 'titulo', 'servicio', 'cbu']);
-  assert.deepEqual(SOL.docsRequeridos('monotributo', '0km'), ['constancia', 'pagos', 'dni', 'factura', 'servicio', 'cbu'], 'un 0 km lleva la factura');
-  assert.deepEqual(SOL.docsRequeridos('inscripto', '2019'), ['constancia', 'iva', 'ganancias', 'dni', 'titulo', 'servicio', 'cbu']);
+  // Un solo casillero, para todas las categorías y también para un 0 km.
+  for (const [cat, anio] of [['dependencia', '2020'], ['monotributo', '0km'], ['inscripto', '2019']]) assert.deepEqual(SOL.docsRequeridos(cat, anio), ['documentacion'], `${cat} ${anio}`);
+  assert.equal(SOL.DOCS.documentacion.max, 40);
+  // Las solicitudes anteriores (con sus archivos por grupo) se miden con los grupos de entonces; una sin archivos o nueva, con el único.
+  const a = (slot) => ({ slot });
+  assert.deepEqual(SOL.docsSinAdjuntar({ categoria: 'dependencia', anio: '2020', archivos: [] }), ['documentacion']);
+  assert.deepEqual(SOL.docsSinAdjuntar({ categoria: 'dependencia', anio: '2020', archivos: [a('documentacion')] }), []);
+  assert.deepEqual(SOL.docsSinAdjuntar({ categoria: 'dependencia', anio: '2020', archivos: [a('recibos'), a('dni')] }), ['titulo', 'servicio', 'cbu']);
+  assert.deepEqual(SOL.docsSinAdjuntar({ categoria: 'monotributo', anio: '0km', archivos: [a('constancia'), a('pagos'), a('dni'), a('factura'), a('servicio'), a('cbu')] }), []);
   assert.ok(SOL.cbuValido(CBU));
   assert.ok(SOL.cbuValido('285 0590 9 4009041813520 1'.replace(/ /g, '')));
   for (const malo of ['2850590940090418135202', '2850591940090418135201', '285059094009041813520', 'abc']) assert.ok(!SOL.cbuValido(malo), malo);
@@ -452,9 +458,9 @@ test('solicitud completa: ingresos, 45 %, datos, documentos a la carpeta privada
   // La primera vez queda a medias, con un archivo: al armarla de nuevo se descarta, con su archivo.
   r = await pedir(agencia, { ...base, ingreso: justo });
   assert.equal(r.status, 200, r.texto);
-  assert.deepEqual(r.datos.requeridos, ['constancia', 'pagos', 'dni', 'titulo', 'servicio', 'cbu']);
+  assert.deepEqual(r.datos.requeridos, ['documentacion']);
   const vieja = r.datos.id;
-  assert.equal((await subir(agencia, vieja, 'dni', JPG())).status, 200);
+  assert.equal((await subir(agencia, vieja, 'documentacion', JPG())).status, 200);
   assert.equal((await objetos()).length, 1);
   r = await pedir(agencia, { ...base, ingreso: justo + 1000 });
   assert.equal(r.status, 200, r.texto);
@@ -477,40 +483,43 @@ test('solicitud completa: ingresos, 45 %, datos, documentos a la carpeta privada
   const c = await entrar('emi@test.local', 'Clave-de-prueba-2026');
   assert.ok((await c.from('solicitudes_credito').update({ estado: 'aprobada' }).eq('id', id).select()).error, 'no se resuelve a medio cargar');
 
-  // Archivos: solo PDF o JPG de verdad, en un casillero de su categoría, hasta el máximo; nada de otra agencia.
-  r = await subir(agencia, id, 'constancia', new TextEncoder().encode('<html>no</html>'), 'trampa.pdf');
+  // Archivos: solo PDF o JPG de verdad, en el casillero único, hasta el máximo; nada de otra agencia.
+  r = await subir(agencia, id, 'documentacion', new TextEncoder().encode('<html>no</html>'), 'trampa.pdf');
   assert.equal(r.status, 415);
   r = await subir(agencia, id, 'recibos', PDF());
-  assert.equal(r.status, 400, 'recibos no es de monotributo');
+  assert.equal(r.status, 400, 'los casilleros por grupo ya no se usan');
   r = await subir(agencia, id, 'factura', PDF());
-  assert.equal(r.status, 400, 'la factura es solo para un 0 km');
+  assert.equal(r.status, 400, 'tampoco la factura: va con todo lo demás');
   assert.equal((await objetos()).length, 0, 'lo rechazado no queda guardado');
   const otra = (await entrar('salon3@test.local', 'Agencia-123456').catch(() => null))?.sesion?.access_token
     || await cuentaAgencia('salon3@test.local', 'Salón Tres');
   await pedir(otra, { accion: 'clave_definida' });
-  r = await subir(otra, id, 'constancia', PDF());
+  r = await subir(otra, id, 'documentacion', PDF());
   assert.equal(r.status, 400);
   assert.equal((await objetos()).length, 0);
-  r = await subir(agencia, id, 'constancia', new Uint8Array(SOL.MAX_BYTES + 1).fill(0x25));
+  r = await subir(agencia, id, 'documentacion', new Uint8Array(SOL.MAX_BYTES + 1).fill(0x25));
   assert.equal(r.status, 413);
 
-  const subidos = { constancia: [PDF('constancia')], pagos: [PDF('pago 1'), PDF('pago 2'), PDF('pago 3')], dni: [JPG(1), JPG(2)], titulo: [PDF('título')], servicio: [JPG(3)], cbu: [PDF('cbu')] };
-  for (const [slot, xs] of Object.entries(subidos)) for (const [k, b] of xs.entries()) {
-    r = await subir(agencia, id, slot, b, `${slot}-${k + 1}.${b[0] === 0xff ? 'jpg' : 'pdf'}`);
+  // Todo junto: nueve archivos de distintas cosas y después hasta llegar a 40, el máximo de una solicitud; el 41.º no entra.
+  const nombres = ['constancia-1', 'pagos-1', 'pagos-2', 'pagos-3', 'dni-1', 'dni-2', 'titulo-1', 'servicio-1', 'cbu-1'];
+  for (const [k, nombre] of nombres.entries()) {
+    const b = nombre.startsWith('dni') || nombre.startsWith('servicio') ? JPG(k) : PDF(nombre);
+    r = await subir(agencia, id, 'documentacion', b, `${nombre}.${b[0] === 0xff ? 'jpg' : 'pdf'}`);
     assert.equal(r.status, 200, r.texto);
   }
-  r = await subir(agencia, id, 'dni', JPG(9));
-  assert.equal(r.status, 400, 'el DNI admite hasta 2 archivos');
+  for (let k = nombres.length; k < SOL.DOCS.documentacion.max; k++) assert.equal((await subir(agencia, id, 'documentacion', PDF(`extra ${k}`), `extra-${k}.pdf`)).status, 200);
+  r = await subir(agencia, id, 'documentacion', JPG(9));
+  assert.equal(r.status, 400, 'hasta 40 archivos');
   assert.match(r.datos.mensaje, /demasiados/);
   r = await pedir(agencia, { accion: 'enviar', id });
   assert.equal(r.status, 200, r.texto);
   s = fila();
   assert.equal(s.estado, 'pendiente');
   assert.ok(s.enviada);
-  assert.equal(s.archivos.length, 9);
+  assert.equal(s.archivos.length, 40);
   assert.ok(s.archivos.every((a) => a.path.startsWith(`${id}/`) && /^[0-9a-f]{64}$/.test(a.sha256)));
-  assert.equal((await objetos()).length, 9);
-  assert.equal((await subir(agencia, id, 'cbu', PDF())).status, 400, 'enviada, ya no admite archivos');
+  assert.equal((await objetos()).length, 40);
+  assert.equal((await subir(agencia, id, 'documentacion', PDF())).status, 400, 'enviada, ya no admite archivos');
 
   // La agencia la ve pendiente y no puede pedir los documentos; la Mutual sí, con enlaces que bajan lo mismo.
   r = await pedir(agencia, { accion: 'solicitudes' });
@@ -518,9 +527,9 @@ test('solicitud completa: ingresos, 45 %, datos, documentos a la carpeta privada
   assert.equal((await pedir(agencia, { accion: 'archivos', id })).status, 400);
   r = await pedir(emi, { accion: 'archivos', id });
   assert.equal(r.status, 200, r.texto);
-  assert.equal(r.datos.archivos.length, 9);
+  assert.equal(r.datos.archivos.length, 40);
   const pago2 = r.datos.archivos.find((a) => a.nombre === 'pagos-2.pdf');
-  assert.equal(pago2.slot, 'pagos');
+  assert.equal(pago2.slot, 'documentacion');
   const bajado = new Uint8Array(await (await fetch(pago2.url)).arrayBuffer());
   assert.deepEqual(bajado, PDF('pago 2'));
   assert.equal((await fetch(pago2.url.replace(/token=[^&]+/, 'token=otro'))).status, 400, 'sin la firma no se abre');

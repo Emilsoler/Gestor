@@ -23,9 +23,9 @@ async function pedir(jwt, cuerpo) {
   const r = await fetch(FN, { method: 'POST', headers: { apikey: env.ANON_KEY, 'content-type': 'application/json', authorization: `Bearer ${jwt}` }, body: JSON.stringify(cuerpo) });
   return { status: r.status, datos: await r.json() };
 }
-async function subir(jwt, id, slot, bytes) {
+async function subir(jwt, id, slot, bytes, nombre = slot) {
   const fd = new FormData();
-  fd.append('accion', 'archivo'); fd.append('id', id); fd.append('slot', slot); fd.append('archivo', new Blob([bytes]), `${slot}.pdf`);
+  fd.append('accion', 'archivo'); fd.append('id', id); fd.append('slot', slot); fd.append('archivo', new Blob([bytes]), `${nombre}.pdf`);
   const r = await fetch(FN, { method: 'POST', headers: { apikey: env.ANON_KEY, authorization: `Bearer ${jwt}` }, body: fd });
   assert.equal(r.status, 200, await r.text());
 }
@@ -68,7 +68,8 @@ before(async () => {
   });
   assert.equal(r.status, 200, JSON.stringify(r.datos));
   idSolicitud = r.datos.id;
-  for (const slot of ['recibos', 'dni', 'titulo', 'servicio', 'cbu']) await subir(jwt, idSolicitud, slot, PDF(slot));
+  // Desde el 20/11/2026 los documentos van todos juntos, en un solo casillero.
+  for (const nombre of ['recibos', 'dni', 'titulo', 'servicio', 'cbu']) await subir(jwt, idSolicitud, 'documentacion', PDF(nombre), nombre);
   assert.equal((await pedir(jwt, { accion: 'enviar', id: idSolicitud })).status, 200);
   browser = await chromium.launch();
 });

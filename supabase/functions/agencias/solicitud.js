@@ -14,6 +14,9 @@ export const CATEGORIAS = {
 
 /** Cada casillero: qué se adjunta, cuántos archivos admite y cuántos se esperan (eso último solo para avisar). */
 export const DOCS = {
+  // Desde el 20/11/2026 la agencia sube todo junto, en un solo recuadro (pedido de la persona): este es el único casillero
+  // que se usa. Los demás quedan para ver las solicitudes anteriores, que tienen los archivos separados por grupo.
+  documentacion: { titulo: 'Documentación del cliente', max: 40, esperados: 0 },
   recibos: { titulo: 'Últimos 3 recibos de sueldo', max: 6, esperados: 3 },
   constancia: { titulo: 'Constancia de inscripción', max: 2, esperados: 1 },
   pagos: { titulo: 'Últimos 3 pagos del monotributo', max: 6, esperados: 3 },
@@ -29,15 +32,30 @@ export const DOCS = {
 export const DOCS_INGRESOS = { dependencia: ['recibos'], monotributo: ['constancia', 'pagos'], inscripto: ['constancia', 'iva', 'ganancias'] };
 
 /**
- * Los casilleros de documentos de la solicitud. Un 0 km todavía no tiene título: va la factura. Desde nov 2026 ninguno es
- * obligatorio para enviarla (la persona pidió poder avanzar sin archivos, que a veces llegan por otra vía): la app y la Mutual
- * ven los que quedaron vacíos. El nombre quedó de cuando lo eran.
+ * El casillero de documentos de la solicitud: uno solo, donde la agencia sube todo junto. Ninguno es obligatorio para
+ * enviarla (nov 2026: a veces los documentos llegan por otra vía): la app y la Mutual ven si quedó vacío. El nombre
+ * quedó de cuando eran varios y obligatorios.
  */
-export function docsRequeridos(categoria, anio) {
+export function docsRequeridos(_categoria, _anio) {
+  return ['documentacion'];
+}
+/** Los que admiten archivos: el mismo. */
+export const docsPermitidos = docsRequeridos;
+
+/** Los casilleros de las solicitudes hechas antes del 20/11/2026: un grupo por documento y un 0 km con factura. */
+export function docsRequeridosAntes(categoria, anio) {
   return [...(DOCS_INGRESOS[categoria] || []), 'dni', anio === '0km' ? 'factura' : 'titulo', 'servicio', 'cbu'];
 }
-/** Los que admiten archivos: los mismos. */
-export const docsPermitidos = (categoria, anio) => docsRequeridos(categoria, anio);
+
+/**
+ * Qué casilleros quedaron vacíos en una solicitud ya enviada ({categoria, anio, archivos}). Una anterior al cambio, con sus
+ * archivos por grupo, se mide con los grupos de entonces; una nueva, o una sin archivos, con el casillero único.
+ */
+export function docsSinAdjuntar(sol) {
+  const arch = Array.isArray(sol?.archivos) ? sol.archivos : [];
+  const lista = arch.some((a) => a.slot !== 'documentacion') ? docsRequeridosAntes(sol.categoria, sol.anio) : docsRequeridos();
+  return lista.filter((k) => !arch.some((a) => a.slot === k));
+}
 
 export const MAX_BYTES = 10 * 1024 * 1024; // por archivo (igual que el límite de la carpeta del almacenamiento)
 export const MAX_ARCHIVOS = 40; // por solicitud

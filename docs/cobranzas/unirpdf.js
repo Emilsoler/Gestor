@@ -4,7 +4,7 @@
 //
 // Lo arma el navegador con pdf-lib (docs/vendor/pdf-lib.js, copiada por dev/vendor.mjs; MIT), que se carga recién al
 // tocar el botón. Nada sale de la app: los archivos se bajan con los mismos enlaces de 15 minutos de «Ver documentos».
-import { DOCS, docsRequeridos } from '../agencias/solicitud.js';
+import { DOCS, docsSinAdjuntar } from '../agencias/solicitud.js';
 
 let lib = null;
 const cargarLib = async () => (lib ||= await import('../vendor/pdf-lib.js'));
@@ -64,7 +64,7 @@ export async function pdfSolicitud(sol, archivos, bajar, { hoy = '' } = {}) {
   if (hoy) escribir(`Armado el ${hoy.split('-').reverse().join('/')} desde Créditos y Cobros.`, { gris: true });
   y -= 10;
   escribir('Documentos', { tam: 12, f: negrita });
-  const vacios = docsRequeridos(sol.categoria, sol.anio).filter((k) => !lista.some((a) => a.slot === k));
+  const vacios = docsSinAdjuntar({ categoria: sol.categoria, anio: sol.anio, archivos: lista });
   for (const k of orden) {
     const xs = lista.filter((a) => a.slot === k);
     if (!xs.length) continue;

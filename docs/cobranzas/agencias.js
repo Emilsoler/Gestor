@@ -4,7 +4,7 @@
 // decide desde acá, con su sesión de siempre.
 import { esc, plata, cuantos } from './textos.js';
 // Los casilleros de documentos y los nombres de las categorías son los del cotizador (un solo lugar).
-import { CATEGORIAS, DOCS, docsRequeridos, dniDelCuit } from '../agencias/solicitud.js';
+import { CATEGORIAS, DOCS, docsSinAdjuntar, dniDelCuit } from '../agencias/solicitud.js';
 
 export const TABS_AGENCIAS = [['solicitudes', 'Solicitudes'], ['parametros', 'Parámetros'], ['agencias', 'Agencias'], ['cotizaciones', 'Cotizaciones']];
 
@@ -110,7 +110,7 @@ const pendientes = (xs) => xs.filter((x) => x.estado === 'pendiente');
 function documentos(x, docs) {
   const n = Array.isArray(x.archivos) ? x.archivos.length : 0;
   // Los documentos no son obligatorios para enviar: la Mutual ve cuáles faltan, para pedirlos por otra vía.
-  const vacios = docsRequeridos(x.categoria, x.anio).filter((k) => !(x.archivos || []).some((a) => a.slot === k));
+  const vacios = docsSinAdjuntar(x);
   const sin = vacios.length ? `<p class="aviso-chico" role="status"><b>Sin adjuntar:</b> ${esc(vacios.map((k) => DOCS[k]?.titulo || k).join('; '))}.</p>` : '';
   if (!n) return sin;
   const D = docs.get(x.id);

@@ -12,7 +12,7 @@
 // «Continuar – Sujeto a revisión»; rojo «No apto»); 2) vehículo y crédito; 3) si quieren avanzar: ingresos
 // demostrables (sin eso no sigue) y el ingreso mensual (la cuota no puede pasar el 45 %); cómo obtiene los
 // ingresos; 4) su documentación; 5) datos del cliente con la suya; y se envía todo a la Mutual.
-import { CATEGORIAS, DOCS, DOCS_INGRESOS, MAX_BYTES, docsPermitidos, docsRequeridos, dniDelCuit, relacionCuota, revisarDatos, tipoArchivo } from './solicitud.js';
+import { CATEGORIAS, DOCS, MAX_BYTES, docsPermitidos, docsRequeridos, dniDelCuit, relacionCuota, revisarDatos, tipoArchivo } from './solicitud.js';
 
 const cfg = window.GESTOR_CONFIG || {};
 // Sesión propia, no la del gestor ('gestor.sesion', que comparten el gestor, Cobranzas y Prenda): así entrar acá
@@ -674,17 +674,31 @@ function htmlRelacion() {
       .map(([k, t], i) => `<button type="button" role="radio" data-categoria="${k}" aria-checked="${S.sol.categoria === k}"><span class="num-cat">${i + 1}</span>${esc(t)}</button>`).join('')}</div></div>`;
 }
 
-/** Un casillero de documentos: lo que ya se adjuntó y el botón para sumar (PDF o fotos). */
+/** Lo que la Mutual necesita para aprobar el crédito (texto pedido por la persona, 20/11/2026). */
+const REQUISITOS = `<p class="m0"><b>Recordá que para aprobar el crédito necesitamos los archivos PDF:</b></p>
+  <ol class="requisitos">
+    <li>Foto de DNI (ambos lados)</li>
+    <li>Foto de un impuesto o servicio para constatar el domicilio</li>
+    <li>A) En caso de ser empleado en relación de dependencia: últimos 6 recibos de sueldo.<br>
+      B) En caso de ser monotributista: constancia de inscripción y últimos 3 pagos.<br>
+      C) En caso de ser responsable inscripto: constancia de inscripción, últimas 3 DDJJ de IVA y Ganancias.</li>
+    <li>Título del automotor</li>
+    <li>Estado civil; en caso de ser casado/a: mencioná el lugar y la fecha del matrimonio</li>
+    <li>Nro. de celular</li>
+    <li>CBU donde se va a depositar el crédito</li>
+  </ol>
+  <p class="hint m0">Los puntos 5, 6 y 7 se completan en los campos de más abajo. Los archivos pueden ser PDF o fotos, de hasta 10 MB cada uno (las fotos se achican solas).</p>`;
+
+/** El recuadro donde la agencia suelta o elige todos los archivos juntos. */
 function casillero(slot) {
   const L = S.sol, d = DOCS[slot], xs = L.docs[slot] || [];
-  const requerido = docsRequeridos(L.categoria, S.res.anio).includes(slot);
-  const etq = xs.length ? (xs.length < d.esperados ? `<span class="etq">${xs.length} de ${d.esperados}</span>` : '<span class="etq ok">Listo</span>')
-    : requerido ? '<span class="etq">Sin adjuntar</span>' : '';
+  const lleno = xs.length >= d.max;
+  const etq = xs.length ? `<span class="etq ok">${xs.length} ${xs.length === 1 ? 'archivo' : 'archivos'}</span>` : '<span class="etq">Sin adjuntar</span>';
   return `<div class="doc" id="doc-${slot}">
     <div class="card-cab"><b>${esc(d.titulo)}</b>${etq}</div>
+    ${lleno || L.enviando ? '' : `<label class="canasta" data-canasta="${slot}"><span class="canasta-t">Arrastrá los archivos acá</span><span class="hint">o tocá para elegirlos (podés elegir varios de una vez)</span><input class="oculto" type="file" accept="application/pdf,image/*" multiple data-slot="${slot}"></label>`}
+    ${lleno ? `<p class="hint m0">Llegaste al máximo de ${d.max} archivos.</p>` : ''}
     ${xs.length ? `<ul class="doc-lista">${xs.map((x, i) => `<li><span class="doc-nombre">${esc(x.nombre)}</span><span class="hint">${tamano(x.file.size)}</span><button class="btn chico" type="button" data-quitar="${slot}" data-i="${i}" ${L.enviando ? 'disabled' : ''}>Quitar</button></li>`).join('')}</ul>` : ''}
-    ${xs.length < d.max && !L.enviando ? `<label class="btn chico doc-sumar">${xs.length ? 'Agregar otro archivo' : 'Adjuntar'}<input class="oculto" type="file" accept="application/pdf,image/*" multiple data-slot="${slot}"></label>` : ''}
-    ${xs.length && xs.length < d.esperados ? `<p class="hint m0">Se esperan ${d.esperados}. Si están todos en un mismo PDF, alcanza con ese.</p>` : ''}
   </div>`;
 }
 
@@ -705,19 +719,16 @@ function vistaSolicitud() {
 
   const v = (k) => esc(L[k] ?? '');
   const dniCuit = dniDelCuit(S.bcra?.cuit), dni = soloDigitos(L.dni);
-  html += `<section class="card no-imprimir"><h2>4 · Documentación de ingresos</h2>
-    <label class="f">Empleo, profesión o actividad (opcional)<input data-campo="actividad" autocomplete="off" maxlength="200" placeholder="Ej.: empleado de comercio en Supermercado X; docente; productor agropecuario" value="${v('actividad')}"></label>
-    <p class="hint m0">${esc(CATEGORIAS[L.categoria])}. PDF o fotos, hasta 10 MB cada archivo (las fotos se achican solas).</p>
-    ${DOCS_INGRESOS[L.categoria].map(casillero).join('')}
+  html += `<section class="card no-imprimir"><h2>4 · Documentación</h2>
+    <div class="requisitos-caja">${REQUISITOS}</div>
+    ${casillero('documentacion')}
   </section>
   <section class="card no-imprimir" id="pasoDatos"><h2>5 · Datos del cliente</h2>
+    <div class="bloque"><label class="f">Empleo, profesión o actividad (opcional)<input data-campo="actividad" autocomplete="off" maxlength="200" placeholder="Ej.: empleado de comercio en Supermercado X; docente; productor agropecuario" value="${v('actividad')}"></label></div>
     <div class="bloque"><label class="f">DNI<input data-campo="dni" inputmode="numeric" autocomplete="off" maxlength="12" value="${v('dni')}"></label>
-      ${dniCuit && dni && dni !== dniCuit ? '<p class="aviso suave m0">No coincide con el CUIL que se consultó en el BCRA.</p>' : ''}
-      ${casillero('dni')}</div>
-    <div class="bloque"><div class="f">Vehículo cotizado<div class="dato">${esc(r.vehiculo)} · ${esc(etiquetaAnio(r.anio))}</div></div>
-      ${casillero(r.anio === '0km' ? 'factura' : 'titulo')}</div>
-    <div class="bloque"><label class="f">Domicilio real<input data-campo="domicilio" autocomplete="off" maxlength="300" placeholder="Calle, número y localidad" value="${v('domicilio')}"></label>
-      ${casillero('servicio')}</div>
+      ${dniCuit && dni && dni !== dniCuit ? '<p class="aviso suave m0">No coincide con el CUIL que se consultó en el BCRA.</p>' : ''}</div>
+    <div class="bloque"><div class="f">Vehículo cotizado<div class="dato">${esc(r.vehiculo)} · ${esc(etiquetaAnio(r.anio))}</div></div></div>
+    <div class="bloque"><label class="f">Domicilio real<input data-campo="domicilio" autocomplete="off" maxlength="300" placeholder="Calle, número y localidad" value="${v('domicilio')}"></label></div>
     <div class="bloque"><div class="f">Estado civil<div class="opciones2" role="radiogroup" aria-label="Estado civil">
         <button type="button" role="radio" data-civil="soltero" aria-checked="${L.estado_civil === 'soltero'}">Soltero/a</button>
         <button type="button" role="radio" data-civil="casado" aria-checked="${L.estado_civil === 'casado'}">Casado/a</button></div></div>
@@ -733,10 +744,9 @@ function vistaSolicitud() {
         <label class="f">Titular de la cuenta (nombre o razón social)<input data-campo="cuenta_titular" autocomplete="off" maxlength="200" value="${v('cuenta_titular')}"></label>
         <label class="f">CUIT o CUIL del titular<input data-campo="cuenta_cuit" inputmode="numeric" autocomplete="off" maxlength="20" value="${v('cuenta_cuit')}"></label>
         <label class="f ancho">Relación con el cliente (opcional)<input data-campo="cuenta_relacion" autocomplete="off" maxlength="120" placeholder="Ej.: agencia vendedora, cónyuge" value="${v('cuenta_relacion')}"></label></div>` : ''}
-      ${casillero('cbu')}
-      ${L.cuenta === 'terceros' ? '<p class="hint m0">La constancia tiene que mostrar el CBU y quién es el titular.</p>' : ''}</div>
+      ${L.cuenta === 'terceros' ? '<p class="hint m0">Si la cuenta es de un tercero, sumá a los archivos una constancia que muestre el CBU y quién es el titular.</p>' : ''}</div>
     <label class="check"><input type="checkbox" id="chkConformidad" ${L.conformidad ? 'checked' : ''}> El cliente está de acuerdo con enviar estos datos y documentos a la Asociación Mutual Bell para que evalúe el crédito.</label>
-    ${sinAdjuntar().length ? `<p class="hint m0">Sin adjuntar: ${esc(sinAdjuntar().map((k) => DOCS[k].titulo).join('; '))}. Podés enviar la solicitud igual y mandar esos documentos a la Mutual por otra vía.</p>` : ''}
+    ${sinAdjuntar().length ? '<p class="hint m0">No adjuntaste ningún archivo. Podés enviar la solicitud igual y mandar los documentos a la Mutual por otra vía.</p>' : ''}
     ${L.errores.length ? `<div class="aviso m0" role="alert" id="erroresSol"><b>Antes de enviar, falta:</b><ul>${L.errores.map((e) => `<li>${esc(e)}</li>`).join('')}</ul></div>` : ''}
     ${L.error ? `<p class="aviso m0" role="alert">${esc(L.error)}</p>` : ''}
     ${L.preparando ? '<p class="hint m0">Preparando las fotos…</p>' : ''}
@@ -850,6 +860,19 @@ document.addEventListener('submit', (e) => {
   else if (f.id === 'fClave') cambiarClave(f.elements.a.value, f.elements.b.value);
   else if (f.id === 'fCliente') consultarCliente();
 });
+
+// Arrastrar los archivos al recuadro (en la compu; en el celular se toca y se eligen de la galería).
+const canastaDe = (e) => e.target.closest?.('[data-canasta]');
+document.addEventListener('dragover', (e) => { const c = canastaDe(e); if (!c) return; e.preventDefault(); c.classList.add('encima'); });
+document.addEventListener('dragleave', (e) => { canastaDe(e)?.classList.remove('encima'); });
+document.addEventListener('drop', (e) => {
+  const c = canastaDe(e);
+  if (!c) return;
+  e.preventDefault(); c.classList.remove('encima');
+  if (e.dataTransfer?.files?.length) agregarArchivos(c.dataset.canasta, [...e.dataTransfer.files]);
+});
+// Soltar un archivo fuera del recuadro no tiene que abrirlo en la pantalla y perder lo cargado.
+for (const ev of ['dragover', 'drop']) window.addEventListener(ev, (e) => { if (e.dataTransfer?.types?.includes('Files') && !canastaDe(e)) e.preventDefault(); });
 
 document.addEventListener('change', (e) => {
   const t = e.target;

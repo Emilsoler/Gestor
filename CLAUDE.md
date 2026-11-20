@@ -828,16 +828,22 @@ Mutual y no nombra a InfoAuto.
   3. **Ingresos**: «¿Tiene ingresos demostrables?» Sí/No (con No no avanza); ingreso mensual aproximado: la cuota no puede pasar
      `ajustes_agencias.relacion_max` % (45) del ingreso; recién ahí elige cómo los obtiene (relación de dependencia,
      monotributo o responsable inscripto).
-  4. **Documentación de ingresos** según esa categoría y 5. **datos del cliente** con la suya: DNI y foto de los dos lados, el
-     vehículo cotizado con el título (usado) o la **factura** (0 km; migración 0029), domicilio real e impuesto o servicio a su
-     nombre, estado civil (casado: lugar y fecha del matrimonio), celular, y CBU o CVU (**opcional** desde el 17/11/2026; si se
-     escribe, se controlan sus dígitos verificadores y hay que decir si la cuenta es **propia o de un tercero** (de un tercero: titular, su CUIT o CUIL —validado— y la relación con el cliente,
-     opcional) y la constancia de la cuenta. Más la conformidad del cliente para mandar sus datos a la Mutual. Los demás datos son
-     obligatorios; **los documentos no** (migración 0030, pedido de la persona del 17/11/2026: a veces llegan por otra vía).
-     La app avisa «Sin adjuntar: …» y deja enviar; la Mutual ve en la solicitud qué casilleros quedaron vacíos.
-  Los casilleros, sus topes de archivos y los controles de los datos están en `docs/agencias/solicitud.js`, con **copia exacta**
-  en `supabase/functions/agencias/solicitud.js`; los obligatorios también en `gestor.docs_requeridos` (las pruebas comparan los
-  tres). Si se cambia la documentación que se pide, cambiar los tres y `gestor.docs_maximo` (migración nueva).
+  4. **Documentación**: desde el 20/11/2026 (pedido de la persona) un **solo recuadro** donde la agencia suelta o elige todos los
+     archivos juntos («Arrastrá los archivos acá»; en el celular se toca y se eligen varios de la galería), con el cartel «Recordá que
+     para aprobar el crédito necesitamos los archivos PDF…» y los 7 puntos arriba (`REQUISITOS` en `docs/agencias/app.js`; el texto lo
+     escribió la persona, no cambiarlo sin que lo pida). Es el casillero `documentacion`, hasta 40 archivos, PDF o JPEG de hasta 10 MB.
+     Ya no se sabe qué archivo es cuál: la Mutual los mira y, si falta algo, lo pide por otra vía. Antes eran un casillero por documento
+     (DNI, recibos, título, servicio, CBU…): las solicitudes anteriores conservan sus archivos con esos `slot`, y `docsSinAdjuntar`
+     (solicitud.js) mide lo que falta con los grupos de entonces o con el casillero único, según la solicitud.
+  5. **Datos del cliente** (empleo o actividad opcional, DNI, domicilio real, estado civil —casado: lugar y fecha del matrimonio—, celular,
+     y CBU o CVU **opcional**; si se escribe, se controlan sus dígitos verificadores y hay que decir si la cuenta es **propia o de un tercero**
+     (de un tercero: titular, su CUIT o CUIL —validado— y la relación con el cliente, opcional). Más la conformidad del cliente para mandar
+     sus datos a la Mutual. Los datos son obligatorios; **los documentos no** (migración 0030, pedido de la persona del 17/11/2026: a veces
+     llegan por otra vía). La app avisa «No adjuntaste ningún archivo» y deja enviar; la Mutual ve en la solicitud que no hay archivos.
+  El casillero, su tope de archivos y los controles de los datos están en `docs/agencias/solicitud.js`, con **copia exacta**
+  en `supabase/functions/agencias/solicitud.js`; el casillero admitido también en `gestor.docs_requeridos` y su tope en
+  `gestor.docs_maximo` (migración 0037; las pruebas comparan los tres). Si se cambia la documentación que se pide, cambiar los tres
+  (migración nueva).
 - **Envío** (acciones `solicitar`, `archivo`, `enviar`): `solicitar` recalcula el crédito (no confía en el navegador), controla
   ingresos, relación, datos y conformidad, y crea la solicitud en estado `cargando` (exige una consulta al BCRA no roja de esa
   agencia, de los últimos 3 días, y no deja dos pendientes para el mismo CUIT; las que quedaron a medio cargar de ese cliente, o
