@@ -637,7 +637,7 @@ function vistaCotizar() {
       ${S.anio && S.versiones && !versionesDelAnio().length ? '<p class="aviso suave ancho m0">No hay versiones para ese año.</p>' : ''}
       ${S.modelos && !S.modelos.length ? '<p class="aviso suave ancho m0">Esta marca no tiene modelos para financiar.</p>' : ''}
       ${plazo}
-      <label class="f">Monto a pedir (opcional)<input id="inMonto" inputmode="numeric" autocomplete="off" placeholder="Vacío = el máximo" value="${esc(S.monto)}"></label>
+      <label class="f">Monto solicitado<input id="inMonto" inputmode="numeric" autocomplete="off" placeholder="Si dejas este espacio vacío se hará la simulación por el máximo permitido" value="${esc(S.monto)}"></label>
     </div>
     ${S.error ? `<p class="aviso m0" role="alert">${esc(S.error)}</p>` : ''}
     <div class="acciones"><button class="btn primario" type="button" id="btnCotizar" ${!S.version || !S.anio || c ? 'disabled' : ''}>${c === 'cotizar' ? 'Calculando…' : 'Ver crédito'}</button></div>
@@ -807,7 +807,7 @@ function vistaResultado(r) {
       <tr><td>Gastos de otorgamiento (incluidos en las cuotas)</td><td class="num">${plata(r.gastos_otorgamiento)}</td></tr>
     </tbody></table>
     <div class="scroll"><table><thead><tr><th>Otros plazos con este monto</th><th class="num">Cuota</th></tr></thead><tbody>${opciones}</tbody></table></div>
-    <p class="leyenda tasas m0">TNA ${pct(r.tna)} · TEA ${pct(r.tea)} · CFT ${pct(r.cft)}. El CFT incluye los gastos de otorgamiento, el seguro, los gastos administrativos y la cuota social. No incluye IVA. ${esc(r.leyenda || '')}</p>
+    <p class="leyenda tasas m0">TNA ${pct(r.tna)} · TEA ${pct(r.tea)} · CFT ${pct(r.cft)}. El CFT incluye los gastos de otorgamiento de prenda, contratos, tasa y arancel de inscripción de prenda en R.P.A. No incluye IVA. ${esc(r.leyenda || '')}</p>
     ${r.contacto ? `<p class="leyenda m0">${esc(r.contacto)}</p>` : ''}
     ${hojaImprimir(r, `${r.vehiculo} · ${etiquetaAnio(r.anio)}`)}
     <div class="acciones no-imprimir">
