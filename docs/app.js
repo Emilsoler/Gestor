@@ -394,7 +394,7 @@ const TILES = [
   { k: 'acuerdos', t: 'Acuerdos', ir: 'acuerdos' }, { k: 'plantillas', t: 'Plantillas', ir: 'plantillas' },
   { k: 'liquidaciones', t: 'Liquidaciones', ir: 'liq' }, { k: 'cobros', t: 'Créditos y Cobros', href: COBRANZAS },
   { k: 'jurisprudencia', t: 'Jurisprudencia', ir: 'juris' }, { k: 'sac', t: 'SAC', sac: true }, { k: 'planillas', t: 'Planillas Judiciales', img: 'justicia', href: PLANILLAS },
-  { k: 'legislacion', t: 'Legislación', img: 'aristoteles', href: INFOLEG },
+  { k: 'legislacion', t: 'Legislación', href: INFOLEG },
 ];
 const BANDAS = { lista: ['justicia', 'Causas'], agenda: ['agenda', 'Agenda'], acuerdos: ['acuerdos', 'Acuerdos'], juris: ['jurisprudencia', 'Jurisprudencia'], liq: ['liquidaciones', 'Liquidaciones'] };
 
