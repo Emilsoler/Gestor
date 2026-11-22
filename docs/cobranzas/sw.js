@@ -5,7 +5,7 @@
 // configuración, las cuentas de importes, el armado de Excel y las tipografías (../).
 //
 // Al cambiar la lista de archivos o una tipografía/ícono, subir VERSION para renovar la copia.
-const VERSION = 'cobranzas-v47';
+const VERSION = 'cobranzas-v48';
 const ESPERA_MS = 4000;
 
 const NUCLEO = [
@@ -59,3 +59,25 @@ async function redPrimero(e, pedido) {
   const copia = (await caches.match(pedido, { ignoreSearch: true })) || (pedido.mode === 'navigate' ? await caches.match('./') : null);
   return copia || deRed;
 }
+
+// ───────────────────────── Avisos (Web Push) ─────────────────────────
+// La función `agencias` manda un aviso cuando una agencia quiere hablar con la Mutual. En el iPhone solo llegan con la
+// app instalada en la pantalla de inicio, y cada aviso tiene que mostrarse (userVisibleOnly): por eso siempre se muestra.
+self.addEventListener('push', (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch { d = { c: e.data ? e.data.text() : '' }; }
+  e.waitUntil(self.registration.showNotification(String(d.t || 'Mutual Bell'), {
+    body: String(d.c || ''), icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', data: { u: String(d.u || '') },
+  }));
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = new URL(e.notification.data?.u || '/Gestor/cobranzas/#agencias-chats', self.location.origin).href;
+  e.waitUntil((async () => {
+    const abiertas = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const mia = abiertas.find((c) => new URL(c.url).pathname.startsWith(new URL(self.registration.scope).pathname));
+    if (mia) { mia.postMessage({ abrir: 'agencias-chats' }); await mia.focus(); return; } // ya abierta: se avisa y se enfoca
+    await self.clients.openWindow(url);
+  })());
+});

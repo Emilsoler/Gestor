@@ -779,3 +779,16 @@ body:has(#drawer:not([hidden])) #btnClaudeWeb,body:has(#menu:not([hidden])) #btn
 .dc-sug-op{border:0;background:none;color:var(--fg);text-align:left;padding:10px 10px;border-radius:8px;font:inherit;font-size:14px;cursor:pointer}
 .dc-sug-op:hover,.dc-sug-op:focus{background:var(--accent-soft)}
 @media (max-width:720px){.dc-cheque .dc-banco{grid-column:1 / -1}}
+
+/* Chats de las agencias (solapa «Chats» de Agencias) */
+.ag-chats{display:grid;gap:8px}
+.ag-chat-fila{display:grid;gap:3px;text-align:left;width:100%;font:inherit;color:var(--fg);background:var(--sunken);border:1px solid var(--line-soft);border-radius:var(--r-s);padding:10px 12px;cursor:pointer}
+.ag-chat-fila:hover{border-color:var(--accent)}
+.ag-chat-fila.espera{border-color:var(--warn);box-shadow:inset 3px 0 0 var(--warn)}
+.ag-chat-quien{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ag-chat-ultimo{overflow-wrap:anywhere;font-size:14px}
+.ag-msgs{display:grid;gap:8px;max-height:min(50vh,420px);overflow-y:auto;padding:4px 2px}
+.ag-msg{max-width:88%;padding:8px 11px;border-radius:12px;background:var(--sunken);border:1px solid var(--line-soft)}
+.ag-msg p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.ag-msg-de{display:block;font-size:11.5px;color:var(--muted);margin-bottom:2px}
+.ag-msg.mutual{justify-self:end;border-color:var(--accent)}

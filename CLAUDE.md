@@ -876,6 +876,30 @@ Mutual y no nombra a InfoAuto.
   nueva: se ve en Créditos y Cobros (la insignia de la solapa y el aviso de Inicio). Son datos personales y documentos de identidad e ingresos: no salen de ahí y no se
   copian al repositorio. El almacenamiento del plan gratuito es de 1 GB (una solicitud con fotos ocupa unos pocos MB).
 
+### Chat «M» con la Mutual (migración 0038, pedido de la persona del 22/11/2026)
+
+Botón flotante «M» en el cotizador (`docs/agencias/chat.js`): abre un chat con un asistente que responde dudas básicas y, si la
+agencia lo pide («Hablar con un representante»), avisa a la Mutual; ahí contesta la persona desde Créditos y Cobros → Agencias →
+**Chats** (`htmlChats` en `docs/cobranzas/agencias.js`). **Arranca apagado**: se prende con «Chat con la Mutual» en Parámetros
+(`ajustes_agencias.chat_habilitado`).
+
+- **El asistente** (`supabase/functions/agencias/chat.js`, API de Claude; modelo `claude-haiku-5-5`, `AGENCIAS_CHAT_MODELO` lo cambia;
+  usa el secreto `ANTHROPIC_API_KEY`, el mismo de la función `chat`). Se apoya en la «hoja de respuestas» (`ajustes_agencias.ayuda`,
+  editable en Parámetros). **No recibe** el % financiable, las tasas por año ni valores: revelarían el valor del vehículo
+  (licencia de InfoAuto), y la respuesta se filtra por si nombra a InfoAuto o al CODIA. Termina con `[[REPRESENTANTE]]` cuando
+  conviene una persona. Topes por agencia y día: 200 mensajes y 60 respuestas del asistente.
+- **Estados** (`chats_agencia.estado`): `bot` → `espera` (pidió persona) → `humano` (la Mutual respondió) → `cerrado`. Un solo chat
+  abierto por agencia. Con una persona en la conversación el asistente calla. Tablas `chats_agencia`, `mensajes_agencia`,
+  `avisos_push` y `push_claves`: sin políticas ni permisos para la API (solo la función con la clave de servicio).
+- **Avisos a la Mutual**: push al celular (Web Push hecho a mano con WebCrypto, `push.js`; claves VAPID creadas por la función la
+  primera vez y guardadas en `push_claves`) y, si se configura, mail de respaldo por Resend (`RESEND_API_KEY`, `AVISO_EMAIL`,
+  opcionales `AVISO_REMITENTE` y `RESEND_URL`; sin eso no hace nada). Avisa siempre al pedir representante; después, solo si la
+  Mutual ya había leído lo anterior. **iPhone**: iOS 16.4 o más y Créditos y Cobros instalada en la pantalla de inicio; ahí se toca
+  «Activar avisos» (Agencias → Chats). El service worker `docs/cobranzas/sw.js` atiende `push` y `notificationclick`.
+- **Publicar**: migración 0038 y `deploy_edge_function` de `agencias` con **siete** archivos (`index.ts`, `credito.js`, `bcra.ts`,
+  `solicitud.js`, `foto.js`, `chat.js`, `push.js`); después subir la app. `PUSH_PERMITIR_LOCAL=1` solo lo pone `dev/stack.sh`.
+- Pruebas: `agencias-chat-puro`, `agencias-chat` y `agencias-chat-app` (incluidas en `npm run test:agencias`).
+
 Para Claude, por el conector:
 
 ```sql
@@ -914,8 +938,8 @@ Desde SQL no se abren los documentos: los enlaces los da la función (botón «V
   `es_miembro()`; las agencias no tienen acceso). Es solo un registro de simulaciones: **no queda historial** (`cotizaciones_agencia` no
   tiene el disparador `auditar`) y no se puede deshacer. Ojo: el tope diario de cada agencia cuenta estas filas, así que borrar las de
   hoy le devuelve cotizaciones del día.
-- **Publicar la función**: `deploy_edge_function` con nombre `agencias`, `verify_jwt: true` y los cinco archivos de
-  `supabase/functions/agencias/` (`index.ts` de entrada, `credito.js`, `bcra.ts`, `solicitud.js` y `foto.js`). Usa los secretos `INFOAUTO_USER` e `INFOAUTO_PASS`.
+- **Publicar la función**: `deploy_edge_function` con nombre `agencias`, `verify_jwt: true` y los siete archivos de
+  `supabase/functions/agencias/` (`index.ts` de entrada, `credito.js`, `bcra.ts`, `solicitud.js`, `foto.js`, `chat.js` y `push.js`). Usa los secretos `INFOAUTO_USER` e `INFOAUTO_PASS`.
 - **Pruebas**: `npm run test:agencias` (función de punta a punta contra `dev/infoauto-falso.mjs`, con vehículos y
   precios inventados, contra `dev/bcra-falso.mjs` para el BCRA y contra `dev/storage-falso.mjs` para el almacenamiento, que la
   base local no tiene; controla que ninguna respuesta a una agencia incluya un precio o un CODIA, la tasa por año, el semáforo,

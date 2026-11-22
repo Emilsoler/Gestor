@@ -6,6 +6,7 @@ import {
   consultarInfoAuto, consultarInfoAutoTodo, consultarBCRA, detalleConsulta, detalleGuardado, borrarConsulta, consultarCheque, entidadesCheques, borrarConsultaCheque, crearCasoRefi, actualizarCasoRefi, borrarCasoRefi, archivarCasoRefi,
   crearDescuento, guardarDescuento, borrarDescuento, estadoCheque,
   leerAgencias, contarSolicitudes, guardarAjustesAgencias, altaAgencia, crearAgencia, activarAgencia, resolverSolicitud, documentosSolicitud, eliminarSolicitud, eliminarCotizaciones,
+  chatsAgencias, chatResumen, verChat, responderChat, cerrarChat, claveAvisos, registrarAvisos, quitarAvisos, probarAvisos,
 } from './datos.js';
 import { htmlAgencias, avisoInicio, parametrosEnTexto, leerParametros, TABS_AGENCIAS } from './agencias.js';
 import {
@@ -72,7 +73,12 @@ const S = {
   },
   // Agencias (el cotizador para agencias): lo leído, la pestaña, los enlaces a documentos ya pedidos, lo que se escribe
   // (notas para la agencia, parámetros y alta, atados con data-k) y cuántas solicitudes esperan respuesta.
-  ag: { datos: null, cargando: false, error: '', tab: 'solicitudes', msg: '', docs: new Map(), notas: {}, p: {}, alta: {}, pend: 0, borrar: '', borrarCot: '' },
+  ag: {
+    datos: null, cargando: false, error: '', tab: 'solicitudes', msg: '', docs: new Map(), notas: {}, p: {}, alta: {}, pend: 0, borrar: '', borrarCot: '',
+    // Chats de las agencias: la lista, la conversación abierta (hilo + mensajes), lo que se escribe (texto) y el estado de los
+    // avisos al celular (push: cargando | no | denegado | inactivo | activo). `atencion`: conversaciones que piden respuesta.
+    chat: { lista: [], atencion: 0, espera: 0, error: '', hilo: null, mensajes: [], texto: '', enviando: false, push: 'cargando', pushMsg: '' },
+  },
 };
 try { S.vista = VISTAS[localStorage.getItem('cb.vista')] ? localStorage.getItem('cb.vista') : 'inicio'; } catch { /* sin almacenamiento */ }
 try { if (localStorage.getItem('cb.simOrigen') === 'mano') S.cred.simOrigen = 'mano'; } catch { /* sin almacenamiento */ }
@@ -285,9 +291,10 @@ function render() {
   insignia('#nPlanes', atrasados, 'urg', atrasados === 1 ? 'plan atrasado' : 'planes atrasados');
   const dia = hoy(), urgentes = todos.filter((x) => x.r.activo && pendientesDe(x.d, x.r).some((p) => p.tarde || (p.fecha && p.fecha <= dia))).length;
   insignia('#nDeudores', urgentes, 'pend', urgentes === 1 ? 'deudor con algo para hoy o atrasado' : 'deudores con algo para hoy o atrasado');
-  insignia('#nAgencias', S.ag.pend, 'pend', S.ag.pend === 1 ? 'solicitud de agencia para revisar' : 'solicitudes de agencias para revisar');
+  const porAgencias = S.ag.pend + (S.ag.chat.atencion || 0);
+  insignia('#nAgencias', porAgencias, 'pend', porAgencias === 1 ? 'cosa de agencias para atender (solicitud o chat)' : 'cosas de agencias para atender (solicitudes y chats)');
   main.innerHTML = {
-    inicio: (t) => avisoInicio(S.ag.pend) + vistaInicio(t), deudores: vistaDeudores, planes: vistaPlanes, creditos: vistaCreditos, agencias: vistaAgencias,
+    inicio: (t) => avisoInicio(S.ag.pend, S.ag.chat.atencion) + vistaInicio(t), deudores: vistaDeudores, planes: vistaPlanes, creditos: vistaCreditos, agencias: vistaAgencias,
   }[S.vista](todos);
   aplicarAnchos(main);
   $('#fabNuevo').hidden = S.vista === 'creditos' || S.vista === 'agencias'; // en el celular taparía el resultado, y ahí no hace falta
@@ -493,6 +500,7 @@ async function cargarAgencias() {
     G.datos = await leerAgencias();
     G.p = parametrosEnTexto(G.datos.ajustes || {});
     G.pend = G.datos.solicitudes.filter((x) => x.estado === 'pendiente').length;
+    await cargarChats(false);
   } catch (e) {
     G.error = /PGRST205|42P01|does not exist/i.test(`${e.code} ${e.message}`) ? 'Falta activar el cotizador de agencias en la base. Avisale a Claude.' : mensaje(e, 'no se pudo leer');
   }
@@ -503,10 +511,88 @@ async function cargarAgencias() {
 /** Cuántas solicitudes esperan respuesta: el aviso de la solapa y de Inicio. Si cambió, se redibuja. */
 async function contarPendientes() {
   if (S.pantalla !== 'listo') return;
-  const n = await contarSolicitudes();
-  if (n === S.ag.pend) return;
-  S.ag.pend = n;
-  if (S.vista === 'agencias') cargarAgencias(); else render();
+  const [n, r] = await Promise.all([contarSolicitudes(), chatResumen()]);
+  const atencion = r ? r.atencion || 0 : S.ag.chat.atencion;
+  if (n === S.ag.pend && atencion === S.ag.chat.atencion) return;
+  const nuevoChat = atencion !== S.ag.chat.atencion, nuevasSol = n !== S.ag.pend;
+  S.ag.pend = n; S.ag.chat.atencion = atencion;
+  if (S.vista === 'agencias' && nuevasSol) cargarAgencias(); // solicitudes nuevas: se vuelve a leer todo
+  else if (S.vista === 'agencias' && S.ag.tab === 'chats' && nuevoChat) { await cargarChats(true); render(); }
+  else render();
+}
+
+// ── Chats de las agencias ──
+/** La lista de conversaciones (y, si hay una abierta, sus mensajes). Un error no tira abajo el resto de la vista. */
+async function cargarChats(silencioso) {
+  const C = S.ag.chat;
+  try {
+    const r = await chatsAgencias();
+    C.lista = r.chats || []; C.atencion = r.atencion || 0; C.espera = r.espera || 0; C.error = '';
+    if (C.hilo) {
+      const v = await verChat(C.hilo.id);
+      C.hilo = v.chat; C.mensajes = v.mensajes || [];
+    }
+  } catch (e) {
+    if (!silencioso) C.error = e.codigo === 'accion' || e.status === 400 ? 'El chat todavía no está publicado en la función. Avisale a Claude.' : mensaje(e, 'no se pudo leer el chat');
+  }
+  if (S.ag.tab === 'chats' && C.push === 'cargando') revisarAvisos();
+}
+
+async function abrirHiloAgencia(id) {
+  const C = S.ag.chat;
+  try {
+    const v = await verChat(id);
+    C.hilo = v.chat; C.mensajes = v.mensajes || []; C.texto = ''; C.error = '';
+  } catch (e) { C.error = mensaje(e, 'no se pudo abrir la conversación'); }
+  await contarPendientes();
+  render();
+  const m = $('#agMsgs'); if (m) m.scrollTop = m.scrollHeight;
+}
+
+// ── Avisos al celular (Web Push). El service worker (sw.js) los muestra; la función los manda. ──
+const deB64u = (x) => Uint8Array.from(atob(String(x).replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (String(x).length % 4)) % 4)), (c) => c.charCodeAt(0));
+const sePuedeAvisar = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && window.isSecureContext;
+/** Mira cómo está este dispositivo: no puede, bloqueado, sin activar o activado. */
+async function revisarAvisos() {
+  const C = S.ag.chat;
+  let estado = 'no';
+  try {
+    if (sePuedeAvisar()) {
+      if (Notification.permission === 'denied') estado = 'denegado';
+      else estado = (await (await navigator.serviceWorker.ready).pushManager.getSubscription()) ? 'activo' : 'inactivo';
+    }
+  } catch { estado = 'no'; }
+  if (C.push !== estado) { C.push = estado; render(); }
+}
+async function activarAvisos() {
+  const C = S.ag.chat;
+  C.pushMsg = '';
+  try {
+    if ((await Notification.requestPermission()) !== 'granted') { C.pushMsg = 'No diste el permiso: los avisos quedaron apagados.'; await revisarAvisos(); render(); return; }
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: deB64u(await claveAvisos()) });
+    await registrarAvisos(sub.toJSON(), navigator.userAgent);
+    C.push = 'activo'; C.pushMsg = 'Listo: avisos activados. Probalos con «Mandarme un aviso de prueba».';
+  } catch (e) { C.pushMsg = mensaje(e, 'no se pudieron activar los avisos'); await revisarAvisos(); }
+  render();
+}
+async function quitarAvisosAca() {
+  const C = S.ag.chat;
+  try {
+    const sub = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
+    if (sub) { await quitarAvisos(sub.endpoint).catch(() => {}); await sub.unsubscribe(); }
+    C.push = 'inactivo'; C.pushMsg = 'Avisos desactivados en este dispositivo.';
+  } catch (e) { C.pushMsg = mensaje(e, 'no se pudieron desactivar'); }
+  render();
+}
+async function probarAvisosAca() {
+  const C = S.ag.chat;
+  try {
+    const r = await probarAvisos();
+    C.pushMsg = r.enviados ? 'Aviso enviado: tendría que llegarte en unos segundos.' : r.celulares ? 'No se pudo entregar el aviso. Desactivá y volvé a activar los avisos en este celular.' : 'Esta cuenta no tiene celulares registrados todavía.';
+  } catch (e) { C.pushMsg = mensaje(e, 'no se pudo mandar el aviso de prueba'); }
+  render();
 }
 
 /** «Descargar todo en un PDF»: los documentos de la solicitud, con enlaces recién pedidos, en un solo archivo. */
@@ -534,8 +620,35 @@ async function pdfDeSolicitud(id) {
 async function accionAgencias(act, b) {
   const G = S.ag, id = b.dataset.id;
   if (act === 'ag-recargar') { G.error = ''; await cargarAgencias(); return; }
+  if (act === 'ag-ir-chats') { G.tab = 'chats'; G.chat.hilo = null; verVista('agencias'); return; }
+  if (act === 'ag-chat-abrir') { await abrirHiloAgencia(id); return; }
+  if (act === 'ag-chat-volver') { G.chat.hilo = null; G.chat.error = ''; await cargarChats(true); render(); return; }
+  if (act === 'ag-chat-enviar') {
+    const C = G.chat, texto = String(C.texto || '').trim();
+    if (!texto) { C.error = 'Escribí la respuesta.'; render(); return; }
+    C.enviando = true; C.error = ''; render();
+    try {
+      await responderChat(id, texto);
+      C.texto = '';
+      const v = await verChat(id); C.hilo = v.chat; C.mensajes = v.mensajes || [];
+      toast('Respuesta enviada');
+    } catch (e) { C.error = mensaje(e, 'no se pudo enviar la respuesta'); }
+    C.enviando = false;
+    await contarPendientes();
+    render();
+    const m = $('#agMsgs'); if (m) m.scrollTop = m.scrollHeight;
+    return;
+  }
+  if (act === 'ag-chat-cerrar') {
+    try { await cerrarChat(id); } catch (e) { G.chat.error = mensaje(e, 'no se pudo cerrar'); render(); return; }
+    G.chat.hilo = null; G.chat.texto = ''; toast('Conversación cerrada');
+    await cargarChats(true); await contarPendientes(); render(); return;
+  }
+  if (act === 'ag-push-activar') { await activarAvisos(); return; }
+  if (act === 'ag-push-quitar') { await quitarAvisosAca(); return; }
+  if (act === 'ag-push-probar') { await probarAvisosAca(); return; }
   if (act === 'ag-tab') {
-    G.tab = b.dataset.tab; G.msg = ''; G.nueva = null; G.borrarCot = '';
+    G.tab = b.dataset.tab; G.msg = ''; G.nueva = null; G.borrarCot = ''; G.chat.hilo = null; G.chat.error = '';
     try { localStorage.setItem('cb.agTab', G.tab); } catch { /* sin almacenamiento */ }
     render(); return;
   }
@@ -2752,7 +2865,8 @@ alCambiar((que, detalle) => {
 /** Enlace desde el gestor ("Ver en Cobranzas" de una causa): #deudor=<id> abre la ficha de ese deudor.
  *  #agencias (desde el cotizador) abre la solapa Agencias. */
 function seguirEnlace() {
-  if (location.hash === '#agencias' && S.pantalla === 'listo') {
+  if ((location.hash === '#agencias' || location.hash === '#agencias-chats') && S.pantalla === 'listo') {
+    if (location.hash === '#agencias-chats') { S.ag.tab = 'chats'; S.ag.chat.hilo = null; } // el aviso del celular abre directo los chats
     history.replaceState(null, '', location.pathname + location.search);
     verVista('agencias'); return;
   }
@@ -2767,6 +2881,19 @@ window.addEventListener('hashchange', seguirEnlace);
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); S.instalar = e; if (S.menu) renderMenu(); });
 window.addEventListener('appinstalled', () => { S.instalar = null; toast('App instalada'); });
 if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('sw.js').catch(() => { /* la app funciona igual sin él */ });
+
+// Un aviso del celular tocado con la app ya abierta: el service worker avisa y se abre la solapa de chats.
+if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', (e) => {
+  if (e.data?.abrir === 'agencias-chats' && S.pantalla === 'listo') { S.ag.tab = 'chats'; S.ag.chat.hilo = null; verVista('agencias'); }
+});
+// Con una conversación abierta, se mira cada 10 s si la agencia contestó (sin pisar lo que se está escribiendo).
+setInterval(async () => {
+  const C = S.ag.chat;
+  if (document.visibilityState !== 'visible' || S.pantalla !== 'listo' || S.vista !== 'agencias' || S.ag.tab !== 'chats' || !C.hilo || C.enviando) return;
+  const antes = C.mensajes.length ? C.mensajes[C.mensajes.length - 1].id : 0;
+  await cargarChats(true);
+  if ((C.mensajes.length ? C.mensajes[C.mensajes.length - 1].id : 0) !== antes) { render(); const m = $('#agMsgs'); if (m) m.scrollTop = m.scrollHeight; }
+}, 10_000);
 
 // Las solicitudes de las agencias no llegan en vivo: se cuentan al abrir, al volver a la app y cada minuto.
 setInterval(() => { if (document.visibilityState === 'visible') contarPendientes(); }, 60_000);

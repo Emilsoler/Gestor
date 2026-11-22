@@ -545,6 +545,26 @@ export async function eliminarSolicitud(id) {
   await invocarBCRA({ accion: 'eliminar', id }, 'agencias');
 }
 
+// ── Chat de las agencias (botón «M» del cotizador) y avisos al celular ──
+// Las conversaciones y los celulares registrados no pasan por la API de la base (las tablas están cerradas): los
+// lee y escribe la función `agencias` (acciones chat_* y push_*), que a la Mutual la reconoce por su sesión.
+/** Las conversaciones (con la última línea de cada una) y cuántas esperan o tienen algo sin leer. */
+export const chatsAgencias = () => invocarBCRA({ accion: 'chats' }, 'agencias');
+/** Solo los números del aviso de la solapa. null si no se pudo saber (sin conexión o todavía sin publicar). */
+export async function chatResumen() {
+  try { return await invocarBCRA({ accion: 'chat_resumen' }, 'agencias'); } catch { return null; }
+}
+/** Una conversación entera; al abrirla queda como leída. */
+export const verChat = (chat) => invocarBCRA({ accion: 'chat_ver', chat }, 'agencias');
+export const responderChat = (chat, texto) => invocarBCRA({ accion: 'chat_responder', chat, texto }, 'agencias');
+export const cerrarChat = (chat) => invocarBCRA({ accion: 'chat_cerrar', chat }, 'agencias');
+/** La clave pública con la que el celular se registra para recibir avisos (la función crea el par la primera vez). */
+export const claveAvisos = async () => (await invocarBCRA({ accion: 'push_clave' }, 'agencias')).publica;
+export const registrarAvisos = (suscripcion, agente) => invocarBCRA({ accion: 'push_suscribir', suscripcion, agente }, 'agencias');
+export const quitarAvisos = (endpoint) => invocarBCRA({ accion: 'push_quitar', suscripcion: { endpoint } }, 'agencias');
+/** Manda un aviso de prueba a los celulares de esta cuenta: { enviados, fallidos, celulares }. */
+export const probarAvisos = () => invocarBCRA({ accion: 'push_probar' }, 'agencias');
+
 /**
  * Una consulta a InfoAuto (cotización de vehículos) por la función `infoauto`: la función guarda el
  * usuario y el token, acá solo se dice qué ruta pedir (/search/, /brands/, /models/{codia}/prices/…).
