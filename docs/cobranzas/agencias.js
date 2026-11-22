@@ -6,7 +6,7 @@ import { esc, plata, cuantos } from './textos.js';
 // Los casilleros de documentos y los nombres de las categorías son los del cotizador (un solo lugar).
 import { CATEGORIAS, DOCS, docsSinAdjuntar, dniDelCuit } from '../agencias/solicitud.js';
 
-export const TABS_AGENCIAS = [['solicitudes', 'Solicitudes'], ['parametros', 'Parámetros'], ['agencias', 'Agencias'], ['cotizaciones', 'Cotizaciones']];
+export const TABS_AGENCIAS = [['solicitudes', 'Solicitudes'], ['chats', 'Chats'], ['parametros', 'Parámetros'], ['agencias', 'Agencias'], ['cotizaciones', 'Cotizaciones']];
 
 /** El color del BCRA como un círculo (pedido de la persona, nov 2026: sin el texto de lo que vio la agencia).
  *  Sin antecedentes va en amarillo, como la agencia lo ve («Sujeto a revisión»); el nombre queda para lectores de pantalla. */
@@ -65,7 +65,7 @@ export function parametrosEnTexto(j = {}) {
     tasas: (j.tasas || []).map((t) => `${t.desde}=${enCampo(t.tasa)}`).join('; '), anio_minimo: enCampo(j.anio_minimo),
     antiguedad_max: enCampo(j.antiguedad_max), monto_minimo: enCampo(j.monto_minimo), monto_maximo: enCampo(j.monto_maximo),
     redondeo: enCampo(j.redondeo), tope_diario: enCampo(j.tope_diario), relacion_max: enCampo(j.relacion_max ?? 45),
-    leyenda: j.leyenda || '', contacto: j.contacto || '',
+    leyenda: j.leyenda || '', contacto: j.contacto || '', chat_habilitado: !!j.chat_habilitado, ayuda: j.ayuda || '',
   };
   for (const [k] of GASTOS) p['g_' + k] = enCampo(g[k]);
   return p;
@@ -96,11 +96,13 @@ export function leerParametros(p) {
     antiguedad_max: numero(p.antiguedad_max), monto_minimo: numero(p.monto_minimo) ?? 0, monto_maximo: numero(p.monto_maximo),
     redondeo: numero(p.redondeo) || 1, tope_diario: numero(p.tope_diario) || 300, relacion_max: numero(p.relacion_max) ?? 45,
     leyenda: String(p.leyenda || '').trim(), contacto: String(p.contacto || '').trim(), gastos: g,
+    chat_habilitado: !!p.chat_habilitado, ayuda: String(p.ayuda || '').trim(),
   };
   if (!fila.plazos.length) return { error: 'Escribí al menos un plazo (por ejemplo: 12, 18, 24 o 1-24).' };
   const malos = Object.entries({ ...fila, ...g }).filter(([, x]) => typeof x === 'number' && Number.isNaN(x));
   if (malos.length || fila.pct_financiable == null || fila.tasa_mensual == null) return { error: 'Hay un número mal escrito: revisá los campos (usá coma para los decimales).' };
   if (!(fila.relacion_max > 0 && fila.relacion_max <= 100)) return { error: 'La relación cuota/ingreso tiene que estar entre 1 y 100 %.' };
+  if (fila.ayuda.length > 12000) return { error: `La hoja de respuestas del chat tiene ${fila.ayuda.length.toLocaleString('es-AR')} caracteres y el máximo es 12.000.` };
   return { fila };
 }
 
@@ -183,17 +185,20 @@ function solicitud(x, A, est, notas) {
  */
 export function htmlAgencias(A, est) {
   const tabs = `<nav class="tabs" role="tablist" aria-label="Agencias">${TABS_AGENCIAS.map(([k, l]) => {
-    const n = k === 'solicitudes' ? pendientes(A.solicitudes).length : k === 'agencias' ? A.agencias.filter((x) => x.activa).length : 0;
-    const extra = k === 'solicitudes' && n ? ` (${n})` : k === 'agencias' ? ` (${n}/20)` : '';
+    const n = k === 'solicitudes' ? pendientes(A.solicitudes).length : k === 'agencias' ? A.agencias.filter((x) => x.activa).length : k === 'chats' ? est.chat?.atencion || 0 : 0;
+    const extra = (k === 'solicitudes' || k === 'chats') && n ? ` (${n})` : k === 'agencias' ? ` (${n}/20)` : '';
     return `<button role="tab" data-a="ag-tab" data-tab="${k}" aria-selected="${est.tab === k}">${esc(l + extra)}</button>`;
   }).join('')}</nav>`;
   const msg = est.msg ? `<p class="aviso-chico" role="status">${esc(est.msg)}</p>` : '';
   let cuerpo;
-  if (est.tab === 'parametros') {
+  if (est.tab === 'chats') {
+    cuerpo = htmlChats(est.chat || {}, A.ajustes);
+  } else if (est.tab === 'parametros') {
     const p = est.p, campo = (k, t, extra = '') => `<label class="f">${esc(t)}<input data-k="ag.p.${k}" value="${esc(p[k] ?? '')}" inputmode="decimal" autocomplete="off"${extra}></label>`;
     cuerpo = `<section class="card">
       <div class="card-cab"><h3>Parámetros del crédito</h3></div>
       <label class="ag-check"><input type="checkbox" data-k="ag.p.habilitado" ${p.habilitado ? 'checked' : ''}> Cotizador habilitado para las agencias</label>
+      <label class="ag-check"><input type="checkbox" data-k="ag.p.chat_habilitado" ${p.chat_habilitado ? 'checked' : ''}> Chat con la Mutual (botón «M») habilitado para las agencias</label>
       <div class="grid2">
         ${campo('pct_financiable', '% del valor del vehículo que se financia')}
         ${campo('plazos', 'Plazos en cuotas (ej.: 12, 18, 24 o un rango: 1-24)', ' inputmode="text"')}
@@ -211,6 +216,9 @@ export function htmlAgencias(A, est) {
       <div class="grid2">${GASTOS.map(([k, t]) => campo('g_' + k, t)).join('')}</div>
       <label class="f">Leyenda al pie de cada cotización<textarea data-k="ag.p.leyenda" maxlength="1000" rows="3">${esc(p.leyenda || '')}</textarea></label>
       <label class="f">Contacto de la Mutual (opcional; sale en la cotización)<input data-k="ag.p.contacto" value="${esc(p.contacto || '')}" maxlength="300" autocomplete="off"></label>
+      <div class="card-cab"><h3>Hoja de respuestas del chat</h3></div>
+      <label class="f">Lo que sabe el asistente que les contesta a las agencias primero<textarea data-k="ag.p.ayuda" maxlength="12000" rows="16">${esc(p.ayuda || '')}</textarea></label>
+      <p class="hint m0">El asistente contesta solo con esto y con los datos que la agencia ya ve (plazos, relación cuota/ingreso, tope diario y contacto). Si algo no está acá, ofrece hablar con vos. No le pongas valores de vehículos, el % del valor que se financia ni tasas por año: la agencia podría deducir la valuación.</p>
       ${msg}
       <div class="actions"><button class="btn primary" data-a="ag-param-guardar">Guardar parámetros</button></div>
     </section>`;
@@ -263,6 +271,62 @@ export function htmlAgencias(A, est) {
   return `<div class="ag">${tabs}${cuerpo}</div>`;
 }
 
+
+// ───────────────────────── Chats (botón «M» del cotizador) ─────────────────────────
+const ESTADO_CHAT = { bot: ['Con el asistente', ''], espera: ['Esperando tu respuesta', 't-prom'], humano: ['En conversación', 't-plan'], cerrado: ['Cerrada', 't-mal'] };
+const DE_CHAT = { agencia: 'Agencia', bot: 'Asistente', mutual: 'Vos' };
+const corto = (t, n = 110) => { const x = String(t ?? '').replace(/\s+/g, ' ').trim(); return x.length > n ? `${x.slice(0, n - 1)}…` : x; };
+
+/** Los avisos al celular: qué pasa en este dispositivo (est.push) y qué se puede hacer. */
+function htmlAvisos(C) {
+  const st = C.push || 'cargando';
+  const cuerpo = {
+    cargando: '<p class="hint m0">Revisando si este dispositivo recibe avisos…</p>',
+    no: '<p class="m0">Este dispositivo no puede recibir avisos desde acá. <b>En el iPhone</b>: abrí Créditos y Cobros en Safari, tocá Compartir → «Agregar a pantalla de inicio» y entrá desde ese ícono (hace falta iOS 16.4 o más nuevo).</p>',
+    denegado: '<p class="m0">Los avisos están bloqueados para esta app. Activalos en <b>Ajustes del iPhone → Notificaciones → Créditos y Cobros</b> y volvé acá.</p>',
+    inactivo: '<p class="m0">Activalos para que te suene el celular cuando una agencia quiera hablar con vos, aunque no tengas la app abierta.</p><div class="actions"><button class="btn primary" data-a="ag-push-activar">Activar avisos en este celular</button></div>',
+    activo: '<p class="m0">Los avisos están activados en este dispositivo.</p><div class="actions"><button class="btn" data-a="ag-push-probar">Mandarme un aviso de prueba</button><button class="btn" data-a="ag-push-quitar">Desactivar</button></div>',
+  }[st] || '';
+  return `<section class="card"><div class="card-cab"><h3>Avisos al celular</h3></div>${cuerpo}${C.pushMsg ? `<p class="aviso-chico" role="status">${esc(C.pushMsg)}</p>` : ''}
+    <p class="hint m0">Si el aviso no llega, igual ves el pedido acá, con la insignia en la solapa Agencias.</p></section>`;
+}
+
+function htmlHilo(C) {
+  const c = C.hilo;
+  if (!c) return '';
+  const [t, clase] = ESTADO_CHAT[c.estado] || [c.estado, ''];
+  const abierta = c.estado !== 'cerrado';
+  const msgs = (C.mensajes || []).map((m) => `<div class="ag-msg ${esc(m.de)}"><span class="ag-msg-de">${esc(DE_CHAT[m.de] || m.de)} · ${esc(fechaHora(m.momento))}</span><p>${esc(m.texto)}</p></div>`).join('');
+  return `<section class="card ag-hilo"><div class="card-cab"><h3>${esc(c.agencia)} <span class="tag ${clase}">${esc(t)}</span></h3><button class="btn small" data-a="ag-chat-volver">← Todas las conversaciones</button></div>
+    <div class="ag-msgs" id="agMsgs" role="log">${msgs || '<p class="hint m0">Todavía no hay mensajes.</p>'}</div>
+    ${abierta ? `<label class="f">Tu respuesta<textarea data-k="ag.chat.texto" id="agChatTexto" rows="3" maxlength="1500" placeholder="Escribí la respuesta para la agencia">${esc(C.texto || '')}</textarea></label>
+      <div class="actions"><button class="btn primary" data-a="ag-chat-enviar" data-id="${esc(c.id)}"${C.enviando ? ' disabled' : ''}>Enviar respuesta</button><button class="btn" data-a="ag-chat-cerrar" data-id="${esc(c.id)}">Cerrar la conversación</button></div>`
+      : '<p class="hint m0">La conversación está cerrada. Si la agencia vuelve a escribir, se abre una nueva.</p>'}
+    ${C.error ? `<p class="aviso-chico" role="alert">${esc(C.error)}</p>` : ''}</section>`;
+}
+
+export function htmlChats(C, ajustes) {
+  if (C.hilo) return htmlHilo(C);
+  const apagado = ajustes && !ajustes.chat_habilitado;
+  const filas = (C.lista || []).map((x) => {
+    const [t, clase] = ESTADO_CHAT[x.estado] || [x.estado, ''];
+    const u = x.ultimo;
+    const punto = x.sin_leer_mutual ? '<span class="sem-punto rojo" role="img" aria-label="Sin leer"></span>' : '';
+    return `<button class="ag-chat-fila${x.estado === 'espera' ? ' espera' : ''}" data-a="ag-chat-abrir" data-id="${esc(x.id)}">
+      <span class="ag-chat-quien"><b>${esc(x.agencia)}</b> ${punto}<span class="tag ${clase}">${esc(t)}</span></span>
+      <span class="ag-chat-ultimo">${u ? `<span class="hint">${esc(DE_CHAT[u.de] || '')}:</span> ${esc(corto(u.texto))}` : ''}</span>
+      <span class="hint">${esc(fechaHora(x.actualizado))}</span></button>`;
+  }).join('');
+  return `${htmlAvisos(C)}
+    <section class="card"><div class="card-cab"><h3>Conversaciones con las agencias</h3><button class="btn small" data-a="ag-recargar">Actualizar</button></div>
+      ${apagado ? '<p class="aviso-chico m0">El chat está apagado: las agencias no ven el botón «M». Se prende en Parámetros → «Chat con la Mutual».</p>' : ''}
+      ${C.error ? `<p class="aviso-chico" role="alert">${esc(C.error)}</p>` : ''}
+      ${filas ? `<div class="ag-chats">${filas}</div>` : '<p class="hint m0">Todavía no hay conversaciones. Cuando una agencia te escriba desde el botón «M», aparece acá.</p>'}
+    </section>`;
+}
+
 /** El aviso de Inicio cuando hay solicitudes esperando. */
-export const avisoInicio = (n) => (n ? `<section class="card ag-aviso"><div><b>${n === 1 ? 'Hay 1 solicitud de crédito de una agencia para revisar' : `Hay ${n} solicitudes de crédito de agencias para revisar`}</b>
-  <div class="hint">Con el informe del BCRA, el crédito y los documentos.</div></div><button class="btn primary" data-ir="agencias">Ver solicitudes</button></section>` : '');
+export const avisoInicio = (n, chats = 0) => (n ? `<section class="card ag-aviso"><div><b>${n === 1 ? 'Hay 1 solicitud de crédito de una agencia para revisar' : `Hay ${n} solicitudes de crédito de agencias para revisar`}</b>
+  <div class="hint">Con el informe del BCRA, el crédito y los documentos.</div></div><button class="btn primary" data-ir="agencias">Ver solicitudes</button></section>` : '')
+  + (chats ? `<section class="card ag-aviso"><div><b>${chats === 1 ? 'Hay 1 conversación de una agencia para atender' : `Hay ${chats} conversaciones de agencias para atender`}</b>
+  <div class="hint">Una agencia quiere hablar con vos o te escribió.</div></div><button class="btn primary" data-a="ag-ir-chats">Ver chats</button></section>` : '');

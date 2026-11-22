@@ -12,6 +12,7 @@
 // «Continuar – Sujeto a revisión»; rojo «No apto»); 2) vehículo y crédito; 3) si quieren avanzar: ingresos
 // demostrables (sin eso no sigue) y el ingreso mensual (la cuota no puede pasar el 45 %); cómo obtiene los
 // ingresos; 4) su documentación; 5) datos del cliente con la suya; y se envía todo a la Mutual.
+import { iniciarChat, apagarChat } from './chat.js';
 import { CATEGORIAS, DOCS, MAX_BYTES, docsPermitidos, docsRequeridos, dniDelCuit, relacionCuota, revisarDatos, tipoArchivo } from './solicitud.js';
 
 const cfg = window.GESTOR_CONFIG || {};
@@ -91,6 +92,7 @@ async function cargarYo() {
     if (S.yo.clave_temporal) { S.fase = 'clave'; render(); return; }
     S.fase = 'app'; S.plazo = S.yo.plazos?.includes(S.plazo) ? S.plazo : S.yo.plazos?.[(S.yo.plazos?.length || 1) - 1] || 0;
     render();
+    iniciarChat(fn, !!S.yo.chat);
     if (S.yo.miembro && !S.marcas) cargarMarcas();
   } catch (e) {
     if (e.status === 401 || e.codigo === 'sin_sesion') { await sb.auth.signOut().catch(() => {}); S.fase = 'ingreso'; S.error = ''; render(); return; }
@@ -123,6 +125,7 @@ async function cambiarClave(a, b) {
 }
 
 async function salir() {
+  apagarChat();
   try { await sb?.auth.signOut(); } catch { /* igual se limpia */ }
   Object.assign(S, { fase: 'ingreso', yo: null, error: '', marcas: null, marca: '', modelos: null, modelo: '', versiones: null, version: '', anios: null, anio: '', buscaVer: '', res: null, vista: 'cotizar', cuit: '', bcra: null, bcraError: '', continuo: false, confirmarOtro: false, sols: null, sol: nuevaSol(), rap: null });
   render();

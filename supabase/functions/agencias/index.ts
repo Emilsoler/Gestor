@@ -17,6 +17,8 @@
 // anios {ref}, cotizar {ref, anio, cuotas, monto?, vehiculo?}, bcra {cuit}, solicitar {consulta, ref, anio,
 // cuotas, monto?, vehiculo?, ingresos, ingreso, categoria, datos, consentimiento}, archivo (multipart: id, slot,
 // archivo), enviar {id}, solicitudes, rapida {capital, cuotas, tasa, gastos} (solo la agencia con simulacion_rapida); y para la Mutual, archivos {id}, eliminar {id} y crear_agencia {nombre, email, notas}.
+// Chat «M» (migración 0038): de la agencia, chat_leer {desde, leido}, chat_enviar {texto}, chat_representante y chat_cerrar;
+// de la Mutual, chats, chat_resumen, chat_ver, chat_responder, chat_cerrar {chat}, push_clave, push_suscribir, push_quitar y push_probar.
 //
 // BCRA: la agencia consulta el CUIT de su cliente en la Central de Deudores (API pública). La consulta queda
 // guardada entera en consultas_bcra para la Mutual; a la agencia se le devuelven el color, el nombre y, del último
@@ -31,12 +33,21 @@ import { simularCredito, montoMaximo, tasasDelCredito, anioMinimo, tasaPara } fr
 import { ErrorBCRA, consultar, cuitValido, resumir, sinCuit, soloDigitos, ultimoPeriodo } from './bcra.ts';
 // Copia exacta de docs/agencias/solicitud.js (las pruebas lo controlan): documentos y controles de la solicitud.
 import { MAX_FOTO, base64, tipoImagen, urlDeFoto } from './foto.js';
+// Chat de las agencias (botón «M»): el asistente, su hoja de respuestas y los avisos a la Mutual (migración 0038).
+import { RESPUESTA_SEGURA, SIN_ASISTENTE, armarMensajes, instrucciones, limpiarRespuesta, textoDeAgencia } from './chat.js';
+import { enviarPush, nuevasClaves } from './push.js';
 import { CATEGORIAS, DOCS, MAX_BYTES, docsRequeridos, relacionCuota, revisarDatos, tipoArchivo } from './solicitud.js';
 
 const URL_BASE = Deno.env.get('SUPABASE_URL') || '';
 const CLAVE_SERVICIO = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 const API = (Deno.env.get('INFOAUTO_API') || 'https://api.infoauto.com.ar').replace(/\/+$/, '');
 const URL_BCRA = Deno.env.get('BCRA_URL') || 'https://api.bcra.gob.ar'; // otra solo en las pruebas locales
+const URL_CLAUDE = (Deno.env.get('ANTHROPIC_URL') || 'https://api.anthropic.com').replace(/\/+$/, ''); // otra solo en las pruebas locales
+const MODELO_CHAT = Deno.env.get('AGENCIAS_CHAT_MODELO') || 'claude-haiku-5-5';
+const TOPE_AGENCIA_DIA = 200; // mensajes de una agencia por día (con o sin asistente)
+const TOPE_ASISTENTE_DIA = 60; // respuestas del asistente por agencia y por día: acota el gasto de la API de Claude
+const PUSH_LOCAL = Deno.env.get('PUSH_PERMITIR_LOCAL') === '1'; // solo en las pruebas locales: deja registrar un celular falso en 127.0.0.1
+const SUJETO_VAPID = Deno.env.get('AVISO_SUJETO') || 'https://emilsoler.github.io/Gestor/cobranzas/';
 const ORIGENES = (Deno.env.get('GESTOR_ORIGENES') || 'https://emilsoler.github.io,http://127.0.0.1:8080').split(',').map((s) => s.trim());
 
 function clavePublica() {
@@ -349,6 +360,233 @@ async function fotoDe(codia: number): Promise<string | null> {
   }
 }
 
+// ───────────────────────── Chat de las agencias (botón «M») ─────────────────────────
+// El asistente contesta primero; si la agencia lo pide, la conversación queda «en espera» y se le avisa a la Mutual
+// (notificación al celular y, si están cargados RESEND_API_KEY y AVISO_EMAIL, mail). La Mutual responde desde
+// Créditos y Cobros → Agencias → Chats. Las agencias hablan siempre con esta función: las tablas están cerradas a la API.
+async function rest(metodo: string, ruta: string, cuerpo?: unknown, extra: Record<string, string> = {}): Promise<any> {
+  const r = await fetch(`${URL_BASE}/rest/v1/${ruta}`, {
+    method: metodo,
+    headers: { ...servicio, ...(cuerpo !== undefined ? { prefer: 'return=representation' } : {}), ...extra },
+    body: cuerpo !== undefined ? JSON.stringify(cuerpo) : undefined,
+  });
+  if (!r.ok) throw new Falla('No se pudo completar el pedido. Probá de nuevo en un momento.', 502, 'base');
+  const t = await r.text();
+  return t ? JSON.parse(t) : null;
+}
+const contar = async (ruta: string): Promise<number> => {
+  const r = await fetch(`${URL_BASE}/rest/v1/${ruta}`, { method: 'HEAD', headers: { ...servicio, prefer: 'count=exact' } });
+  return Number((r.headers.get('content-range') || '').split('/')[1]) || 0;
+};
+const ahoraISO = () => new Date().toISOString();
+const inicioDelDia = () => new Date(`${hoyCordoba()}T00:00:00-03:00`).toISOString();
+
+async function chatAbierto(agenciaId: string): Promise<any> {
+  const [c] = await rest('GET', `chats_agencia?agencia_id=eq.${agenciaId}&estado=neq.cerrado&select=*`);
+  return c || null;
+}
+async function chatNuevo(ag: any): Promise<any> {
+  try { const [c] = await rest('POST', 'chats_agencia', { agencia_id: ag.id, agencia: String(ag.nombre).slice(0, 120) }); return c; } catch (e) {
+    const c = await chatAbierto(ag.id); // dos pedidos a la vez: el segundo se encuentra con el primero
+    if (c) return c;
+    throw e;
+  }
+}
+const mensajesDe = (chat: string, desde = 0): Promise<any[]> =>
+  rest('GET', `mensajes_agencia?chat_id=eq.${chat}&id=gt.${Math.max(0, Math.trunc(desde) || 0)}&select=id,de,texto,momento&order=id.asc&limit=300`);
+async function agregar(chat: string, de: string, texto: string): Promise<any> {
+  const [m] = await rest('POST', 'mensajes_agencia', { chat_id: chat, de, texto });
+  return { id: m.id, de: m.de, texto: m.texto, momento: m.momento };
+}
+const marcar = (chat: string, cambios: Record<string, unknown>) => rest('PATCH', `chats_agencia?id=eq.${chat}`, { actualizado: ahoraISO(), ...cambios });
+const vistaChat = (c: any) => (c ? { id: c.id, estado: c.estado, sin_leer: !!c.sin_leer_agencia } : null);
+
+/** Le pregunta al asistente. null si no se pudo (sin clave, sin crédito, saturado…): el que llama ofrece el representante. */
+async function preguntarAlAsistente(a: any, agencia: string, filas: any[]): Promise<string | null> {
+  const clave = Deno.env.get('ANTHROPIC_API_KEY') || '';
+  const messages = armarMensajes(filas);
+  if (!clave || !messages.length) return null;
+  const cuerpo = JSON.stringify({ model: MODELO_CHAT, max_tokens: 500, system: instrucciones(a, agencia), messages });
+  for (let intento = 0; intento < 2; intento++) {
+    try {
+      const r = await fetch(`${URL_CLAUDE}/v1/messages`, {
+        method: 'POST', headers: { 'x-api-key': clave, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: cuerpo, signal: AbortSignal.timeout(25_000),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        const t = (Array.isArray(d?.content) ? d.content : []).filter((b: any) => b?.type === 'text').map((b: any) => String(b.text || '')).join('\n').trim();
+        return t || null;
+      }
+      // Sin el detalle (podría llevar texto de la conversación): solo el estado y el tipo de error, para el panel de registros.
+      let tipo = ''; try { tipo = String((await r.json())?.error?.type || ''); } catch { /* sin cuerpo */ }
+      console.error(JSON.stringify({ agencias: 'asistente', status: r.status, tipo }));
+      if (!(r.status === 429 || r.status === 529 || r.status >= 500) || intento) return null;
+    } catch {
+      console.error(JSON.stringify({ agencias: 'asistente', status: 0 }));
+      if (intento) return null;
+    }
+    await new Promise((ok) => setTimeout(ok, 1500));
+  }
+  return null;
+}
+
+// ── Avisos a la Mutual ──
+async function clavesPush(): Promise<{ publica: string; privada: JsonWebKey }> {
+  const leer = async () => (await rest('GET', 'push_claves?id=eq.1&select=publica,privada'))?.[0];
+  let f = await leer();
+  if (!f) {
+    const n = await nuevasClaves();
+    await fetch(`${URL_BASE}/rest/v1/push_claves?on_conflict=id`, { method: 'POST', headers: { ...servicio, prefer: 'resolution=ignore-duplicates,return=minimal' }, body: JSON.stringify({ id: 1, publica: n.publica, privada: n.privada }) });
+    f = await leer(); // si dos pedidos las crearon a la vez, vale la que quedó guardada
+  }
+  if (!f) throw new Falla('No se pudieron preparar los avisos.', 502, 'base');
+  return f;
+}
+
+/** Notificación al celular de cada usuario de la Mutual que la activó y, si está configurado, un mail. Nunca corta el pedido. */
+async function avisarMutual(titulo: string, cuerpo: string, url: string, soloUsuario?: string): Promise<{ enviados: number; fallidos: number; mail: boolean }> {
+  const res = { enviados: 0, fallidos: 0, mail: false };
+  try {
+    const subs: any[] = await rest('GET', `avisos_push?select=id,endpoint,p256dh,auth${soloUsuario ? `&user_id=eq.${soloUsuario}` : ''}`);
+    if (subs?.length) {
+      const claves = await clavesPush();
+      await Promise.all(subs.map(async (s) => {
+        const r = await enviarPush(s, { t: titulo, c: cuerpo, u: url }, claves, { sujeto: SUJETO_VAPID });
+        if (r.ok) res.enviados++; else res.fallidos++;
+        if (r.vencida) await rest('DELETE', `avisos_push?id=eq.${s.id}`).catch(() => {});
+        else if (!r.ok) console.error(JSON.stringify({ agencias: 'push', status: r.status }));
+      }));
+    }
+  } catch { console.error(JSON.stringify({ agencias: 'push', status: -1 })); }
+  const clave = Deno.env.get('RESEND_API_KEY') || '', para = Deno.env.get('AVISO_EMAIL') || '';
+  if (clave && para && !soloUsuario) {
+    try {
+      const r = await fetch(Deno.env.get('RESEND_URL') || 'https://api.resend.com/emails', {
+        method: 'POST', headers: { authorization: `Bearer ${clave}`, 'content-type': 'application/json' }, signal: AbortSignal.timeout(10_000),
+        body: JSON.stringify({ from: Deno.env.get('AVISO_REMITENTE') || 'Mutual Bell <onboarding@resend.dev>', to: [para], subject: titulo, text: `${cuerpo}\n\nResponder: https://emilsoler.github.io/Gestor/cobranzas/#agencias-chats` }),
+      });
+      res.mail = r.ok;
+      if (!r.ok) console.error(JSON.stringify({ agencias: 'mail', status: r.status }));
+    } catch { console.error(JSON.stringify({ agencias: 'mail', status: 0 })); }
+  }
+  return res;
+}
+const URL_CHATS = '/Gestor/cobranzas/#agencias-chats';
+const resumen = (t: string, n = 140) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
+
+/** Todas las acciones del chat y de los avisos. `ag.miembro`: la Mutual (responde y administra); si no, una agencia. */
+async function accionChat(accion: string, pedido: any, ctx: { ag: any; a: any; uid: string }, cors: Cors): Promise<Response> {
+  const { ag, a, uid } = ctx;
+  const ok = (cuerpo: unknown) => responder(cuerpo, 200, cors);
+
+  // ── La Mutual ──
+  if (accion === 'chats' || accion === 'chat_resumen') {
+    if (!ag.miembro) throw new Falla('Pedido desconocido.', 400, 'accion');
+    const [espera, sinLeer, atencion] = await Promise.all([
+      contar('chats_agencia?estado=eq.espera&select=id'),
+      contar('chats_agencia?sin_leer_mutual=eq.true&estado=neq.cerrado&select=id'),
+      contar('chats_agencia?estado=neq.cerrado&or=(estado.eq.espera,sin_leer_mutual.eq.true)&select=id'), // las que piden atención (para la insignia)
+    ]);
+    if (accion === 'chat_resumen') return ok({ espera, sin_leer: sinLeer, atencion });
+    const chats = await rest('GET', 'chats_agencia?select=*,ultimo:mensajes_agencia(de,texto,momento)&ultimo.order=id.desc&ultimo.limit=1&order=actualizado.desc&limit=100');
+    return ok({ espera, sin_leer: sinLeer, atencion, chats: (chats || []).map((c: any) => ({ ...c, ultimo: c.ultimo?.[0] || null })) });
+  }
+  if (accion === 'chat_ver' || accion === 'chat_responder') {
+    if (!ag.miembro) throw new Falla('Pedido desconocido.', 400, 'accion');
+    if (!esUuid(pedido.chat)) throw new Falla('Falta la conversación.', 400, 'pedido');
+    const [c] = await rest('GET', `chats_agencia?id=eq.${pedido.chat}&select=*`);
+    if (!c) throw new Falla('Esa conversación ya no existe.', 404, 'chat');
+    if (accion === 'chat_ver') {
+      if (c.sin_leer_mutual) { await marcar(c.id, { sin_leer_mutual: false }); c.sin_leer_mutual = false; }
+      return ok({ chat: c, mensajes: await mensajesDe(c.id) });
+    }
+    if (c.estado === 'cerrado') throw new Falla('La conversación está cerrada.', 409, 'cerrado');
+    const t = textoDeAgencia(pedido.texto);
+    if (!t) throw new Falla('Escribí tu respuesta.', 400, 'pedido');
+    const m = await agregar(c.id, 'mutual', t);
+    await marcar(c.id, { estado: 'humano', espera_desde: null, sin_leer_agencia: true, sin_leer_mutual: false });
+    return ok({ mensaje: m });
+  }
+  if (accion === 'chat_cerrar' && ag.miembro) {
+    if (!esUuid(pedido.chat)) throw new Falla('Falta la conversación.', 400, 'pedido');
+    await marcar(pedido.chat, { estado: 'cerrado', espera_desde: null, sin_leer_mutual: false });
+    return ok({ ok: true });
+  }
+  if (accion === 'push_clave') {
+    if (!ag.miembro) throw new Falla('Pedido desconocido.', 400, 'accion');
+    return ok({ publica: (await clavesPush()).publica });
+  }
+  if (accion === 'push_suscribir' || accion === 'push_quitar' || accion === 'push_probar') {
+    if (!ag.miembro) throw new Falla('Pedido desconocido.', 400, 'accion');
+    const s = pedido.suscripcion || {}, endpoint = String(s.endpoint || '');
+    if (accion === 'push_probar') {
+      const r = await avisarMutual('Aviso de prueba', 'Si ves esto, los avisos del chat de las agencias funcionan en este celular.', URL_CHATS, uid);
+      return ok({ ...r, celulares: await contar(`avisos_push?user_id=eq.${uid}&select=id`) });
+    }
+    if (!/^https:\/\/[^\s]{10,1990}$/.test(endpoint) && !(PUSH_LOCAL && /^http:\/\/127\.0\.0\.1:\d+\/[^\s]{0,200}$/.test(endpoint))) throw new Falla('El celular no mandó una suscripción válida.', 400, 'pedido');
+    if (accion === 'push_quitar') { await rest('DELETE', `avisos_push?endpoint=eq.${encodeURIComponent(endpoint)}&user_id=eq.${uid}`); return ok({ ok: true }); }
+    const p256dh = String(s.keys?.p256dh || ''), auth = String(s.keys?.auth || '');
+    if (!/^[\w-]{20,200}$/.test(p256dh) || !/^[\w-]{10,100}$/.test(auth)) throw new Falla('El celular no mandó una suscripción válida.', 400, 'pedido');
+    await rest('POST', 'avisos_push?on_conflict=endpoint', { user_id: uid, endpoint, p256dh, auth, agente: String(pedido.agente || '').slice(0, 300) }, { prefer: 'resolution=merge-duplicates,return=minimal' });
+    return ok({ ok: true });
+  }
+
+  // ── Las agencias ──
+  if (ag.miembro) throw new Falla('Entrá con la cuenta de una agencia para probar el chat.', 400, 'accion');
+  if (!a.chat_habilitado) throw new Falla('El chat todavía no está habilitado.', 403, 'chat_apagado');
+
+  if (accion === 'chat_leer') {
+    const c = await chatAbierto(ag.id);
+    if (!c) return ok({ chat: null, mensajes: [] });
+    const mensajes = await mensajesDe(c.id, Number(pedido.desde) || 0);
+    if (pedido.leido === true && c.sin_leer_agencia) await rest('PATCH', `chats_agencia?id=eq.${c.id}`, { sin_leer_agencia: false });
+    return ok({ chat: vistaChat(c), mensajes });
+  }
+  if (accion === 'chat_cerrar') {
+    const c = await chatAbierto(ag.id);
+    if (c) await marcar(c.id, { estado: 'cerrado', espera_desde: null, sin_leer_mutual: false });
+    return ok({ ok: true });
+  }
+  if (accion === 'chat_enviar') {
+    const t = textoDeAgencia(pedido.texto);
+    if (!t) throw new Falla('Escribí tu mensaje.', 400, 'pedido');
+    if (await contar(`mensajes_agencia?de=eq.agencia&momento=gte.${encodeURIComponent(inicioDelDia())}&select=id,chats_agencia!inner(agencia_id)&chats_agencia.agencia_id=eq.${ag.id}`) >= TOPE_AGENCIA_DIA)
+      throw new Falla('Llegaste al tope de mensajes de hoy. Probá mañana o consultá con la Mutual.', 429, 'tope');
+    const c = (await chatAbierto(ag.id)) || (await chatNuevo(ag));
+    const mio = await agregar(c.id, 'agencia', t);
+    const nuevos = [mio];
+    const estado = c.estado; let derivar = false;
+    if (c.estado === 'bot') {
+      let texto = SIN_ASISTENTE;
+      derivar = true;
+      const respuestas = await contar(`mensajes_agencia?de=eq.bot&momento=gte.${encodeURIComponent(inicioDelDia())}&select=id,chats_agencia!inner(agencia_id)&chats_agencia.agencia_id=eq.${ag.id}`);
+      if (respuestas >= TOPE_ASISTENTE_DIA) texto = RESPUESTA_SEGURA;
+      else {
+        const crudo = await preguntarAlAsistente(a, ag.nombre, await rest('GET', `mensajes_agencia?chat_id=eq.${c.id}&select=de,texto&order=id.desc&limit=30`).then((x: any[]) => x.reverse()));
+        if (crudo) { const l = limpiarRespuesta(crudo); texto = l.texto; derivar = l.derivar; }
+      }
+      nuevos.push(await agregar(c.id, 'bot', texto));
+      await marcar(c.id, {});
+    } else {
+      // Con un representante en juego el asistente se calla; se avisa solo si la Mutual ya había leído lo anterior.
+      await marcar(c.id, { sin_leer_mutual: true });
+      if (!c.sin_leer_mutual) await avisarMutual(`${ag.nombre}: mensaje nuevo`, resumen(t), URL_CHATS);
+    }
+    return ok({ chat: { id: c.id, estado, sin_leer: false }, mensajes: nuevos, derivar });
+  }
+  if (accion === 'chat_representante') {
+    const c = await chatAbierto(ag.id);
+    const ultima = c ? (await rest('GET', `mensajes_agencia?chat_id=eq.${c.id}&de=eq.agencia&select=texto&order=id.desc&limit=1`))?.[0] : null;
+    if (!c || !ultima) throw new Falla('Escribí primero tu consulta, así la Mutual sabe de qué se trata.', 400, 'sin_consulta');
+    if (c.estado !== 'bot') return ok({ chat: vistaChat(c), mensajes: [] });
+    const m = await agregar(c.id, 'bot', 'Listo, le avisé a la Mutual. Te van a responder por acá apenas puedan.');
+    await marcar(c.id, { estado: 'espera', espera_desde: ahoraISO(), sin_leer_mutual: true });
+    await avisarMutual(`${ag.nombre} quiere hablar con vos`, resumen(String(ultima.texto)), URL_CHATS);
+    return ok({ chat: { id: c.id, estado: 'espera', sin_leer: false }, mensajes: [m] });
+  }
+  throw new Falla('Pedido desconocido.', 400, 'accion');
+}
+
 // ───────────────────────── Pedido ─────────────────────────
 export async function manejar(req: Request): Promise<Response> {
   const cors = cabeceras(req);
@@ -380,6 +618,7 @@ export async function manejar(req: Request): Promise<Response> {
         agencia: ag.nombre, miembro: !!ag.miembro, clave_temporal: !!ag.clave_temporal,
         habilitado: !!a.habilitado, plazos: plazosValidos(a), leyenda: String(a.leyenda || ''), contacto: String(a.contacto || ''),
         relacion_max: Number(a.relacion_max) || 45,
+        chat: !!a.chat_habilitado && !ag.miembro,
         // Solo la agencia marcada (la de prueba de la persona): los valores con que arranca la simulación rápida.
         ...(ag.simulacion_rapida ? { rapida: { tasa: tasaPara('0km', a, new Date().getFullYear()), gastos: a.gastos || {} } } : {}),
       }, 200, cors);
@@ -390,6 +629,8 @@ export async function manejar(req: Request): Promise<Response> {
     }
     if (ag.clave_temporal) throw new Falla('Antes de cotizar, elegí tu contraseña definitiva.', 403, 'clave_temporal');
     if (!a.habilitado && !ag.miembro) throw new Falla('El cotizador todavía no está habilitado. Consultá con la Mutual.', 403, 'deshabilitado');
+
+    if (/^(chat|push_)/.test(accion) || accion === 'chats') return await accionChat(accion, pedido, { ag, a, uid }, cors);
 
     if (accion === 'marcas') {
       const xs = await todas('/brands/');
