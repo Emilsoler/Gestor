@@ -151,7 +151,7 @@ test('elegir el auto: marcas, modelos (paginados), versiones y años, sin precio
 test('cotizar: solo las condiciones del préstamo, y queda registrado sin el valor', async () => {
   sql('update public.ajustes_agencias set habilitado = true; delete from public.cotizaciones_agencia;');
   const ref = (await pedir(agencia, { accion: 'versiones', marca: 1, grupo: 10 })).datos.versiones[0].ref;
-  let r = await pedir(agencia, { accion: 'cotizar', ref, anio: '0km', cuotas: 24, vehiculo: 'MARCA UNO SEDAN 1.6' });
+  let r = await pedir(agencia, { accion: 'cotizar', ref, anio: '0km', cuotas: 24, vehiculo: 'MARCA UNO SEDAN 1.6', cuit: '20-12345678-6' });
   assert.equal(r.status, 200, r.texto);
   sinFiltraciones(r.texto);
   const d = r.datos;
@@ -180,6 +180,8 @@ test('cotizar: solo las condiciones del préstamo, y queda registrado sin el val
   assert.equal(filas[0].agencia, 'Salón Uno');
   assert.equal(filas[0].vehiculo, 'MARCA UNO SEDAN 1.6');
   assert.equal(filas[0].anio, '0km');
+  assert.equal(filas[0].cuit, '20123456786', 'queda el CUIT consultado, solo dígitos');
+  assert.equal(filas[1].cuit, '', 'sin CUIT (versión vieja de la app): queda vacío');
   for (const f of filas) for (const p of ['35000000', '25000000', '500001']) assert.ok(!JSON.stringify(f).includes(p));
 
   // La vista previa de la Mutual no se registra.

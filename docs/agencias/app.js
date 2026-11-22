@@ -381,7 +381,7 @@ async function cotizar() {
   if (!S.version || !S.anio || !S.plazo) { S.error = 'Elegí el vehículo, el año y el plazo.'; render(); return; }
   S.cargando = 'cotizar'; S.error = ''; render();
   try {
-    S.res = await fn({ accion: 'cotizar', ref: S.version, anio: S.anio, cuotas: S.plazo, monto: soloNumero(S.monto) || undefined, vehiculo: vehiculoElegido() });
+    S.res = await fn({ accion: 'cotizar', ref: S.version, anio: S.anio, cuotas: S.plazo, monto: soloNumero(S.monto) || undefined, vehiculo: vehiculoElegido(), cuit: soloDigitos(S.cuit) });
     S.res.vehiculo = vehiculoElegido();
   } catch (e) { S.cargando = ''; S.res = null; falla(e); return; }
   S.cargando = ''; render();

@@ -808,7 +808,7 @@ Mutual y no nombra a InfoAuto.
   del gestor no puede ser agencia, lo controla `gestor.tg_agencias_reglas`), `public.ajustes_agencias` (una fila:
   `habilitado` —arranca en false—, `pct_financiable`, `tasa_mensual`, `plazos`, `antiguedad_max`, montos mínimo y
   máximo, `redondeo`, `gastos` con la forma de `GASTOS_DEFECTO`, `tope_diario` por agencia, `leyenda`, `contacto`) y
-  `public.cotizaciones_agencia` (cada simulación de una agencia, sin valor ni CODIA; los miembros las leen y las pueden eliminar).
+  `public.cotizaciones_agencia` (cada simulación de una agencia, sin valor ni CODIA, **con el CUIT que la agencia consultó** —migración 0039, pedido de la persona del 22/11/2026: la app lo manda en `cotizar`, la función lo valida y, si falta o está mal, queda vacío—; los miembros las leen, con el CUIT en la pestaña Cotizaciones, y las pueden eliminar).
 - **Cuentas**: `supabase/functions/agencias/credito.js` tiene una copia exacta de `simularCredito` de
   `docs/cobranzas/vehiculos.js` (las pruebas las comparan: si se cambia una, cambiar la otra), más `montoMaximo` y
   `tasasDelCredito` (TNA = tasa × 12; TEA = (1 + tasa)^12 − 1; CFT = TEA de la TIR entre lo que recibe el comprador y

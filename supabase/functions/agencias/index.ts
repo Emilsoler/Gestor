@@ -312,6 +312,8 @@ function cuotaDe(monto: number, cuotas: number, a: any, tasa: number) {
 }
 
 /** El crédito para un vehículo (referencia cifrada), un año y un plazo, con los parámetros vigentes. */
+const cuitDeCotizacion = (x: unknown) => { const c = soloDigitos(x).slice(0, 20); return c.length === 11 && cuitValido(c) ? c : ''; };
+
 async function calcular(pedido: any, a: any) {
   const codia = await descifrar(pedido.ref);
   const anio = String(pedido.anio || '');
@@ -677,6 +679,8 @@ export async function manejar(req: Request): Promise<Response> {
       if (!ag.miembro) {
         const ok = await rpc('agencia_registrar', {
           p_user: uid, p_vehiculo: texto(pedido.vehiculo).slice(0, 200), p_anio: c.anio, p_monto: c.monto, p_cuotas: c.cuotas, p_cuota: c.sim.cuota,
+          // El CUIT que la agencia consultó, para la lista de cotizaciones de la Mutual; un CUIT mal escrito no se guarda.
+          p_cuit: cuitDeCotizacion(pedido?.cuit),
         });
         if (ok !== true) throw new Falla('Llegaste al tope de cotizaciones de hoy. Probá mañana o consultá con la Mutual.', 429, 'tope');
       }
