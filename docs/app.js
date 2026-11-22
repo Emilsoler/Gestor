@@ -388,11 +388,13 @@ const FRASE = FRASES[Math.floor(Math.random() * FRASES.length)];
 
 // Portal de planillas de cálculos judiciales del Poder Judicial de Córdoba (es el enlace del botón de arriba).
 const PLANILLAS = $('#btnPlanillas').getAttribute('href');
+const INFOLEG = 'https://www.infoleg.gob.ar/';
 const TILES = [
   { k: 'causas', t: 'Causas', ir: 'lista' }, { k: 'agenda', t: 'Agenda', ir: 'agenda' },
   { k: 'acuerdos', t: 'Acuerdos', ir: 'acuerdos' }, { k: 'plantillas', t: 'Plantillas', ir: 'plantillas' },
   { k: 'liquidaciones', t: 'Liquidaciones', ir: 'liq' }, { k: 'cobros', t: 'Créditos y Cobros', href: COBRANZAS },
   { k: 'jurisprudencia', t: 'Jurisprudencia', ir: 'juris' }, { k: 'sac', t: 'SAC', sac: true }, { k: 'planillas', t: 'Planillas Judiciales', img: 'justicia', href: PLANILLAS },
+  { k: 'legislacion', t: 'Legislación', img: 'aristoteles', href: INFOLEG },
 ];
 const BANDAS = { lista: ['justicia', 'Causas'], agenda: ['agenda', 'Agenda'], acuerdos: ['acuerdos', 'Acuerdos'], juris: ['jurisprudencia', 'Jurisprudencia'], liq: ['liquidaciones', 'Liquidaciones'] };
 
