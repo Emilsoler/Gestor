@@ -558,8 +558,6 @@ export async function chatResumen() {
 export const verChat = (chat) => invocarBCRA({ accion: 'chat_ver', chat }, 'agencias');
 export const responderChat = (chat, texto) => invocarBCRA({ accion: 'chat_responder', chat, texto }, 'agencias');
 export const cerrarChat = (chat) => invocarBCRA({ accion: 'chat_cerrar', chat }, 'agencias');
-/** El audio de un mensaje de la agencia (migración 0040): {tipo, seg, datos en base64}. */
-export const audioChat = (mensaje) => invocarBCRA({ accion: 'chat_audio_ver', mensaje }, 'agencias');
 /** La clave pública con la que el celular se registra para recibir avisos (la función crea el par la primera vez). */
 export const claveAvisos = async () => (await invocarBCRA({ accion: 'push_clave' }, 'agencias')).publica;
 export const registrarAvisos = (suscripcion, agente) => invocarBCRA({ accion: 'push_suscribir', suscripcion, agente }, 'agencias');

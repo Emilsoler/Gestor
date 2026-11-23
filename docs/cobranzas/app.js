@@ -6,7 +6,7 @@ import {
   consultarInfoAuto, consultarInfoAutoTodo, consultarBCRA, detalleConsulta, detalleGuardado, borrarConsulta, consultarCheque, entidadesCheques, borrarConsultaCheque, crearCasoRefi, actualizarCasoRefi, borrarCasoRefi, archivarCasoRefi,
   crearDescuento, guardarDescuento, borrarDescuento, estadoCheque,
   leerAgencias, contarSolicitudes, guardarAjustesAgencias, altaAgencia, crearAgencia, activarAgencia, resolverSolicitud, documentosSolicitud, eliminarSolicitud, eliminarCotizaciones,
-  chatsAgencias, chatResumen, verChat, responderChat, cerrarChat, audioChat, claveAvisos, registrarAvisos, quitarAvisos, probarAvisos,
+  chatsAgencias, chatResumen, verChat, responderChat, cerrarChat, claveAvisos, registrarAvisos, quitarAvisos, probarAvisos,
 } from './datos.js';
 import { htmlAgencias, avisoInicio, parametrosEnTexto, leerParametros, TABS_AGENCIAS } from './agencias.js';
 import {
@@ -77,7 +77,7 @@ const S = {
     datos: null, cargando: false, error: '', tab: 'solicitudes', msg: '', docs: new Map(), notas: {}, p: {}, alta: {}, pend: 0, borrar: '', borrarCot: '',
     // Chats de las agencias: la lista, la conversación abierta (hilo + mensajes), lo que se escribe (texto) y el estado de los
     // avisos al celular (push: cargando | no | denegado | inactivo | activo). `atencion`: conversaciones que piden respuesta.
-    chat: { lista: [], atencion: 0, espera: 0, error: '', hilo: null, mensajes: [], texto: '', enviando: false, push: 'cargando', pushMsg: '', sonando: '', cargandoAudio: '' },
+    chat: { lista: [], atencion: 0, espera: 0, error: '', hilo: null, mensajes: [], texto: '', enviando: false, push: 'cargando', pushMsg: '' },
   },
 };
 try { S.vista = VISTAS[localStorage.getItem('cb.vista')] ? localStorage.getItem('cb.vista') : 'inicio'; } catch { /* sin almacenamiento */ }
@@ -654,42 +654,12 @@ async function pdfDeSolicitud(id) {
   } catch (e) { console.error(e); toast(mensaje(e, 'no se pudo armar el PDF')); }
 }
 
-// Los audios de las agencias: se traen una vez, se escuchan con un reproductor suelto y quedan en memoria hasta cerrar la app.
-const audiosChat = new Map(); // id del mensaje → enlace local (blob:)
-let reproChat = null;
-function pararAudioChat() {
-  if (reproChat) { reproChat.pause(); reproChat = null; }
-  S.ag.chat.sonando = '';
-}
-async function sonarAudioChat(id) {
-  const C = S.ag.chat;
-  if (C.sonando === id) { pararAudioChat(); render(); return; }
-  pararAudioChat();
-  let url = audiosChat.get(id);
-  if (!url) {
-    C.cargandoAudio = id; C.error = ''; render();
-    try {
-      const r = await audioChat(Number(id));
-      url = URL.createObjectURL(new Blob([Uint8Array.from(atob(r.datos), (c) => c.charCodeAt(0))], { type: r.tipo }));
-      audiosChat.set(id, url);
-    } catch (e) { C.cargandoAudio = ''; C.error = mensaje(e, 'no se pudo traer el audio'); render(); return; }
-    C.cargandoAudio = '';
-  }
-  const a = new Audio(url);
-  const fin = () => { if (reproChat === a) { reproChat = null; C.sonando = ''; render(); } };
-  a.onended = fin; a.onerror = fin;
-  reproChat = a; C.sonando = id;
-  render();
-  try { await a.play(); } catch { fin(); }
-}
-
 async function accionAgencias(act, b) {
   const G = S.ag, id = b.dataset.id;
-  if (act === 'ag-chat-audio') { await sonarAudioChat(id); return; }
   if (act === 'ag-recargar') { G.error = ''; await cargarAgencias(); return; }
   if (act === 'ag-ir-chats') { G.tab = 'chats'; G.chat.hilo = null; verVista('agencias'); return; }
   if (act === 'ag-chat-abrir') { await abrirHiloAgencia(id); return; }
-  if (act === 'ag-chat-volver') { pararAudioChat(); G.chat.hilo = null; G.chat.error = ''; await cargarChats(true); render(); return; }
+  if (act === 'ag-chat-volver') { G.chat.hilo = null; G.chat.error = ''; await cargarChats(true); render(); return; }
   if (act === 'ag-chat-enviar') {
     const C = G.chat, texto = String(C.texto || '').trim();
     if (!texto) { C.error = 'Escribí la respuesta.'; render(); return; }
@@ -715,7 +685,6 @@ async function accionAgencias(act, b) {
   if (act === 'ag-push-quitar') { await quitarAvisosAca(); return; }
   if (act === 'ag-push-probar') { await probarAvisosAca(); return; }
   if (act === 'ag-tab') {
-    pararAudioChat();
     G.tab = b.dataset.tab; G.msg = ''; G.nueva = null; G.borrarCot = ''; G.chat.hilo = null; G.chat.error = '';
     try { localStorage.setItem('cb.agTab', G.tab); } catch { /* sin almacenamiento */ }
     render(); return;
