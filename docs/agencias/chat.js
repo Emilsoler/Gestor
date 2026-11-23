@@ -27,7 +27,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const hora = (s) => { const d = new Date(s); return isNaN(d) ? '' : d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }); };
 
 const SEGUN = () => ({ grab: null, hablando: '', sonando: '', cargandoAudio: '' });
-const C = { fn: null, activo: false, abierto: false, id: '', estado: 'bot', items: [], ultimo: 0, sinLeer: false, enviando: false, esperandoBot: false, error: '', derivar: false, borrador: '', timer: 0, ...SEGUN(), urls: new Map(), reproductor: null };
+const C = { fn: null, activo: false, abierto: false, id: '', estado: 'bot', items: [], ultimo: 0, sinLeer: false, enviando: false, esperandoBot: false, error: '', derivar: false, borrador: '', timer: 0, ...SEGUN(), urls: new Map(), reproductor: null, cartelOculto: false };
 const $ = (s) => document.querySelector(s);
 
 /** Se llama al entrar a la app: `fn` pide a la función `agencias`; `activo` es lo que dijo `yo` (chat habilitado). */
@@ -271,7 +271,7 @@ function quietarSonido() {
 }
 
 function abrir() {
-  C.abierto = true; C.sinLeer = false;
+  C.abierto = true; C.sinLeer = false; C.cartelOculto = true; // el aviso ya cumplió: no vuelve en esta visita
   dibujar(true);
   if (C.id) cargar(true);
   programar();
@@ -318,6 +318,7 @@ function dibujar(alFinal = false) {
   const cuerpo = `<div class="msg bot"><span class="msg-de">Asistente</span><p>${esc(SALUDO)}</p>${escuchar('saludo', 'bot')}</div>` + C.items.map(burbuja).join('')
     + (C.esperandoBot ? '<div class="msg bot escribiendo" aria-label="El asistente está escribiendo"><p><i></i><i></i><i></i></p></div>' : '');
   raiz.innerHTML = `
+    ${C.abierto || C.cartelOculto ? '' : `<div class="cartel-m"><p>Pregúntale a <b>M</b>, nuestro asesor virtual, tus dudas</p><button type="button" id="cartelX" class="cartel-x" aria-label="Ocultar este aviso">×</button><svg class="cartel-flecha" viewBox="0 0 48 64" aria-hidden="true" focusable="false"><defs><linearGradient id="oroM" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff1a8"/><stop offset=".45" stop-color="#e8b21e"/><stop offset="1" stop-color="#9a6a05"/></linearGradient></defs><path d="M10 2c9 2 14 10 14 22v14H14l14 22 14-22H32V24C32 8 24 0 10 2z" fill="url(#oroM)" stroke="#7a5204" stroke-width="1.5" stroke-linejoin="round"/></svg></div>`}
     <button type="button" id="btnM" class="btn-m" aria-label="Chatear con la Mutual" aria-expanded="${C.abierto}" aria-controls="chatPanel"${C.abierto ? ' hidden' : ''}><img src="img/m.png" alt="" width="68" height="70">${C.sinLeer ? '<span class="punto" aria-label="Mensaje nuevo"></span>' : ''}</button>
     ${C.abierto ? `<section class="chat-panel" id="chatPanel" role="dialog" aria-label="Chat con la Mutual">
       <header class="chat-cab">
@@ -358,6 +359,7 @@ document.addEventListener('click', (e) => {
   const t = e.target.closest('button');
   if (!t) return;
   if (t.id === 'btnM') abrir();
+  else if (t.id === 'cartelX') { C.cartelOculto = true; dibujar(); }
   else if (t.id === 'chatCerrar') cerrar();
   else if (t.id === 'chatRep') pedirRepresentante();
   else if (t.id === 'chatNueva') nuevaConversacion();
