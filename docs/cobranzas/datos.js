@@ -500,16 +500,18 @@ async function invocarBCRA(cuerpo, fn = 'bcra') {
 /** Todo lo de la vista Agencias. Con cada solicitud, el detalle del BCRA de su consulta (por qué dio ese color). */
 export async function leerAgencias() {
   if (!sb) throw Object.assign(new Error('La app no está conectada a su base de datos'), { codigo: 'sin_configurar' });
-  const [ajustes, agencias, cotizaciones, solicitudes] = await Promise.all([
+  const [ajustes, agencias, cotizaciones, solicitudes, vendedores] = await Promise.all([
     pedir(sb.from('ajustes_agencias').select('*').eq('id', 1).maybeSingle()),
     pedir(sb.from('agencias').select('*').order('nombre')),
     pedir(sb.from('cotizaciones_agencia').select('*').order('momento', { ascending: false }).limit(200)),
     // Las que la agencia todavía está cargando (subiendo archivos) no se muestran.
     pedir(sb.from('solicitudes_credito').select('*').neq('estado', 'cargando').order('momento', { ascending: false }).limit(200)),
+    // Los vendedores de cada agencia (migración 0042); si la base todavía no los tiene, el panel sigue andando sin ellos.
+    pedir(sb.from('agencia_vendedores').select('*').order('titular', { ascending: false }).order('nombre')).catch(() => []),
   ]);
   const ids = [...new Set(solicitudes.map((x) => x.consulta).filter(Boolean))];
   const bcra = ids.length ? await pedir(sb.from('consultas_bcra').select('id,semaforo,motivos,deuda_total,entidades,peor_situacion,periodo').in('id', ids)) : [];
-  return { ajustes, agencias, cotizaciones, solicitudes, bcra: new Map(bcra.map((x) => [x.id, x])) };
+  return { ajustes, agencias, cotizaciones, solicitudes, vendedores, bcra: new Map(bcra.map((x) => [x.id, x])) };
 }
 
 /** Cuántas solicitudes esperan respuesta (para el aviso de la solapa). 0 si no se pudo saber. */
@@ -529,6 +531,11 @@ export const altaAgencia = (email, nombre, notas) =>
 export async function crearAgencia(nombre, email, notas) {
   return invocarBCRA({ accion: 'crear_agencia', nombre, email, notas }, 'agencias');
 }
+/** Un vendedor nuevo para una agencia que ya existe: crea su cuenta con una clave provisoria que se ve una sola vez. */
+export async function crearVendedor(agencia, nombre, email) {
+  return invocarBCRA({ accion: 'crear_vendedor', agencia, nombre, email }, 'agencias');
+}
+export const activarVendedor = (id, activo) => pedir(sb.from('agencia_vendedores').update({ activo }).eq('id', id));
 export const activarAgencia = (id, activa) => pedir(sb.from('agencias').update({ activa }).eq('id', id));
 /** La Mutual solo cambia el estado y la nota; quién y cuándo resolvió lo pone la base. */
 export const resolverSolicitud = (id, estado, nota) => pedir(sb.from('solicitudes_credito').update({ estado, nota }).eq('id', id));

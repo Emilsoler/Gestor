@@ -870,7 +870,7 @@ function vistaSolicitudes() {
 function render() {
   const der = $('#cabDer');
   if (S.fase === 'app' || S.fase === 'clave' || S.fase === 'sinacceso') {
-    der.innerHTML = `${S.yo ? `<span class="quien">${esc(S.yo.agencia)}</span>` : ''}<button class="btn chico" type="button" id="btnSalir">Salir</button>`;
+    der.innerHTML = `${S.yo ? `<span class="quien">${esc(S.yo.agencia)}${S.yo.vendedor && !S.yo.titular ? ` · ${esc(S.yo.vendedor)}` : ''}</span>` : ''}<button class="btn chico" type="button" id="btnSalir">Salir</button>`;
   } else der.innerHTML = '';
   const m = $('#main');
   if (S.fase === 'cargando') m.innerHTML = '<p class="hint">Abriendo el cotizador…</p>';

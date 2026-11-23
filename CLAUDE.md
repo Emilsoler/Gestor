@@ -889,6 +889,18 @@ Mutual y no nombra a InfoAuto.
   copian al repositorio. El almacenamiento del plan gratuito es de 1 GB (una solicitud con fotos ocupa unos pocos MB).
 - **Estados de la solicitud** (migración 0041, pedido de la persona del 23/11/2026): `cargando` (interno, la agencia sube archivos) → `pendiente` → `en_analisis` → `aprobada` | `rechazada`. La agencia ve `pendiente` como **«Recibida»** y `en_analisis` como **«En análisis»** (con la nota que haya dejado la Mutual); la Mutual tiene el botón «Pasar a en análisis» (solo desde recibida) y sigue pudiendo aprobar o rechazar desde cualquiera de las dos. **«En análisis» no es una resolución**: no pone `resuelto` ni `resuelto_por` (lo decide `gestor.tg_solicitud_resuelta`), cuenta como abierta para la solapa, la insignia y el aviso de Inicio (`solicitudAbierta` en `docs/cobranzas/agencias.js`, `contarSolicitudes` en `datos.js`) y, igual que «recibida», impide mandar otra solicitud del mismo cliente (`agencia_solicitar`). **Aviso a la agencia**: la solapa «Mis solicitudes» muestra un número cuando una solicitud cambió de estado desde la última vez que se miró; la app lo revisa al entrar, cada minuto y al volver a la pestaña (`mirarNovedades` en `docs/agencias/app.js`) y cambia solo el rótulo, sin volver a dibujar lo que se esté escribiendo. Lo ya visto se recuerda en el dispositivo (`agencias.vistas`). No hay aviso al celular de la agencia (el push es solo de la Mutual).
 
+- **Vendedores** (migración 0042, pedido de la persona del 23/11/2026): cada agencia puede tener varios vendedores, cada uno con su propio
+  usuario (`public.agencia_vendedores`: nombre, email, `user_id`, `activo`, `titular`). **Cada vendedor ve solo lo suyo**: sus solicitudes
+  (`solicitudes_credito.vendedor_id`), sus cotizaciones y su chat con la Mutual (`chats_agencia.vendedor_id`, un chat abierto por vendedor).
+  **La persona da el alta** (no la agencia): Créditos y Cobros → Agencias → «Agregar un vendedor a una agencia» (acción `crear_vendedor` de la
+  función, solo miembros; crea la cuenta con clave provisoria al azar que se ve una sola vez, como `crear_agencia`). La cuenta con la que se
+  dio de alta cada agencia es su **titular** (se creó sola en la migración; `gestor.autorizar_agencia` la crea también). Los topes son
+  **por agencia**, no por vendedor (20 agencias activas, `tope_diario` de cotizaciones y consultas al BCRA). Pausar la agencia pausa a todos;
+  pausar un vendedor (`agencia_vendedores.activo`) corta solo a ese. Solo se puede entrar con la cuenta de un vendedor activo de una agencia activa
+  (`public.agencia_sesion`). Por SQL: `select gestor.autorizar_vendedor('titular@agencia.com', 'vendedor@agencia.com', 'Nombre')` y
+  `select gestor.pausar_vendedor('vendedor@agencia.com')` (la cuenta de login hay que crearla antes). Publicar: migración 0042,
+  `deploy_edge_function` de `agencias` (siete archivos) y subir la app. Pruebas: el test «vendedores» de `agencias.test.mjs` y el del panel en `agencias-admin.test.mjs`.
+
 ### Chat «M» con la Mutual (migración 0038, pedido de la persona del 22/11/2026)
 
 Botón flotante «M» en el cotizador (`docs/agencias/chat.js`): abre un chat con un asistente que responde dudas básicas y, si la

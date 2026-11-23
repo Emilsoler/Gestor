@@ -640,3 +640,51 @@ test('simulación rápida: solo la agencia marcada, con capital, cuotas, tasa y 
   assert.equal((await pedir(agencia, { ...pedido, cuotas: 0 })).status, 400);
   sql(`update public.agencias set simulacion_rapida = false;`);
 });
+
+test('vendedores: la Mutual los da de alta, cada uno ve solo lo suyo y pausar corta el acceso', async () => {
+  const ag = sql(`select id from public.agencias where email = 'salon@test.local'`);
+  const alta = { accion: 'crear_vendedor', agencia: ag, nombre: 'Vendedora Dos', email: 'Dos@Salon.Test' };
+  // La agencia no da de alta vendedores; faltan datos o la agencia no existe: no.
+  assert.equal((await pedir(agencia, alta)).status, 400);
+  assert.equal((await pedir(emi, { ...alta, email: 'sin-arroba' })).status, 400);
+  assert.equal((await pedir(emi, { ...alta, nombre: '' })).status, 400);
+  assert.equal((await pedir(emi, { ...alta, agencia: '00000000-0000-0000-0000-000000000000' })).status, 400);
+  // El alta devuelve la clave una sola vez y no queda guardada.
+  const r = await pedir(emi, alta);
+  assert.equal(r.status, 200, r.texto);
+  assert.equal(r.datos.email, 'dos@salon.test');
+  assert.match(r.datos.clave, /^[A-HJ-NP-Za-km-z2-9]{12}$/);
+  assert.ok(!sql(`select to_jsonb(v) from public.agencia_vendedores v where email = 'dos@salon.test'`).includes(r.datos.clave));
+  assert.equal((await pedir(emi, alta)).status, 409, 'un email con cuenta no se pisa');
+  // La cuenta existente de la agencia quedó como titular.
+  assert.equal(sql(`select titular from public.agencia_vendedores where email = 'salon@test.local'`), 't');
+  // Entra con la provisoria, elige la suya, y sabe quién es.
+  const dos = (await entrar('dos@salon.test', r.datos.clave)).sesion.access_token;
+  assert.equal((await pedir(dos, { accion: 'yo' })).datos.clave_temporal, true);
+  assert.equal((await pedir(dos, { accion: 'clave_definida' })).status, 200);
+  const yo = (await pedir(dos, { accion: 'yo' })).datos;
+  assert.equal(yo.agencia, 'Salón Uno');
+  assert.equal(yo.vendedor, 'Vendedora Dos');
+  assert.equal(yo.titular, false);
+  assert.equal((await pedir(agencia, { accion: 'yo' })).datos.titular, true);
+  // Cada uno ve solo sus solicitudes.
+  const vt = sql(`select id from public.agencia_vendedores where email = 'salon@test.local'`);
+  const vd = sql(`select id from public.agencia_vendedores where email = 'dos@salon.test'`);
+  sql(`delete from public.solicitudes_credito;
+       insert into public.solicitudes_credito (agencia_id, vendedor_id, agencia, cuit, denominacion, semaforo, vehiculo, anio, monto, cuotas, cuota, total, tasa, cft, estado)
+       select '${ag}', v.id, 'Salón Uno', '20111111112', v.n, 'verde', 'X', 2024, 1000000, 12, 100000, 1200000, 5, 90, 'pendiente'
+         from (values ('${vt}'::uuid, 'DEL TITULAR'), ('${vd}'::uuid, 'DE LA DOS')) v(id, n)`);
+  const mias = (a) => pedir(a, { accion: 'solicitudes' }).then((x) => x.datos.solicitudes.map((s) => s.denominacion));
+  assert.deepEqual(await mias(agencia), ['DEL TITULAR']);
+  assert.deepEqual(await mias(dos), ['DE LA DOS']);
+  // Pausar a la vendedora la deja afuera; la titular sigue; pausar la agencia corta a todos.
+  sql(`update public.agencia_vendedores set activo = false where email = 'dos@salon.test'`);
+  assert.equal((await pedir(dos, { accion: 'yo' })).status, 403);
+  assert.equal((await pedir(agencia, { accion: 'yo' })).status, 200);
+  sql(`update public.agencia_vendedores set activo = true where email = 'dos@salon.test'`);
+  assert.equal((await pedir(dos, { accion: 'yo' })).status, 200);
+  sql(`update public.agencias set activa = false where id = '${ag}'`);
+  assert.equal((await pedir(dos, { accion: 'yo' })).status, 403);
+  assert.equal((await pedir(agencia, { accion: 'yo' })).status, 403);
+  sql(`update public.agencias set activa = true where id = '${ag}'; delete from public.solicitudes_credito`);
+});

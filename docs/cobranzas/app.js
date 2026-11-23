@@ -5,7 +5,7 @@ import {
   crearDeudor, cambiarDeudor, borrarDeudor, crearModelo, guardarModelo, borrarModelo, guardarAjustes,
   consultarInfoAuto, consultarInfoAutoTodo, consultarBCRA, detalleConsulta, detalleGuardado, borrarConsulta, consultarCheque, entidadesCheques, borrarConsultaCheque, crearCasoRefi, actualizarCasoRefi, borrarCasoRefi, archivarCasoRefi,
   crearDescuento, guardarDescuento, borrarDescuento, estadoCheque,
-  leerAgencias, contarSolicitudes, guardarAjustesAgencias, altaAgencia, crearAgencia, activarAgencia, resolverSolicitud, documentosSolicitud, eliminarSolicitud, eliminarCotizaciones,
+  leerAgencias, contarSolicitudes, guardarAjustesAgencias, altaAgencia, crearAgencia, crearVendedor, activarVendedor, activarAgencia, resolverSolicitud, documentosSolicitud, eliminarSolicitud, eliminarCotizaciones,
   chatsAgencias, chatResumen, verChat, responderChat, cerrarChat, eliminarChat, claveAvisos, registrarAvisos, quitarAvisos, probarAvisos,
 } from './datos.js';
 import { htmlAgencias, avisoInicio, parametrosEnTexto, leerParametros, TABS_AGENCIAS } from './agencias.js';
@@ -74,7 +74,7 @@ const S = {
   // Agencias (el cotizador para agencias): lo leído, la pestaña, los enlaces a documentos ya pedidos, lo que se escribe
   // (notas para la agencia, parámetros y alta, atados con data-k) y cuántas solicitudes esperan respuesta.
   ag: {
-    datos: null, cargando: false, error: '', tab: 'solicitudes', msg: '', docs: new Map(), notas: {}, p: {}, alta: {}, pend: 0, borrar: '', borrarCot: '',
+    datos: null, cargando: false, error: '', tab: 'solicitudes', msg: '', docs: new Map(), notas: {}, p: {}, alta: {}, vend: {}, pend: 0, borrar: '', borrarCot: '',
     // Chats de las agencias: la lista, la conversación abierta (hilo + mensajes), lo que se escribe (texto) y el estado de los
     // avisos al celular (push: cargando | no | denegado | inactivo | activo). `atencion`: conversaciones que piden respuesta.
     chat: { lista: [], atencion: 0, espera: 0, error: '', hilo: null, mensajes: [], texto: '', enviando: false, push: 'cargando', pushMsg: '' },
@@ -189,7 +189,7 @@ function mostrar(pantalla) {
   if (enApp) { $('#ingresoCuerpo').innerHTML = ''; render(); seguirEnlace(); return; }
   cerrarFicha(); S.menu = false; renderMenu();
   for (const k of ['#main', '#chips', '#franja', '#nPlanes', '#nDeudores', '#nAgencias']) $(k).innerHTML = '';
-  S.ag = { ...S.ag, datos: null, error: '', docs: new Map(), notas: {}, alta: {}, nueva: null, pend: 0 }; // al salir no queda nada de otra sesión
+  S.ag = { ...S.ag, datos: null, error: '', docs: new Map(), notas: {}, alta: {}, vend: {}, nueva: null, pend: 0 }; // al salir no queda nada de otra sesión
   $('#sub').textContent = ''; $('#q').value = ''; S.q = '';
   renderIngreso();
 }
@@ -743,6 +743,23 @@ async function accionAgencias(act, b) {
     // La clave solo vive en esta pantalla: no se guarda en el dispositivo y desaparece al cambiar de solapa.
     G.alta = {}; G.msg = ''; G.nueva = { nombre, email: r.email || email, clave: r.clave };
     toast('Agencia creada');
+    await cargarAgencias(); return;
+  }
+  if (act === 'ag-vend-crear') {
+    const v = G.vend || {}, email = String(v.email || '').trim(), nombre = String(v.nombre || '').trim(), agencia = String(v.agencia || '');
+    if (!agencia) { G.msg = 'Elegí la agencia.'; render(); return; }
+    if (!email || !nombre) { G.msg = 'Completá el nombre y el email del vendedor.'; render(); return; }
+    let r;
+    try { r = await crearVendedor(agencia, nombre, email); } catch (e) { G.msg = mensaje(e); render(); return; }
+    const ag = (G.datos?.agencias || []).find((x) => x.id === agencia);
+    G.vend = { agencia }; G.msg = ''; G.nueva = { nombre: `${nombre} (${ag?.nombre || 'agencia'})`, email: r.email || email, clave: r.clave, vendedor: true };
+    toast('Vendedor creado');
+    await cargarAgencias(); return;
+  }
+  if (act === 'ag-vend-activo') {
+    const activo = b.dataset.valor === '1';
+    try { await activarVendedor(id, activo); } catch (e) { G.msg = mensaje(e); render(); return; }
+    G.msg = ''; toast(activo ? 'Vendedor activado' : 'Vendedor pausado: ya no puede cotizar');
     await cargarAgencias(); return;
   }
   if (act === 'ag-copiar-acceso') {

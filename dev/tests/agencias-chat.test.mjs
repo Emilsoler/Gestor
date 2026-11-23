@@ -265,7 +265,7 @@ test('la Mutual cierra la conversación: la agencia empieza otra y hay una sola 
   assert.equal(r.datos.chat.estado, 'bot');
   assert.notEqual(r.datos.chat.id, c.id);
   assert.equal(sql(`select count(*) from public.chats_agencia where estado <> 'cerrado'`), '1');
-  assert.ok(sqlUnica(`insert into public.chats_agencia (agencia_id, agencia) select agencia_id, agencia from public.chats_agencia limit 1`), 'una segunda abierta no entra');
+  assert.ok(sqlUnica(`insert into public.chats_agencia (agencia_id, vendedor_id, agencia) select agencia_id, vendedor_id, agencia from public.chats_agencia limit 1`), 'una segunda abierta no entra');
   // La agencia también puede empezar de cero.
   assert.equal((await pedir(agencia, { accion: 'chat_cerrar' })).status, 200);
   assert.equal((await pedir(agencia, { accion: 'chat_leer', desde: 0 })).datos.chat, null);

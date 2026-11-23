@@ -259,4 +259,34 @@ test('la agencia ve en qué estado va su solicitud y la solapa avisa cuando camb
   await p.context().close();
 });
 
+test('Créditos y Cobros: la Mutual agrega un vendedor a una agencia, lo ve en la lista y lo pausa', async () => {
+  const p = await pagina('pc');
+  await ingresarCobranzas(p);
+  await p.click('#v_agencias');
+  await p.click('[data-a="ag-tab"][data-tab="agencias"]');
+  await p.waitForSelector('[data-a="ag-vend-crear"]');
+  // Sin elegir agencia o sin datos, avisa y no crea nada.
+  await p.click('[data-a="ag-vend-crear"]');
+  assert.match(norm(await p.textContent('#main')), /Elegí la agencia/);
+  const ag = sql(`select id from public.agencias where email = '${AG}'`);
+  await p.selectOption('[data-k="ag.vend.agencia"]', ag);
+  await p.fill('[data-k="ag.vend.nombre"]', 'Vendedor Botón');
+  await p.fill('[data-k="ag.vend.email"]', 'vend@test.local');
+  await p.click('[data-a="ag-vend-crear"]');
+  await p.waitForSelector('.ag-nueva .ag-acceso');
+  const clave = (await p.textContent('.ag-nueva .ag-acceso dd:last-of-type')).trim();
+  assert.match(clave, /^[A-HJ-NP-Za-km-z2-9]{12}$/);
+  assert.match(norm(await p.textContent('.ag-nueva')), /Vendedor creado/);
+  assert.equal(sql(`select activo::text || titular::text from public.agencia_vendedores where email = 'vend@test.local'`), 'truefalse');
+  assert.equal((await entrar('vend@test.local', clave)).sesion.user.email, 'vend@test.local', 'la clave que se ve es la que sirve');
+  // Con dos cuentas, la agencia muestra a cada vendedor en su renglón y se lo puede pausar por separado.
+  await p.waitForSelector('[data-a="ag-vend-activo"]');
+  assert.match(norm(await p.textContent('#main')), /Vendedor Botón/);
+  await p.click(`[data-a="ag-vend-activo"][data-id="${sql(`select id from public.agencia_vendedores where email = 'vend@test.local'`)}"]`);
+  await toast(p, 'Vendedor pausado');
+  assert.equal(sql(`select activo from public.agencia_vendedores where email = 'vend@test.local'`), 'f');
+  assert.equal(sql(`select activa from public.agencias where id = '${ag}'`), 't', 'la agencia sigue activa');
+  await p.context().close();
+});
+
 test('sin errores en la consola', () => { assert.deepEqual(errores, []); });

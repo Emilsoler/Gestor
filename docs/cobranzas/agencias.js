@@ -108,6 +108,15 @@ export function leerParametros(p) {
 
 /** Pendientes primero; dentro de cada grupo, la más nueva arriba. */
 /** Abiertas: las que la Mutual todavía tiene que resolver (recién recibidas o ya en análisis). */
+/** Los vendedores de una agencia (migración 0042): el titular primero. */
+const vendedoresDe = (A, agenciaId) => (A.vendedores || []).filter((v) => v.agencia_id === agenciaId);
+/** El vendedor de una solicitud, cotización o chat; vacío si la agencia tiene una sola cuenta (el titular), para no repetir su nombre. */
+function quienEs(A, x) {
+  const v = (A.vendedores || []).find((y) => y.id === x.vendedor_id);
+  if (!v) return '';
+  return v.titular && vendedoresDe(A, v.agencia_id).length <= 1 ? '' : v.nombre;
+}
+
 export const solicitudAbierta = (x) => x.estado === 'pendiente' || x.estado === 'en_analisis';
 const pendientes = (xs) => xs.filter(solicitudAbierta);
 
@@ -142,7 +151,7 @@ function solicitud(x, A, est, notas) {
   const pctValor = Number(d.pct_valor) > 0 ? ` <span class="hint">(${esc(Number(d.pct_valor).toLocaleString('es-AR', { maximumFractionDigits: 1 }))} % del valor del vehículo)</span>` : '';
   const trabajo = [x.categoria ? CATEGORIAS[x.categoria] || x.categoria : '', d.actividad || ''].filter(Boolean);
   return `<section class="card ag-sol" id="sol-${esc(x.id)}">
-    <div class="card-cab"><div><div class="ag-agencia">${esc(x.agencia)}</div><div class="hint">${esc(fechaHora(x.enviada || x.momento))}</div></div>
+    <div class="card-cab"><div><div class="ag-agencia">${esc(x.agencia)}${quienEs(A, x) ? ` <span class="hint">· ${esc(quienEs(A, x))}</span>` : ''}</div><div class="hint">${esc(fechaHora(x.enviada || x.momento))}</div></div>
       ${etiqueta(ESTADO[x.estado] || [x.estado, ''])}</div>
     <div class="ag-bloque"><span class="ag-rotulo">Cliente</span>
       <b class="ag-nombre">${esc(x.denominacion || cuitLindo(x.cuit))}</b>
@@ -229,9 +238,13 @@ export function htmlAgencias(A, est) {
     const al = est.alta;
     const filas = A.agencias.map((x) => `<tr><td><b>${esc(x.nombre)}</b><br><span class="hint">${esc(x.email)}</span>${x.notas ? `<br><span class="hint">${esc(x.notas)}</span>` : ''}</td>
       <td>${x.activa ? '<span class="tag t-plan">Activa</span>' : '<span class="tag t-mal">Pausada</span>'}</td>
-      <td class="num"><button class="btn small" data-a="ag-activa" data-id="${esc(x.id)}" data-valor="${x.activa ? '0' : '1'}">${x.activa ? 'Pausar' : 'Activar'}</button></td></tr>`).join('');
-    const nueva = est.nueva ? `<section class="card ag-nueva"><div class="card-cab"><h3>Agencia creada: ${esc(est.nueva.nombre)}</h3></div>
-        <p class="m0">Pasale estos datos a la agencia. <b>La contraseña se muestra una sola vez</b>: si cerrás esta pantalla, no se puede volver a ver.</p>
+      <td class="num"><button class="btn small" data-a="ag-activa" data-id="${esc(x.id)}" data-valor="${x.activa ? '0' : '1'}">${x.activa ? 'Pausar' : 'Activar'}</button></td></tr>${
+      // Con una sola cuenta (el titular) no se repite nada; con más, cada vendedor en su renglón, para pausarlo por separado.
+      vendedoresDe(A, x.id).length > 1 ? vendedoresDe(A, x.id).map((v) => `<tr class="ag-vend"><td>↳ ${esc(v.nombre)}${v.titular ? ' <span class="hint">(titular)</span>' : ''}<br><span class="hint">${esc(v.email)}</span></td>
+      <td>${v.activo ? '<span class="tag t-plan">Activo</span>' : '<span class="tag t-mal">Pausado</span>'}</td>
+      <td class="num"><button class="btn small" data-a="ag-vend-activo" data-id="${esc(v.id)}" data-valor="${v.activo ? '0' : '1'}">${v.activo ? 'Pausar' : 'Activar'}</button></td></tr>`).join('') : ''}`).join('');
+    const nueva = est.nueva ? `<section class="card ag-nueva"><div class="card-cab"><h3>${est.nueva.vendedor ? 'Vendedor creado' : 'Agencia creada'}: ${esc(est.nueva.nombre)}</h3></div>
+        <p class="m0">Pasale estos datos ${est.nueva.vendedor ? 'al vendedor' : 'a la agencia'}. <b>La contraseña se muestra una sola vez</b>: si cerrás esta pantalla, no se puede volver a ver.</p>
         <dl class="ag-acceso"><dt>Usuario</dt><dd class="mono">${esc(est.nueva.email)}</dd><dt>Contraseña provisoria</dt><dd class="mono">${esc(est.nueva.clave)}</dd></dl>
         <p class="hint m0">Cuando entre por primera vez, el cotizador le va a pedir que elija su propia contraseña.</p>
         <div class="actions"><button class="btn primary" data-a="ag-copiar-acceso">Copiar los datos para enviar</button><button class="btn" data-a="ag-listo">Listo, ya los copié</button></div>
@@ -250,10 +263,19 @@ export function htmlAgencias(A, est) {
           <label class="f">Notas<input data-k="ag.alta.notas" value="${esc(al.notas || '')}" maxlength="500" autocomplete="off"></label>
         </div>
         <div class="actions"><button class="btn primary" data-a="ag-crear">Crear agencia</button><button class="btn" data-a="ag-alta">Ya tiene cuenta: solo habilitar</button></div>
+      </section>
+      <section class="card"><div class="card-cab"><h3>Agregar un vendedor a una agencia</h3></div>
+        <p class="hint m0">Cada vendedor entra con su propio usuario y ve solo lo suyo: sus cotizaciones, sus solicitudes y su chat. Pausar la agencia los pausa a todos.</p>
+        <div class="grid2">
+          <label class="f">Agencia<select data-k="ag.vend.agencia"><option value="">Elegí la agencia…</option>${A.agencias.filter((x) => x.activa).map((x) => `<option value="${esc(x.id)}"${(est.vend || {}).agencia === x.id ? ' selected' : ''}>${esc(x.nombre)}</option>`).join('')}</select></label>
+          <label class="f">Nombre del vendedor<input data-k="ag.vend.nombre" value="${esc((est.vend || {}).nombre || '')}" maxlength="120" autocomplete="off"></label>
+          <label class="f">Email de la cuenta<input type="email" data-k="ag.vend.email" value="${esc((est.vend || {}).email || '')}" autocomplete="off"></label>
+        </div>
+        <div class="actions"><button class="btn primary" data-a="ag-vend-crear">Crear vendedor</button></div>
       </section>`;
   } else if (est.tab === 'cotizaciones') {
     const pide = (est.borrarCot || '') !== '';
-    const filas = A.cotizaciones.map((x) => `<tr><td>${esc(fechaHora(x.momento))}</td><td>${esc(x.agencia)}</td><td class="mono">${x.cuit ? esc(cuitLindo(x.cuit)) : '<span class="hint">—</span>'}</td><td>${esc(x.vehiculo)} <span class="hint">${esc(anioTxt(x.anio))}</span></td>
+    const filas = A.cotizaciones.map((x) => `<tr><td>${esc(fechaHora(x.momento))}</td><td>${esc(x.agencia)}${quienEs(A, x) ? `<br><span class="hint">${esc(quienEs(A, x))}</span>` : ''}</td><td class="mono">${x.cuit ? esc(cuitLindo(x.cuit)) : '<span class="hint">—</span>'}</td><td>${esc(x.vehiculo)} <span class="hint">${esc(anioTxt(x.anio))}</span></td>
       <td class="num">${plata(x.monto)}</td><td class="num">${x.cuotas} × ${plata(x.cuota)}</td>
       <td class="num"><button class="btn small" data-a="ag-cot-preguntar" data-id="${esc(x.id)}">Eliminar</button></td></tr>`).join('');
     const aviso = !pide ? '' : `<div class="aviso-chico ag-borrar" role="alert"><span>${est.borrarCot === 'todas' ? '¿Eliminar todas las cotizaciones de la lista?' : '¿Eliminar esta cotización?'} Es solo un registro y no se puede deshacer. Si es de hoy, la agencia recupera ese lugar en su tope diario.</span>

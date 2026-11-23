@@ -385,13 +385,14 @@ const contar = async (ruta: string): Promise<number> => {
 const ahoraISO = () => new Date().toISOString();
 const inicioDelDia = () => new Date(`${hoyCordoba()}T00:00:00-03:00`).toISOString();
 
-async function chatAbierto(agenciaId: string): Promise<any> {
-  const [c] = await rest('GET', `chats_agencia?agencia_id=eq.${agenciaId}&estado=neq.cerrado&select=*`);
+// Cada vendedor tiene su conversación (migración 0042): lo que habla uno no lo ve otro de la misma agencia.
+async function chatAbierto(vendedorId: string): Promise<any> {
+  const [c] = await rest('GET', `chats_agencia?vendedor_id=eq.${vendedorId}&estado=neq.cerrado&select=*`);
   return c || null;
 }
 async function chatNuevo(ag: any): Promise<any> {
-  try { const [c] = await rest('POST', 'chats_agencia', { agencia_id: ag.id, agencia: String(ag.nombre).slice(0, 120) }); return c; } catch (e) {
-    const c = await chatAbierto(ag.id); // dos pedidos a la vez: el segundo se encuentra con el primero
+  try { const [c] = await rest('POST', 'chats_agencia', { agencia_id: ag.id, vendedor_id: ag.vendedor_id, agencia: String(ag.nombre).slice(0, 120), vendedor: String(ag.vendedor || '').slice(0, 120) }); return c; } catch (e) {
+    const c = await chatAbierto(ag.vendedor_id); // dos pedidos a la vez: el segundo se encuentra con el primero
     if (c) return c;
     throw e;
   }
@@ -479,13 +480,13 @@ async function avisarMutual(titulo: string, cuerpo: string, url: string, soloUsu
 const aBase64 = (b: Uint8Array) => { let s = ''; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000)); return btoa(s); };
 
 /** El audio de un mensaje, ya bajado (base64): así el navegador lo reproduce sin abrir otra conexión ni ver la ruta.
- *  `agenciaId`: si viene, solo se entrega si el mensaje es de una conversación de esa agencia. */
-async function audioDeMensaje(id: unknown, agenciaId?: string): Promise<{ tipo: string; seg: number; datos: string }> {
+ *  `vendedorId`: si viene, solo se entrega si el mensaje es de una conversación de ese vendedor. */
+async function audioDeMensaje(id: unknown, vendedorId?: string): Promise<{ tipo: string; seg: number; datos: string }> {
   const n = Number(id);
   if (!Number.isSafeInteger(n) || n < 1) throw new Falla('Falta el mensaje.', 400, 'pedido');
   const [m] = await rest('GET', `mensajes_agencia?id=eq.${n}&select=chat_id,audio_path,audio_tipo,audio_seg`);
   if (!m?.audio_path) throw new Falla('Ese mensaje no tiene audio.', 404, 'audio');
-  if (agenciaId && !(await rest('GET', `chats_agencia?id=eq.${m.chat_id}&agencia_id=eq.${agenciaId}&select=id`))?.length) throw new Falla('Ese mensaje no tiene audio.', 404, 'audio');
+  if (vendedorId && !(await rest('GET', `chats_agencia?id=eq.${m.chat_id}&vendedor_id=eq.${vendedorId}&select=id`))?.length) throw new Falla('Ese mensaje no tiene audio.', 404, 'audio');
   const url = await enlace(String(m.audio_path), CARPETA_AUDIOS);
   const r = url ? await fetch(url) : null;
   if (!r || !r.ok) throw new Falla('No se pudo traer el audio. Probá de nuevo en un momento.', 502, 'almacen');
@@ -570,14 +571,14 @@ async function accionChat(accion: string, pedido: any, ctx: { ag: any; a: any; u
   if (!a.chat_habilitado) throw new Falla('El chat todavía no está habilitado.', 403, 'chat_apagado');
 
   if (accion === 'chat_leer') {
-    const c = await chatAbierto(ag.id);
+    const c = await chatAbierto(ag.vendedor_id);
     if (!c) return ok({ chat: null, mensajes: [] });
     const mensajes = await mensajesDe(c.id, Number(pedido.desde) || 0);
     if (pedido.leido === true && c.sin_leer_agencia) await rest('PATCH', `chats_agencia?id=eq.${c.id}`, { sin_leer_agencia: false });
     return ok({ chat: vistaChat(c), mensajes });
   }
   if (accion === 'chat_cerrar') {
-    const c = await chatAbierto(ag.id);
+    const c = await chatAbierto(ag.vendedor_id);
     if (c) await marcar(c.id, { estado: 'cerrado', espera_desde: null, sin_leer_mutual: false });
     return ok({ ok: true });
   }
@@ -585,7 +586,7 @@ async function accionChat(accion: string, pedido: any, ctx: { ag: any; a: any; u
     const t = textoDeAgencia(pedido.texto);
     if (!t) throw new Falla('Escribí tu mensaje.', 400, 'pedido');
     await controlarTope(ag.id);
-    const c = (await chatAbierto(ag.id)) || (await chatNuevo(ag));
+    const c = (await chatAbierto(ag.vendedor_id)) || (await chatNuevo(ag));
     const mio = await agregar(c.id, 'agencia', t);
     const nuevos = [mio];
     const estado = c.estado; let derivar = false;
@@ -607,10 +608,10 @@ async function accionChat(accion: string, pedido: any, ctx: { ag: any; a: any; u
     }
     return ok({ chat: { id: c.id, estado, sin_leer: false }, mensajes: nuevos, derivar });
   }
-  if (accion === 'chat_audio_ver') return ok(await audioDeMensaje(pedido.mensaje, ag.id));
+  if (accion === 'chat_audio_ver') return ok(await audioDeMensaje(pedido.mensaje, ag.vendedor_id));
   if (accion === 'chat_audio') {
     // Un mensaje de voz solo se manda cuando ya hay una persona de la Mutual en la conversación: el asistente no escucha audios.
-    const c = await chatAbierto(ag.id);
+    const c = await chatAbierto(ag.vendedor_id);
     if (!c || c.estado === 'bot') throw new Falla('Los audios son para hablar con una persona de la Mutual: primero tocá «Hablar con un representante».', 409, 'audio_sin_representante');
     const f = form?.get('audio'), seg = segundosDeAudio(pedido.seg);
     if (!(f instanceof File) || !seg) throw new Falla('Falta el audio.', 400, 'pedido');
@@ -628,7 +629,7 @@ async function accionChat(accion: string, pedido: any, ctx: { ag: any; a: any; u
     return ok({ chat: { id: c.id, estado: c.estado, sin_leer: false }, mensajes: [m] });
   }
   if (accion === 'chat_representante') {
-    const c = await chatAbierto(ag.id);
+    const c = await chatAbierto(ag.vendedor_id);
     const ultima = c ? (await rest('GET', `mensajes_agencia?chat_id=eq.${c.id}&de=eq.agencia&select=texto&order=id.desc&limit=1`))?.[0] : null;
     if (!c || !ultima) throw new Falla('Escribí primero tu consulta, así la Mutual sabe de qué se trata.', 400, 'sin_consulta');
     if (c.estado !== 'bot') return ok({ chat: vistaChat(c), mensajes: [] });
@@ -668,7 +669,7 @@ export async function manejar(req: Request): Promise<Response> {
 
     if (accion === 'yo') {
       return responder({
-        agencia: ag.nombre, miembro: !!ag.miembro, clave_temporal: !!ag.clave_temporal,
+        agencia: ag.nombre, vendedor: ag.miembro ? '' : String(ag.vendedor || ''), titular: !!ag.titular, miembro: !!ag.miembro, clave_temporal: !!ag.clave_temporal,
         habilitado: !!a.habilitado, plazos: plazosValidos(a), leyenda: String(a.leyenda || ''), contacto: String(a.contacto || ''),
         relacion_max: Number(a.relacion_max) || 45,
         chat: !!a.chat_habilitado && !ag.miembro,
@@ -906,6 +907,29 @@ export async function manejar(req: Request): Promise<Response> {
         // Si no se pudo habilitar (por ejemplo, ya hay 20 activas), la cuenta recién creada no queda suelta.
         if (esUuid(creado?.id)) await fetch(`${URL_BASE}/auth/v1/admin/users/${creado.id}`, { method: 'DELETE', headers: servicio }).catch(() => {});
         let msg = 'No se pudo habilitar la agencia.';
+        try { const e = await alta.json(); if (e?.message && alta.status === 400) msg = String(e.message); } catch { /* sin detalle */ }
+        throw new Falla(msg, 400, 'alta');
+      }
+      return responder({ ok: true, email, clave }, 200, cors);
+    }
+    if (accion === 'crear_vendedor') {
+      // Solo para la Mutual (el alta de un vendedor la da la persona, no el dueño de la agencia): crea la cuenta con una clave
+      // provisoria al azar, la suma a una agencia que ya existe y devuelve la clave UNA vez (no se guarda ni se registra).
+      if (!ag.miembro) throw new Falla('Pedido desconocido.', 400, 'accion');
+      const email = String(pedido.email || '').trim().toLowerCase(), nombre = String(pedido.nombre || '').trim();
+      if (!esUuid(pedido.agencia)) throw new Falla('Elegí la agencia.', 400, 'pedido');
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 200) throw new Falla('El email no es válido.', 400, 'pedido');
+      if (!nombre || nombre.length > 120) throw new Falla('Falta el nombre del vendedor.', 400, 'pedido');
+      const clave = claveProvisoria();
+      const c = await fetch(`${URL_BASE}/auth/v1/admin/users`, { method: 'POST', headers: servicio, body: JSON.stringify({ email, password: clave, email_confirm: true }) });
+      if (c.status === 409 || c.status === 422) throw new Falla('Ya existe una cuenta con ese email.', 409, 'existe');
+      if (!c.ok) throw new Falla('No se pudo crear la cuenta. Probá de nuevo en un momento.', 502, 'cuenta');
+      const creado = await c.json();
+      const alta = await fetch(`${URL_BASE}/rest/v1/rpc/agencia_vendedor_alta`, { method: 'POST', headers: servicio, body: JSON.stringify({ p_user: uid, p_agencia: pedido.agencia, p_email: email, p_nombre: nombre }) });
+      if (!alta.ok) {
+        // Si no se pudo sumar al vendedor, la cuenta recién creada no queda suelta.
+        if (esUuid(creado?.id)) await fetch(`${URL_BASE}/auth/v1/admin/users/${creado.id}`, { method: 'DELETE', headers: servicio }).catch(() => {});
+        let msg = 'No se pudo dar de alta al vendedor.';
         try { const e = await alta.json(); if (e?.message && alta.status === 400) msg = String(e.message); } catch { /* sin detalle */ }
         throw new Falla(msg, 400, 'alta');
       }
