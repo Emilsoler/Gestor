@@ -533,13 +533,24 @@ test('solicitud completa: ingresos, 45 %, datos, documentos a la carpeta privada
   const pago2 = r.datos.archivos.find((a) => a.nombre === 'pagos-2.pdf');
   assert.equal(pago2.slot, 'documentacion');
   const bajado = new Uint8Array(await (await fetch(pago2.url)).arrayBuffer());
-  assert.deepEqual(bajado, PDF('pago 2'));
+  assert.deepEqual(bajado, PDF('pagos-2'));
   assert.equal((await fetch(pago2.url.replace(/token=[^&]+/, 'token=otro'))).status, 400, 'sin la firma no se abre');
   assert.equal((await fetch(`${env.SUPABASE_URL}/storage/v1/object/solicitudes/${s.archivos[0].path}`, { headers: { apikey: env.ANON_KEY } })).status, 403, 'sin la clave de servicio no se lee');
 
   // Una segunda para el mismo cliente, con la primera pendiente: no.
   r = await pedir(agencia, { ...base, ingreso: justo });
   assert.equal(r.status, 409);
+
+  // La Mutual la pasa a «En análisis» (migración 0041): sigue sin resolver, la agencia lo ve y no puede mandar otra del mismo cliente.
+  const an = await c.from('solicitudes_credito').update({ estado: 'en_analisis', nota: 'Falta el recibo de este mes' }).eq('id', id).select();
+  assert.ifError(an.error);
+  assert.equal(an.data[0].estado, 'en_analisis');
+  assert.equal(an.data[0].resuelto, null, 'en análisis no es una resolución');
+  assert.equal(an.data[0].resuelto_por, '');
+  r = await pedir(agencia, { accion: 'solicitudes' });
+  assert.equal(r.datos.solicitudes[0].estado, 'en_analisis');
+  assert.equal(r.datos.solicitudes[0].nota, 'Falta el recibo de este mes');
+  assert.equal((await pedir(agencia, { ...base, ingreso: justo })).status, 409, 'en análisis sigue abierta');
 
   // La Mutual la aprueba; la agencia ve la respuesta.
   const u = await c.from('solicitudes_credito').update({ estado: 'aprobada', nota: 'Que venga a firmar' }).eq('id', id).select();

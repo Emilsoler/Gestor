@@ -37,7 +37,7 @@ const S = {
   marcas: null, marca: '', modelos: null, modelo: '', versiones: null, version: '', anios: null, anio: '', buscaVer: '',
   plazo: 0, monto: '', cargando: '', res: null,
   foto: null, // { ref, src }: la foto de la versión elegida (src null si no hay); la pide `cargarFoto`
-  cuit: '', bcra: null, bcraError: '', continuo: false, confirmarOtro: false, sols: null,
+  cuit: '', bcra: null, bcraError: '', continuo: false, confirmarOtro: false, sols: null, novedades: null,
   sol: null, // la solicitud que se está armando (nuevaSol)
   rap: null, // simulación rápida (solo la agencia marcada; `nuevaRapida`)
 };
@@ -94,6 +94,7 @@ async function cargarYo() {
     render();
     iniciarChat(fn, !!S.yo.chat);
     if (S.yo.miembro && !S.marcas) cargarMarcas();
+    else mirarNovedades();
   } catch (e) {
     if (e.status === 401 || e.codigo === 'sin_sesion') { await sb.auth.signOut().catch(() => {}); S.fase = 'ingreso'; S.error = ''; render(); return; }
     if (e.codigo === 'sin_acceso') { S.fase = 'sinacceso'; render(); return; }
@@ -288,6 +289,8 @@ async function enviarSolicitud() {
 async function cargarSolicitudes() {
   S.sols = null; render();
   try { S.sols = (await fn({ accion: 'solicitudes' })).solicitudes || []; } catch (e) { S.sols = []; falla(e); return; }
+  S.novedades = new Set(conNovedad(S.sols).map((x) => x.id)); // se marcan en la lista; después ya se dan por vistas
+  marcarVistas();
   render();
 }
 
@@ -821,7 +824,33 @@ function vistaResultado(r) {
   </section>`;
 }
 
-const ESTADOS = { pendiente: ['Pendiente', ''], aprobada: ['Aprobada', 'ok'], rechazada: ['Rechazada', 'no'] };
+// La agencia ve «Recibida» donde la Mutual tiene `pendiente`: lo primero que pasa es que le llega.
+const ESTADOS = { pendiente: ['Recibida', ''], en_analisis: ['En análisis', 'rev'], aprobada: ['Aprobada', 'ok'], rechazada: ['Rechazada', 'no'] };
+const DICE_ESTADO = { pendiente: 'La Mutual recibió la solicitud.', en_analisis: 'La Mutual la está analizando.' };
+
+// ───────────────────────── Novedades de «Mis solicitudes» ─────────────────────────
+// Un número en la solapa avisa cuando una solicitud cambió de estado desde la última vez que la agencia la miró.
+// Lo recordado vive en este dispositivo (id → estado visto): es una comodidad, no un dato que importe guardar.
+const VISTAS = 'agencias.vistas';
+const leerVistas = () => { try { return JSON.parse(localStorage.getItem(VISTAS) || '{}') || {}; } catch { return {}; } };
+const guardarVistas = (m) => { try { localStorage.setItem(VISTAS, JSON.stringify(m)); } catch { /* sin almacenamiento: no hay avisos, nada más */ } };
+/** Las solicitudes que cambiaron de estado desde que se miraron (una recién enviada, en «Recibida», no cuenta). */
+const conNovedad = (xs, vistas = leerVistas()) => (xs || []).filter((x) => x.estado !== 'pendiente' && vistas[x.id] !== x.estado);
+const rotuloSolicitudes = () => { const n = conNovedad(S.sols).length; return `Mis solicitudes${n ? ` (${n})` : ''}`; };
+function marcarVistas() {
+  const m = leerVistas();
+  for (const x of S.sols || []) m[x.id] = x.estado;
+  guardarVistas(m);
+}
+/** Mira en silencio si hay novedades y cambia solo el rótulo de la solapa, sin volver a dibujar lo que se está escribiendo. */
+async function mirarNovedades() {
+  if (S.fase !== 'app' || !S.yo?.habilitado || S.yo.miembro || S.vista === 'solicitudes') return;
+  try { S.sols = (await fn({ accion: 'solicitudes' })).solicitudes || []; } catch { return; }
+  const b = document.querySelector('[data-vista="solicitudes"]');
+  if (b) b.textContent = rotuloSolicitudes();
+}
+setInterval(mirarNovedades, 60000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') mirarNovedades(); });
 const etqEstado = (e) => { const [t, c] = ESTADOS[e] || [e, '']; return `<span class="etq ${c}">${esc(t)}</span>`; };
 
 /** «Mis solicitudes», para la agencia. */
@@ -830,6 +859,7 @@ function vistaSolicitudes() {
   if (!S.sols.length) return '<section class="card"><h2>Mis solicitudes</h2><p class="hint m0">Todavía no mandaste solicitudes. Se envían desde «Cotizar», después de ver el crédito.</p></section>';
   return `<section class="card"><h2>Mis solicitudes</h2>${S.sols.map((x) => `<div class="sol">
       <div class="card-cab"><b>${esc(x.denominacion || cuitLindo(x.cuit))}</b>${etqEstado(x.estado)}</div>
+      ${DICE_ESTADO[x.estado] ? `<div class="hint">${esc(DICE_ESTADO[x.estado])}${S.novedades?.has(x.id) ? ' <b>Novedad</b>' : ''}</div>` : S.novedades?.has(x.id) ? '<div class="hint"><b>Novedad</b></div>' : ''}
       <div class="hint">${esc(fechaHora(x.momento))} · <span class="mono">${esc(cuitLindo(x.cuit))}</span>${['amarillo', 'sin_datos'].includes(x.semaforo) ? ' · sujeta a revisión' : ''}</div>
       <div>${esc(x.vehiculo)} <span class="hint">${esc(etiquetaAnio(x.anio))}</span></div>
       <div class="mono">${plata(x.monto)} · ${x.cuotas} × ${plata(x.cuota)}</div>
@@ -849,7 +879,7 @@ function render() {
   else if (S.fase === 'sinacceso') m.innerHTML = '<section class="card ingreso"><h2>Esta cuenta no está habilitada</h2><p class="hint m0">Consultá con la Asociación Mutual Bell.</p></section>';
   else {
     const rapida = S.yo.rapida && !S.yo.miembro;
-    const tabs = S.yo.habilitado && !S.yo.miembro ? `<nav class="tabs no-imprimir" role="tablist"><button role="tab" data-vista="cotizar" aria-selected="${S.vista === 'cotizar'}">Cotizar</button>${rapida ? `<button role="tab" data-vista="rapida" aria-selected="${S.vista === 'rapida'}">Simulación rápida</button>` : ''}<button role="tab" data-vista="solicitudes" aria-selected="${S.vista === 'solicitudes'}">Mis solicitudes</button></nav>` : '';
+    const tabs = S.yo.habilitado && !S.yo.miembro ? `<nav class="tabs no-imprimir" role="tablist"><button role="tab" data-vista="cotizar" aria-selected="${S.vista === 'cotizar'}">Cotizar</button>${rapida ? `<button role="tab" data-vista="rapida" aria-selected="${S.vista === 'rapida'}">Simulación rápida</button>` : ''}<button role="tab" data-vista="solicitudes" aria-selected="${S.vista === 'solicitudes'}">${esc(rotuloSolicitudes())}</button></nav>` : '';
     m.innerHTML = tabs + (S.vista === 'solicitudes' && !S.yo.miembro ? vistaSolicitudes() : S.vista === 'rapida' && rapida ? vistaRapida() : vistaCotizar());
   }
   $('#pie').textContent = S.fase === 'app' ? 'Simulación de referencia sujeta a aprobación crediticia de la Asociación Mutual Bell.' : '';

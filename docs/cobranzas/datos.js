@@ -516,7 +516,7 @@ export async function leerAgencias() {
 export async function contarSolicitudes() {
   if (!sb) return 0;
   try {
-    const r = await sb.from('solicitudes_credito').select('id', { count: 'exact', head: true }).eq('estado', 'pendiente');
+    const r = await sb.from('solicitudes_credito').select('id', { count: 'exact', head: true }).in('estado', ['pendiente', 'en_analisis']);
     return r.error ? 0 : r.count || 0;
   } catch { return 0; }
 }

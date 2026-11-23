@@ -17,7 +17,7 @@ const SEM = {
   rojo: ['rojo', 'Rojo'],
 };
 const circulo = (s) => { const [c, nombre] = SEM[s] || ['', String(s ?? '')]; return `<span class="sem-punto ${c}" role="img" aria-label="BCRA: ${esc(nombre)}" title="${esc(nombre)}"></span>`; };
-const ESTADO = { pendiente: ['Pendiente', 't-prom'], aprobada: ['Aprobada', 't-plan'], rechazada: ['Rechazada', 't-mal'] };
+const ESTADO = { pendiente: ['Recibida', 't-prom'], en_analisis: ['En análisis', 't-prom'], aprobada: ['Aprobada', 't-plan'], rechazada: ['Rechazada', 't-mal'] };
 
 const etiqueta = ([texto, clase]) => `<span class="tag ${clase}">${esc(texto)}</span>`;
 const cuitLindo = (c) => (/^\d{11}$/.test(String(c)) ? `${c.slice(0, 2)}-${c.slice(2, 10)}-${c.slice(10)}` : String(c ?? ''));
@@ -107,7 +107,9 @@ export function leerParametros(p) {
 }
 
 /** Pendientes primero; dentro de cada grupo, la más nueva arriba. */
-const pendientes = (xs) => xs.filter((x) => x.estado === 'pendiente');
+/** Abiertas: las que la Mutual todavía tiene que resolver (recién recibidas o ya en análisis). */
+export const solicitudAbierta = (x) => x.estado === 'pendiente' || x.estado === 'en_analisis';
+const pendientes = (xs) => xs.filter(solicitudAbierta);
 
 function documentos(x, docs) {
   const n = Array.isArray(x.archivos) ? x.archivos.length : 0;
@@ -136,7 +138,7 @@ function documentos(x, docs) {
  */
 function solicitud(x, A, est, notas) {
   const b = A.bcra.get(x.consulta), motivos = Array.isArray(b?.motivos) ? b.motivos : [], d = x.datos || {};
-  const dniCuit = dniDelCuit(x.cuit), pend = x.estado === 'pendiente';
+  const dniCuit = dniDelCuit(x.cuit), pend = solicitudAbierta(x);
   const pctValor = Number(d.pct_valor) > 0 ? ` <span class="hint">(${esc(Number(d.pct_valor).toLocaleString('es-AR', { maximumFractionDigits: 1 }))} % del valor del vehículo)</span>` : '';
   const trabajo = [x.categoria ? CATEGORIAS[x.categoria] || x.categoria : '', d.actividad || ''].filter(Boolean);
   return `<section class="card ag-sol" id="sol-${esc(x.id)}">
@@ -168,11 +170,12 @@ function solicitud(x, A, est, notas) {
     ${dniCuit && d.dni && dniCuit !== d.dni ? '<p class="aviso-chico m0">El DNI que cargó la agencia no coincide con el CUIL.</p>' : ''}
     ${documentos(x, est.docs)}
     ${pend ? `<label class="f">Nota para la agencia (opcional)<input data-k="ag.notas.${esc(x.id)}" value="${esc(notas[x.id] || '')}" maxlength="500" autocomplete="off"></label>
-      <div class="actions"><button class="btn primary" data-a="ag-resolver" data-id="${esc(x.id)}" data-estado="aprobada">Aprobar</button>
+      <div class="actions">${x.estado === 'pendiente' ? `<button class="btn" data-a="ag-resolver" data-id="${esc(x.id)}" data-estado="en_analisis">Pasar a en análisis</button>` : ''}
+        <button class="btn primary" data-a="ag-resolver" data-id="${esc(x.id)}" data-estado="aprobada">Aprobar</button>
         <button class="btn" data-a="ag-resolver" data-id="${esc(x.id)}" data-estado="rechazada">Rechazar</button>
         ${est.borrar === x.id ? '' : `<button class="btn" data-a="ag-borrar-preguntar" data-id="${esc(x.id)}">Eliminar</button>`}</div>`
       : `<p class="hint m0">${esc(x.resuelto_por || '')} · ${esc(fechaHora(x.resuelto))}${x.nota ? ` · «${esc(x.nota)}»` : ''}
-        <button class="btn small" data-a="ag-resolver" data-id="${esc(x.id)}" data-estado="pendiente">Volver a pendiente</button>
+        <button class="btn small" data-a="ag-resolver" data-id="${esc(x.id)}" data-estado="pendiente">Volver a recibida</button>
         ${est.borrar === x.id ? '' : `<button class="btn small" data-a="ag-borrar-preguntar" data-id="${esc(x.id)}">Eliminar</button>`}</p>`}
     ${est.borrar === x.id ? `<div class="aviso-chico ag-borrar" role="alert"><span>¿Eliminar la solicitud de ${esc(x.denominacion || cuitLindo(x.cuit))}? Se borran también sus documentos y no se puede deshacer desde la app.</span>
       <div class="actions"><button class="btn danger small" data-a="ag-borrar" data-id="${esc(x.id)}">Sí, eliminar</button><button class="btn small" data-a="ag-borrar-no" data-id="${esc(x.id)}">No</button></div></div>` : ''}
@@ -262,7 +265,7 @@ export function htmlAgencias(A, est) {
         : '<p class="hint m0">Todavía no hay cotizaciones.</p>'}
       <p class="hint m0">Se guarda el CUIT que la agencia consultó. No se guarda el valor del vehículo.</p></section>`;
   } else {
-    const pend = pendientes(A.solicitudes), resto = A.solicitudes.filter((x) => x.estado !== 'pendiente');
+    const pend = pendientes(A.solicitudes), resto = A.solicitudes.filter((x) => !solicitudAbierta(x));
     cuerpo = `${msg}
       ${pend.length ? pend.map((x) => solicitud(x, A, est, est.notas)).join('')
         : `<div class="empty"><b>No hay solicitudes pendientes</b>Cuando una agencia mande una, aparece acá con el informe del BCRA, el crédito y los documentos.</div>`}

@@ -524,7 +524,7 @@ function vistaAgencias() {
     return G.error ? `${vacio('No se pudo abrir', G.error)}<div class="actions"><button class="btn" data-a="ag-recargar">Probar de nuevo</button></div>`
       : vacio('Cargando las solicitudes…', 'Las solicitudes de crédito que mandan las agencias, con el informe del BCRA y los documentos.');
   }
-  const pend = G.datos.solicitudes.filter((x) => x.estado === 'pendiente').length;
+  const pend = G.datos.solicitudes.filter((x) => x.estado === 'pendiente' || x.estado === 'en_analisis').length;
   subtitulo(`${pend ? cuantos(pend, 'solicitud pendiente', 'solicitudes pendientes') : 'Sin solicitudes pendientes'} · el cotizador está ${G.datos.ajustes?.habilitado ? 'habilitado' : 'apagado'}`);
   return htmlAgencias(G.datos, G);
 }
@@ -536,7 +536,7 @@ async function cargarAgencias() {
   try {
     G.datos = await leerAgencias();
     G.p = parametrosEnTexto(G.datos.ajustes || {});
-    G.pend = G.datos.solicitudes.filter((x) => x.estado === 'pendiente').length;
+    G.pend = G.datos.solicitudes.filter((x) => x.estado === 'pendiente' || x.estado === 'en_analisis').length;
     await cargarChats(false);
   } catch (e) {
     G.error = /PGRST205|42P01|does not exist/i.test(`${e.code} ${e.message}`) ? 'Falta activar el cotizador de agencias en la base. Avisale a Claude.' : mensaje(e, 'no se pudo leer');
@@ -719,7 +719,7 @@ async function accionAgencias(act, b) {
     const estado = b.dataset.estado;
     try { await resolverSolicitud(id, estado, String(G.notas[id] || '').trim()); } catch (e) { toast(mensaje(e)); return; }
     delete G.notas[id];
-    toast(estado === 'aprobada' ? 'Solicitud aprobada' : estado === 'rechazada' ? 'Solicitud rechazada' : 'La solicitud volvió a pendiente');
+    toast(estado === 'aprobada' ? 'Solicitud aprobada' : estado === 'rechazada' ? 'Solicitud rechazada' : estado === 'en_analisis' ? 'Solicitud en análisis: la agencia ya lo ve' : 'La solicitud volvió a recibida');
     await cargarAgencias(); return;
   }
   if (act === 'ag-activa') {

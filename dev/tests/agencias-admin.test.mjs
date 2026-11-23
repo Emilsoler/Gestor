@@ -101,6 +101,13 @@ test('Créditos y Cobros: la solapa Agencias avisa, muestra la solicitud con sus
   assert.equal(enlaces.length, 5);
   const [, url] = enlaces.find(([n]) => n === 'titulo.pdf');
   assert.deepEqual(new Uint8Array(await (await fetch(url)).arrayBuffer()), PDF('titulo'));
+  // Pasarla a «En análisis»: sigue abierta (con el botón de pasar ya sin mostrarse) y la base no la da por resuelta.
+  await p.click(`#sol-${idSolicitud} [data-estado="en_analisis"]`);
+  await toast(p, 'Solicitud en análisis');
+  assert.equal(sql(`select estado || '/' || coalesce(resuelto::text, 'sin resolver') from public.solicitudes_credito where id = '${idSolicitud}'`), 'en_analisis/sin resolver');
+  await p.waitForSelector(`#sol-${idSolicitud}`);
+  assert.equal(await p.locator(`#sol-${idSolicitud} [data-estado="en_analisis"]`).count(), 0);
+  assert.match(norm(await p.textContent(`#sol-${idSolicitud}`)), /En análisis/);
   // Aprobar con una nota.
   await p.fill(`[data-k="ag.notas.${idSolicitud}"]`, 'Que venga el jueves');
   await p.click(`#sol-${idSolicitud} [data-estado="aprobada"]`);
@@ -218,6 +225,38 @@ test('en el mismo navegador conviven la sesión de la agencia (cotizador) y la d
   assert.equal(await q.$('[data-vista="admin"]'), null);
   assert.equal(await q.getAttribute('a[href="../cobranzas/#agencias"]', 'href'), '../cobranzas/#agencias');
   await c.close();
+});
+
+test('la agencia ve en qué estado va su solicitud y la solapa avisa cuando cambia', async () => {
+  const p = await pagina('agencia');
+  sql(`update public.solicitudes_credito set estado = 'en_analisis', nota = 'Falta el recibo de este mes' where id = '${idSolicitud}'`);
+  await p.goto(BASE + 'agencias/');
+  await p.waitForSelector('#fIngreso');
+  await p.fill('input[name=email]', AG); await p.fill('input[name=clave]', AG_CLAVE);
+  await p.click('#fIngreso button[type=submit]');
+  await p.waitForSelector('#inCuit');
+  const solapa = () => p.textContent('[data-vista="solicitudes"]');
+  await p.waitForFunction(() => /\(1\)/.test(document.querySelector('[data-vista="solicitudes"]')?.textContent || ''), null, { timeout: 8000 });
+  assert.equal(norm(await solapa()), 'Mis solicitudes (1)', 'cambió desde la última vez: avisa');
+  await p.click('[data-vista="solicitudes"]');
+  await p.waitForSelector('.sol');
+  const lista = norm(await p.textContent('#main'));
+  assert.match(lista, /En análisis/);
+  assert.match(lista, /La Mutual la está analizando/);
+  assert.match(lista, /Novedad/);
+  assert.match(lista, /Falta el recibo de este mes/);
+  await p.click('[data-vista="cotizar"]');
+  assert.equal(norm(await solapa()), 'Mis solicitudes', 'ya la vio: el aviso se va');
+  // Resuelve la Mutual: la solapa se entera sin recargar y sin tocar lo que se estaba escribiendo.
+  await p.fill('#inCuit', '20-12345678-6');
+  sql(`update public.solicitudes_credito set estado = 'aprobada', nota = 'Que venga a firmar' where id = '${idSolicitud}'`);
+  await p.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await p.waitForFunction(() => /\(1\)/.test(document.querySelector('[data-vista="solicitudes"]')?.textContent || ''), null, { timeout: 8000 });
+  assert.equal(await p.inputValue('#inCuit'), '20-12345678-6');
+  await p.click('[data-vista="solicitudes"]');
+  await p.waitForSelector('.sol');
+  assert.match(norm(await p.textContent('#main')), /Aprobada/);
+  await p.context().close();
 });
 
 test('sin errores en la consola', () => { assert.deepEqual(errores, []); });
