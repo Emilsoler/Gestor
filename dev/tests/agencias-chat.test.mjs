@@ -271,6 +271,18 @@ test('la Mutual cierra la conversación: la agencia empieza otra y hay una sola 
   assert.equal((await pedir(agencia, { accion: 'chat_leer', desde: 0 })).datos.chat, null);
 });
 
+test('la Mutual elimina una conversación con sus mensajes; una agencia no puede', async () => {
+  await guion([{ texto: 'Hola para borrar.' }]);
+  await pedir(agencia, { accion: 'chat_enviar', texto: 'Quiero consultar algo' });
+  const [c] = (await pedir(emi, { accion: 'chats' })).datos.chats;
+  assert.ok(Number(sql(`select count(*) from public.mensajes_agencia where chat_id = '${c.id}'`)) > 0);
+  assert.notEqual((await pedir(agencia, { accion: 'chat_eliminar', chat: c.id })).status, 200, 'una agencia no elimina');
+  assert.equal((await pedir(emi, { accion: 'chat_eliminar', chat: 'no-es-uuid' })).status, 400);
+  assert.equal((await pedir(emi, { accion: 'chat_eliminar', chat: c.id })).status, 200);
+  assert.equal(sql(`select count(*) from public.chats_agencia where id = '${c.id}'`), '0');
+  assert.equal(sql(`select count(*) from public.mensajes_agencia where chat_id = '${c.id}'`), '0');
+});
+
 function sqlUnica(q) { try { sql(q); return false; } catch { return true; } }
 
 test('pedir un representante sin haber escrito nada no se puede; los textos vacíos o larguísimos se acotan', async () => {

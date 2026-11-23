@@ -19,7 +19,7 @@
 // archivo), enviar {id}, solicitudes, rapida {capital, cuotas, tasa, gastos} (solo la agencia con simulacion_rapida); y para la Mutual, archivos {id}, eliminar {id} y crear_agencia {nombre, email, notas}.
 // Chat «M» (migración 0038): de la agencia, chat_leer {desde, leido}, chat_enviar {texto}, chat_audio (multipart: audio, seg; 0040),
 // chat_audio_ver {mensaje}, chat_representante y chat_cerrar;
-// de la Mutual, chats, chat_resumen, chat_ver, chat_responder, chat_audio_ver, chat_cerrar {chat}, push_clave, push_suscribir, push_quitar y push_probar.
+// de la Mutual, chats, chat_resumen, chat_ver, chat_responder, chat_audio_ver, chat_cerrar {chat}, chat_eliminar {chat}, push_clave, push_suscribir, push_quitar y push_probar.
 //
 // BCRA: la agencia consulta el CUIT de su cliente en la Central de Deudores (API pública). La consulta queda
 // guardada entera en consultas_bcra para la Mutual; a la agencia se le devuelven el color, el nombre y, del último
@@ -535,6 +535,14 @@ async function accionChat(accion: string, pedido: any, ctx: { ag: any; a: any; u
   if (accion === 'chat_cerrar' && ag.miembro) {
     if (!esUuid(pedido.chat)) throw new Falla('Falta la conversación.', 400, 'pedido');
     await marcar(pedido.chat, { estado: 'cerrado', espera_desde: null, sin_leer_mutual: false });
+    return ok({ ok: true });
+  }
+  if (accion === 'chat_eliminar' && ag.miembro) {
+    // Borra la conversación entera (los mensajes se van con ella por la clave foránea) y los audios que hubiera en el almacenamiento.
+    if (!esUuid(pedido.chat)) throw new Falla('Falta la conversación.', 400, 'pedido');
+    const audios = await rest('GET', `mensajes_agencia?chat_id=eq.${pedido.chat}&audio_path=not.is.null&select=audio_path`);
+    await rest('DELETE', `chats_agencia?id=eq.${pedido.chat}`);
+    await borrarArchivos((audios || []).map((x: any) => String(x.audio_path)), CARPETA_AUDIOS);
     return ok({ ok: true });
   }
   if (accion === 'chat_audio_ver' && ag.miembro) return ok(await audioDeMensaje(pedido.mensaje));

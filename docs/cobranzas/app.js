@@ -6,7 +6,7 @@ import {
   consultarInfoAuto, consultarInfoAutoTodo, consultarBCRA, detalleConsulta, detalleGuardado, borrarConsulta, consultarCheque, entidadesCheques, borrarConsultaCheque, crearCasoRefi, actualizarCasoRefi, borrarCasoRefi, archivarCasoRefi,
   crearDescuento, guardarDescuento, borrarDescuento, estadoCheque,
   leerAgencias, contarSolicitudes, guardarAjustesAgencias, altaAgencia, crearAgencia, activarAgencia, resolverSolicitud, documentosSolicitud, eliminarSolicitud, eliminarCotizaciones,
-  chatsAgencias, chatResumen, verChat, responderChat, cerrarChat, claveAvisos, registrarAvisos, quitarAvisos, probarAvisos,
+  chatsAgencias, chatResumen, verChat, responderChat, cerrarChat, eliminarChat, claveAvisos, registrarAvisos, quitarAvisos, probarAvisos,
 } from './datos.js';
 import { htmlAgencias, avisoInicio, parametrosEnTexto, leerParametros, TABS_AGENCIAS } from './agencias.js';
 import {
@@ -579,7 +579,7 @@ async function abrirHiloAgencia(id) {
   const C = S.ag.chat;
   try {
     const v = await verChat(id);
-    C.hilo = v.chat; C.mensajes = v.mensajes || []; C.texto = ''; C.error = '';
+    C.hilo = v.chat; C.mensajes = v.mensajes || []; C.texto = ''; C.error = ''; C.borrar = false;
   } catch (e) { C.error = mensaje(e, 'no se pudo abrir la conversación'); }
   await contarPendientes();
   render();
@@ -659,7 +659,7 @@ async function accionAgencias(act, b) {
   if (act === 'ag-recargar') { G.error = ''; await cargarAgencias(); return; }
   if (act === 'ag-ir-chats') { G.tab = 'chats'; G.chat.hilo = null; verVista('agencias'); return; }
   if (act === 'ag-chat-abrir') { await abrirHiloAgencia(id); return; }
-  if (act === 'ag-chat-volver') { G.chat.hilo = null; G.chat.error = ''; await cargarChats(true); render(); return; }
+  if (act === 'ag-chat-volver') { G.chat.hilo = null; G.chat.borrar = false; G.chat.error = ''; await cargarChats(true); render(); return; }
   if (act === 'ag-chat-enviar') {
     const C = G.chat, texto = String(C.texto || '').trim();
     if (!texto) { C.error = 'Escribí la respuesta.'; render(); return; }
@@ -679,6 +679,12 @@ async function accionAgencias(act, b) {
   if (act === 'ag-chat-cerrar') {
     try { await cerrarChat(id); } catch (e) { G.chat.error = mensaje(e, 'no se pudo cerrar'); render(); return; }
     G.chat.hilo = null; G.chat.texto = ''; toast('Conversación cerrada');
+    await cargarChats(true); await contarPendientes(); render(); return;
+  }
+  if (act === 'ag-chat-borrar-preguntar' || act === 'ag-chat-borrar-no') { G.chat.borrar = act === 'ag-chat-borrar-preguntar'; render(); return; }
+  if (act === 'ag-chat-borrar') {
+    try { await eliminarChat(id); } catch (e) { G.chat.error = mensaje(e, 'no se pudo eliminar la conversación'); G.chat.borrar = false; render(); return; }
+    G.chat.hilo = null; G.chat.texto = ''; G.chat.borrar = false; G.chat.error = ''; toast('Conversación eliminada');
     await cargarChats(true); await contarPendientes(); render(); return;
   }
   if (act === 'ag-push-activar') { await activarAvisos(); return; }

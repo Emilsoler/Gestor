@@ -895,6 +895,7 @@ agencia lo pide («Hablar con un representante»), avisa a la Mutual; ahí conte
   editable en Parámetros). **No recibe** el % financiable, las tasas por año ni valores: revelarían el valor del vehículo
   (licencia de InfoAuto), y la respuesta se filtra por si nombra a InfoAuto o al CODIA. Termina con `[[REPRESENTANTE]]` cuando
   conviene una persona. Topes por agencia y día: 200 mensajes y 60 respuestas del asistente.
+- **Eliminar conversaciones** (pedido de la persona del 23/11/2026): en Agencias → Chats, al abrir una conversación (abierta o cerrada) hay «Eliminar conversación», con confirmación. La acción `chat_eliminar {chat}` de la función (solo miembros) borra la fila de `chats_agencia` (los mensajes se van por la clave foránea) y los audios que hubiera. No queda historial y no se puede deshacer.
 - **Estados** (`chats_agencia.estado`): `bot` → `espera` (pidió persona) → `humano` (la Mutual respondió) → `cerrado`. Un solo chat
   abierto por agencia. Con una persona en la conversación el asistente calla. Tablas `chats_agencia`, `mensajes_agencia`,
   `avisos_push` y `push_claves`: sin políticas ni permisos para la API (solo la función con la clave de servicio).

@@ -303,6 +303,10 @@ function htmlHilo(C) {
     ${abierta ? `<label class="f">Tu respuesta<textarea data-k="ag.chat.texto" id="agChatTexto" rows="3" maxlength="1500" placeholder="Escribí la respuesta para la agencia">${esc(C.texto || '')}</textarea></label>
       <div class="actions"><button class="btn primary" data-a="ag-chat-enviar" data-id="${esc(c.id)}"${C.enviando ? ' disabled' : ''}>Enviar respuesta</button><button class="btn" data-a="ag-chat-cerrar" data-id="${esc(c.id)}">Cerrar la conversación</button></div>`
       : '<p class="hint m0">La conversación está cerrada. Si la agencia vuelve a escribir, se abre una nueva.</p>'}
+    ${C.borrar
+      ? `<div class="aviso-chico ag-borrar" role="alert"><span>¿Eliminar la conversación con ${esc(c.agencia)}? Se borran todos sus mensajes y no se puede deshacer.</span>
+        <div class="actions"><button class="btn danger small" data-a="ag-chat-borrar" data-id="${esc(c.id)}">Sí, eliminar</button><button class="btn small" data-a="ag-chat-borrar-no">No</button></div></div>`
+      : `<div class="actions"><button class="btn danger small" data-a="ag-chat-borrar-preguntar" data-id="${esc(c.id)}">Eliminar conversación</button></div>`}
     ${C.error ? `<p class="aviso-chico" role="alert">${esc(C.error)}</p>` : ''}</section>`;
 }
 
