@@ -225,12 +225,15 @@ tr.elegido td{background:#e9e9e9;color:#000;font-weight:600}
 .btn-m:hover{transform:scale(1.06)}
 .btn-m:focus-visible{outline:3px solid #000;outline-offset:4px;border-radius:12px}
 .btn-m .punto{position:absolute;top:-2px;right:-2px;width:16px;height:16px;border-radius:50%;background:var(--bad);border:2px solid #fff}
-/* Cartel sobre el botón: «Pregúntale a M…» con una flecha dorada que lo señala. */
-.cartel-m{position:fixed;right:10px;bottom:calc(14px + 70px + 46px + env(safe-area-inset-bottom,0px));width:min(210px,calc(100vw - 28px));
-  background:#fff;color:#000;border:2px solid #000;border-radius:14px;padding:10px 26px 10px 12px;box-shadow:0 6px 18px rgba(0,0,0,.3);font:600 14px/1.3 var(--f-body)}
+/* Cartel sobre el botón: como la «M», estilo sticker de grabado (negro con puntillado, borde blanco grueso, serifa) y una flecha igual que lo señala. */
+.cartel-m{position:fixed;right:8px;bottom:calc(14px + 70px + 50px + env(safe-area-inset-bottom,0px));width:min(224px,calc(100vw - 24px));
+  background-color:#0b0b0b;background-image:radial-gradient(rgba(255,255,255,.22) .9px,transparent 1.2px);background-size:4px 4px;color:#fff;
+  border:5px solid #fff;border-radius:12px;padding:10px 28px 11px 12px;filter:drop-shadow(0 0 1px #000) drop-shadow(0 5px 7px rgba(0,0,0,.4));
+  font:700 15px/1.25 Georgia,"Times New Roman",serif}
 .cartel-m p{margin:0}
-.cartel-x{position:absolute;top:2px;right:4px;width:24px;height:24px;padding:0;border:0;background:none;color:#000;font:700 18px/1 var(--f-body);cursor:pointer}
-.cartel-flecha{position:absolute;right:32px;top:100%;width:32px;height:43px;margin-top:-2px;filter:drop-shadow(0 3px 3px rgba(0,0,0,.35));animation:cartel-bajar 1.4s ease-in-out infinite}
+.cartel-m b{font-size:20px;letter-spacing:-.02em}
+.cartel-x{position:absolute;top:0;right:2px;width:26px;height:26px;padding:0;border:0;background:none;color:#fff;font:700 20px/1 Georgia,serif;cursor:pointer}
+.cartel-flecha{position:absolute;right:30px;top:100%;width:38px;height:48px;margin-top:-1px;filter:drop-shadow(0 0 1px #000) drop-shadow(0 3px 3px rgba(0,0,0,.4));animation:cartel-bajar 1.4s ease-in-out infinite}
 @keyframes cartel-bajar{0%,100%{transform:translateY(0)}50%{transform:translateY(5px)}}
 @media (prefers-reduced-motion:reduce){.cartel-flecha{animation:none}}
 .chat-panel{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));width:min(390px,calc(100vw - 32px));height:min(560px,calc(100dvh - 96px));display:flex;flex-direction:column;
