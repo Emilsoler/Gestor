@@ -218,11 +218,12 @@ tr.elegido td{background:#e9e9e9;color:#000;font-weight:600}
 
 /* Chat con la Mutual: el botón flotante «M» y su ventana (docs/agencias/chat.js). Blanco y negro, como el resto. */
 .chat-raiz{position:fixed;z-index:30;right:0;bottom:0}
-.btn-m{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));width:58px;height:58px;border-radius:50%;display:grid;place-items:center;
-  font:700 24px/1 var(--f-body);letter-spacing:-.02em;color:#fff;background:#000;border:3px solid #fff;box-shadow:0 0 0 1.5px #000,0 6px 18px rgba(0,0,0,.35);cursor:pointer}
+.btn-m{position:fixed;right:14px;bottom:calc(14px + env(safe-area-inset-bottom,0px));width:68px;height:70px;padding:0;display:grid;place-items:center;
+  background:none;border:0;cursor:pointer;filter:drop-shadow(0 5px 8px rgba(0,0,0,.4))}
+.btn-m img{width:100%;height:100%;object-fit:contain;display:block;pointer-events:none}
 .btn-m[hidden]{display:none}
-.btn-m:hover{background:#262626}
-.btn-m:focus-visible{outline:3px solid #000;outline-offset:4px}
+.btn-m:hover{transform:scale(1.06)}
+.btn-m:focus-visible{outline:3px solid #000;outline-offset:4px;border-radius:12px}
 .btn-m .punto{position:absolute;top:-2px;right:-2px;width:16px;height:16px;border-radius:50%;background:var(--bad);border:2px solid #fff}
 .chat-panel{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));width:min(390px,calc(100vw - 32px));height:min(560px,calc(100dvh - 96px));display:flex;flex-direction:column;
   background:#fff;border:1.5px solid #000;border-radius:14px;box-shadow:0 12px 36px rgba(0,0,0,.3);overflow:hidden}

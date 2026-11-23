@@ -318,7 +318,7 @@ function dibujar(alFinal = false) {
   const cuerpo = `<div class="msg bot"><span class="msg-de">Asistente</span><p>${esc(SALUDO)}</p>${escuchar('saludo', 'bot')}</div>` + C.items.map(burbuja).join('')
     + (C.esperandoBot ? '<div class="msg bot escribiendo" aria-label="El asistente está escribiendo"><p><i></i><i></i><i></i></p></div>' : '');
   raiz.innerHTML = `
-    <button type="button" id="btnM" class="btn-m" aria-label="Chatear con la Mutual" aria-expanded="${C.abierto}" aria-controls="chatPanel"${C.abierto ? ' hidden' : ''}>M${C.sinLeer ? '<span class="punto" aria-label="Mensaje nuevo"></span>' : ''}</button>
+    <button type="button" id="btnM" class="btn-m" aria-label="Chatear con la Mutual" aria-expanded="${C.abierto}" aria-controls="chatPanel"${C.abierto ? ' hidden' : ''}><img src="img/m.png" alt="" width="68" height="70">${C.sinLeer ? '<span class="punto" aria-label="Mensaje nuevo"></span>' : ''}</button>
     ${C.abierto ? `<section class="chat-panel" id="chatPanel" role="dialog" aria-label="Chat con la Mutual">
       <header class="chat-cab">
         <div><b>Mutual Bell</b><small>${esc(ESTADOS[C.estado] || ESTADOS.bot)}</small></div>
