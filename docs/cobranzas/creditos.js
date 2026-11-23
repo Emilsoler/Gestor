@@ -204,6 +204,21 @@ export function fichaConsulta(c, detalle, { deudores = [], confirmar = false, er
     ${acciones}`;
 }
 
+/**
+ * El semáforo en chico, para mostrarlo debajo del CUIT de un librador (Descuento de cheques): la luz, el nombre y
+ * las cuatro cifras que alcanzan para decidir. `c` es la consulta guardada; el detalle completo está en Créditos.
+ */
+export function resumenBcraCheque(c, { ver = '' } = {}) {
+  const sem = semaforo(c.semaforo), mot = lista(c.motivos).slice(0, 3);
+  const cifra = (t, v, mal = false) => `<span class="dc-bcra-c${mal ? ' malo' : ''}"><small>${esc(t)}</small>${v}</span>`;
+  return `<div class="dc-bcra-cab"><span class="cr-luz luz-${sem.clase}"><i aria-hidden="true"></i><span><b>${esc(sem.texto)}</b></span></span>
+      <span class="dc-bcra-q"><b>${esc(c.denominacion || 'Sin nombre informado')}</b><small class="mono">${esc(cuitTexto(c.cuit))} · ${esc(momentoTexto(c.momento))}</small></span></div>
+    <div class="dc-bcra-cifras">${cifra('Deuda informada', esc(plata(+c.deuda_total || 0)))}${cifra('Entidades', esc(String(c.entidades || 0)))}
+      ${cifra('Peor situación', c.peor_situacion ? esc(`${c.peor_situacion} · ${nombreSituacion(c.peor_situacion, c.cuit)}`) : '—', c.peor_situacion >= 3)}
+      ${cifra('Cheques rechazados', esc(String(c.cheques || 0)) + (c.cheques_impagos ? ` (${esc(String(c.cheques_impagos))} sin pagar)` : ''), c.cheques_impagos > 0)}</div>
+    ${mot.length ? `<ul class="motivos">${mot.map((m) => `<li>${esc(m)}</li>`).join('')}</ul>` : ''}${ver}`;
+}
+
 /** El resumen para copiar y pegar (en un mail, en un WhatsApp al consejo, en un acta). */
 export function textoConsulta(c) {
   const sem = semaforo(c.semaforo);

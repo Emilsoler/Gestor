@@ -637,11 +637,16 @@ siempre editable) o se toman de un deudor ya cargado: "Tomar los datos de un deu
 
 La Mutual le compra cheques a un cliente (un socio) y le paga hoy el valor menos lo que se descuenta (pedido de la persona
 del 18/11/2026): **interés por días, comisión, sellado y gastos fijos por cheque; sin IVA**. Tres partes:
-**Liquidar** (cliente, condiciones, un bloque por cheque y la liquidación en vivo; «Guardar operación», «Descargar en Excel»),
+**Liquidar** (en tres pasos, pedido de la persona del 23/11/2026: **1 · Cheque** —librador, CUIT del librador, importe, fecha de pago, banco y N°, un bloque por cheque—, **2 · Socio** —nombre, CUIT, N° de socio y notas— y **3 · Liquidación** —fecha, condiciones y la liquidación en vivo—; «Guardar operación», «Descargar en Excel»),
 **Cartera** (los cheques sin cobrar de todas las operaciones, por fecha de pago, con «Cobrado», «Rechazado» y «Ver operación»;
 abajo, plegados, los rechazados con «¿Denunciado?» —abre la consulta de Cheques denunciados—, «BCRA del librador» y «Volver a
 cartera») y **Operaciones** (las guardadas, con buscador; tocarla la abre en Liquidar para editarla o eliminarla).
 
+- **Semáforo del librador** (`bcraDeCheque`, `consultarLibrador` en `app.js`; `resumenBcraCheque` en `creditos.js`): al escribir un CUIT
+  válido en un cheque se consulta solo al BCRA (la función `bcra`, queda guardada en «Deudas por CUIT» como cualquier consulta) y debajo
+  aparecen el semáforo, el nombre y las cifras (deuda, entidades, peor situación, cheques rechazados). Si hay una consulta de ese CUIT de
+  las últimas 6 horas se muestra esa, sin preguntar de nuevo; «Consultar de nuevo» fuerza otra y «Ver detalle completo» abre la ficha. Al abrir
+  una operación guardada solo se muestra la última consulta que exista: no se consulta sin que la persona escriba.
 - **Cuentas** (`docs/cobranzas/descuento.js`, `liquidarDescuento`): por cheque, días = de la fecha de la liquidación a la fecha
   de pago (0 si ya venció) + días extra de clearing (0 a 5, `DIAS_EXTRA_MAX`; la columna Días muestra «30 + 2»: en nov 2026 la persona puso
   el plazo del cheque en ese campo y le daba el doble de días); interés = valor × tasa % mensual / 30 × días (simple, sobre el valor);

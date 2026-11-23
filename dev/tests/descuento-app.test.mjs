@@ -16,7 +16,17 @@ let browser, page;
 const errores = [];
 async function nuevaPagina(opciones = {}) {
   const c = await browser.newContext({ locale: 'es-AR', timezoneId: 'America/Argentina/Cordoba', viewport: { width: 1366, height: 900 }, ...opciones });
-  await c.route('**/functions/v1/bcra', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ entidades: BANCOS }) }));
+  // Lista de bancos o, si viene un CUIT, una consulta inventada (la función real no corre acá): rojo para el que empieza con 20.
+  c.consultasBcra = [];
+  await c.route('**/functions/v1/bcra', (r) => {
+    let cuerpo = {}; try { cuerpo = JSON.parse(r.request().postData() || '{}'); } catch { /* sin cuerpo */ }
+    if (!cuerpo.cuit) return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ entidades: BANCOS }) });
+    c.consultasBcra.push(cuerpo.cuit);
+    const consulta = { id: crypto.randomUUID(), cuit: cuerpo.cuit, denominacion: 'LIBRADOR DE PRUEBA', momento: new Date().toISOString(), consultado_por: 'Emi', periodo: '202609',
+      semaforo: 'rojo', peor_situacion: 3, entidades: 2, deuda_total: 2500000, cheques: 1, cheques_impagos: 1, motivos: ['Situación 3 en BANCO X'], rev: 1,
+      resultado: { deudas: { results: { periodos: [] } }, historicas: null, cheques: null, errores: {} } };
+    return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ consulta }) });
+  });
   const p = await c.newPage();
   p.on('console', (m) => { if (m.type() === 'error' && !/WebSocket|realtime|Failed to load resource/i.test(m.text())) errores.push(m.text()); });
   p.on('pageerror', (e) => errores.push(e.message));
@@ -35,7 +45,7 @@ const toast = (p, texto) => p.waitForFunction((t) => { const e = document.queryS
 before(async () => {
   sql(`delete from public.descuentos_cheques; delete from auth.users where email = '${EMAIL}';`);
   await crearCuenta(EMAIL, CLAVE, 'Emi');
-  browser = await chromium.launch();
+  browser = await chromium.launch({ executablePath: process.env.CHROME || undefined });
   page = await nuevaPagina();
 });
 after(async () => { await browser?.close(); });
@@ -153,6 +163,50 @@ test('banco: al escribir se despliega la lista debajo del campo y al tocar uno q
   await page.click('[data-a="dc-guardar"]');
   await toast(page, 'Operación guardada');
   assert.equal(sql(`select cheques->0->>'entidad' from public.descuentos_cheques where cliente = 'Prueba'`), '20');
+});
+
+test('orden: primero el cheque, después el socio, al final la liquidación', async () => {
+  await page.click('[data-a="dc-sub"][data-sub="liquidar"]');
+  await page.click('[data-a="dc-limpiar"], [data-a="dc-nueva"]');
+  // Orden del documento (es el de lectura y el de tabulación), en PC y en celular.
+  const orden = (p, ids) => p.evaluate((xs) => xs.map((id) => document.getElementById(id)).every((e, i, a) => !i || (a[i - 1].compareDocumentPosition(e) & Node.DOCUMENT_POSITION_FOLLOWING) > 0), ids);
+  const ids = ['dc_cheques_0_librador', 'dc_cheques_0_cuit', 'dcBcra0', 'dc_cheques_0_importe', 'dc_banco_0', 'dc_cheques_0_numero', 'dc_cliente', 'dc_cuit', 'dc_socio', 'dc_tasa', 'dcResultado'];
+  assert.equal(await orden(page, ids), true);
+  const posicion = (id) => page.locator('#' + id).evaluate((e) => e.getBoundingClientRect().top);
+  assert.ok(await posicion('dc_cheques_0_importe') < await posicion('dc_cliente'));
+  assert.ok(await posicion('dc_cliente') < await posicion('dc_tasa') && await posicion('dc_tasa') < await posicion('dcResultado'));
+  const titulos = await page.locator('#crDescuento .dc-paso').allTextContents();
+  assert.deepEqual(titulos.map(norm), ['1 · Cheque', '2 · Socio', '3 · Liquidación']);
+});
+
+test('CUIT del librador: al completarlo válido consulta al BCRA y muestra el semáforo debajo; uno inválido no consulta', async () => {
+  const ctx = page.context(), antes = ctx.consultasBcra.length;
+  await page.fill('#dc_cheques_0_cuit', '20-12345678');
+  assert.equal(await page.locator('#dcBcra0').innerText(), '');
+  await page.fill('#dc_cheques_0_cuit', '20-12345678-9'); // dígito verificador mal
+  assert.match(await page.textContent('#dcBcra0'), /no existe/);
+  assert.equal(ctx.consultasBcra.length, antes);
+  await page.fill('#dc_cheques_0_cuit', '20-12345678-6');
+  await page.waitForSelector('#dcBcra0 .luz-rojo');
+  const t = norm(await page.textContent('#dcBcra0'));
+  assert.match(t, /Rojo/); assert.match(t, /LIBRADOR DE PRUEBA/); assert.match(t, /2\.500\.000/); assert.match(t, /3 · Riesgo medio/);
+  assert.equal(ctx.consultasBcra.length, antes + 1);
+  assert.equal(await page.inputValue('#dc_cheques_0_cuit'), '20-12345678-6', 'lo escrito no se pierde');
+  // De nuevo el mismo CUIT en otro cheque: usa la consulta reciente, no pregunta otra vez.
+  await page.click('[data-a="dc-cheque-mas"]');
+  await page.fill('#dc_cheques_1_cuit', '20-12345678-6');
+  await page.waitForSelector('#dcBcra1 .luz-rojo');
+  assert.equal(ctx.consultasBcra.length, antes + 1);
+  await page.click('[data-a="dc-bcra-de"][data-i="0"]'); // «Consultar de nuevo» fuerza otra
+  await page.waitForTimeout(300);
+  assert.equal(ctx.consultasBcra.length, antes + 2);
+  await page.click('[data-a="dc-bcra-ver"] >> nth=0'); // abre el detalle completo en «Deudas por CUIT»
+  await page.waitForSelector('#crResultado');
+  assert.match(await page.textContent('#crResultado'), /LIBRADOR DE PRUEBA/);
+  await page.click('[data-cr-modo="descuento"]');
+  await page.waitForSelector('#crDescuento');
+  assert.equal(await page.inputValue('#dc_cheques_0_cuit'), '20-12345678-6', 'al volver sigue lo escrito');
+  await page.click('[data-a="dc-limpiar"], [data-a="dc-nueva"]');
 });
 
 test('sin errores en la consola', () => { assert.deepEqual(errores, []); });

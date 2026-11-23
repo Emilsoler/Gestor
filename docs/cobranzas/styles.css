@@ -825,6 +825,21 @@ body:has(#drawer:not([hidden])) #btnClaudeWeb,body:has(#menu:not([hidden])) #btn
 .dc-sug-op{border:0;background:none;color:var(--fg);text-align:left;padding:10px 10px;border-radius:8px;font:inherit;font-size:14px;cursor:pointer}
 .dc-sug-op:hover,.dc-sug-op:focus{background:var(--accent-soft)}
 @media (max-width:720px){.dc-cheque .dc-banco{grid-column:1 / -1}}
+/* Descuento de cheques: los tres pasos y el semáforo del BCRA debajo del CUIT del librador */
+.dc-paso{margin:18px 0 4px;font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:var(--accent)}
+.dc-cheque .dc-bcra{grid-column:1 / -1;display:grid;gap:8px;padding:10px 12px;border:1px solid var(--line-soft);border-radius:var(--r);background:var(--sunken)}
+.dc-bcra:empty{display:none}
+.dc-bcra p{margin:0}
+.dc-bcra-cab{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.dc-bcra-cab .cr-luz{padding:6px 12px 6px 10px}
+.dc-bcra-cab .cr-luz i{width:16px;height:16px}
+.dc-bcra-q{display:grid;gap:1px;min-width:0}
+.dc-bcra-q b{overflow-wrap:anywhere}
+.dc-bcra-q small{color:var(--soft)}
+.dc-bcra-cifras{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
+.dc-bcra-c{display:grid;gap:1px;font-size:14px}
+.dc-bcra-c small{font-size:11.5px;color:var(--soft)}
+.dc-bcra-c.malo{color:var(--bad)}
 
 /* Chats de las agencias (solapa «Chats» de Agencias) */
 .ag-chats{display:grid;gap:8px}

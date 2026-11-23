@@ -11,7 +11,7 @@ import {
 import { htmlAgencias, avisoInicio, parametrosEnTexto, leerParametros, TABS_AGENCIAS } from './agencias.js';
 import {
   avisoCuit, soloDigitos, fichaConsulta, filaConsulta, textoConsulta, deudoresDelCuit,
-  avisoCheque, numeroCheque, bancosRecientes, opcionesBancos, bancoEnLista, fichaCheque, textoCheque, filaCheque,
+  avisoCheque, numeroCheque, bancosRecientes, opcionesBancos, bancoEnLista, fichaCheque, textoCheque, filaCheque, resumenBcraCheque,
 } from './creditos.js';
 import { nuevaRefi, vto1Efectivo, estadoRefi, htmlEstadoRefi, htmlPlanRefi, datosCaso, restaurarCaso } from './refinanciacion.js';
 import { modeloSimple, preciosPorAnio, rangoAnios, enPesos, valorDeReferencia, htmlSimulador, htmlSimuladorManual, estadoSimuladorManual, htmlSimulacion, estadoSimulador, GASTOS_DEFECTO } from './vehiculos.js';
@@ -69,7 +69,7 @@ const S = {
     caso: { id: '', nombre: '', confirmar: false }, // el caso guardado que está abierto (si hay) y el nombre con que se guarda
     gastosAbierto: false, // «Gastos y honorarios de juicio» empieza plegado; si se despliega, queda así al redibujar
     // Descuento de cheques: qué se ve (liquidar, cartera, operaciones), el formulario (null hasta entrar), la operación abierta.
-    dc: { sub: 'liquidar', f: null, id: '', confirmar: false, q: '' },
+    dc: { sub: 'liquidar', f: null, id: '', confirmar: false, q: '', bcra: {} }, // bcra: por CUIT del librador, {estado: consultando|error, error}
   },
   // Agencias (el cotizador para agencias): lo leído, la pestaña, los enlaces a documentos ya pedidos, lo que se escribe
   // (notas para la agencia, parámetros y alta, atados con data-k) y cuántas solicitudes esperan respuesta.
@@ -1213,29 +1213,36 @@ function formDescuento() {
   const C = S.cred.dc, F = C.f, abierta = dcAbierta(), k = (c) => 'cred.dc.f.' + c;
   if (C.id && !abierta) C.id = ''; // la eliminaron desde otro lugar: lo escrito queda como operación nueva
   const campo = (c, t, extra = '', modo = 'decimal') => `<label class="f">${t}<input id="dc_${c.replace(/\./g, '_')}" ${atar(k(c))} inputmode="${modo}" autocomplete="off"${extra}></label>`;
+  // Primero el cheque (librador y su CUIT, con el semáforo del BCRA debajo, importe, plazo, banco y número),
+  // después el socio y al final la liquidación con sus condiciones.
   const cheques = F.cheques.map((c, i) => {
     const est = c.estado && c.estado !== 'cartera' ? ' ' + pill(ESTADOS_CHEQUE[c.estado] + (c.fecha_estado ? ' el ' + fmt(c.fecha_estado) : ''), c.estado === 'cobrado' ? 's-ok' : 's-bad') : '';
     return `<div class="dc-cheque"><h4>Cheque ${i + 1}${est}</h4><div class="sim-form rf-pago">
+      ${campo(`cheques.${i}.librador`, 'Librador', ' maxlength="200"', 'text').replace('class="f"', 'class="f dc-largo"')}
+      ${campo(`cheques.${i}.cuit`, 'CUIT del librador', ' maxlength="20"', 'numeric')}
+      <div class="dc-bcra dc-largo" id="dcBcra${i}" aria-live="polite">${bcraDeCheque(i)}</div>
       ${campo(`cheques.${i}.importe`, 'Importe ($)', ' data-importe')}
       <label class="f">Fecha de pago<input type="date" data-k="${k(`cheques.${i}.vence`)}" value="${esc(c.vence)}"></label>
       <div class="dc-largo dc-banco"><label class="f">Banco<input id="dc_banco_${i}" ${atar(k(`cheques.${i}.banco`))} data-dc-i="${i}" autocomplete="off" autocorrect="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-controls="dcSug${i}" aria-expanded="false" placeholder="${S.cred.bancos ? 'Escribí para buscar' : ''}"></label>
         <div class="dc-sug" id="dcSug${i}" role="listbox" hidden></div></div>
       ${campo(`cheques.${i}.numero`, 'N° de cheque', ' maxlength="24"', 'numeric')}
-      ${campo(`cheques.${i}.librador`, 'Librador', ' maxlength="200"', 'text').replace('class="f"', 'class="f dc-largo"')}
-      ${campo(`cheques.${i}.cuit`, 'CUIT del librador', ' maxlength="20"', 'numeric')}
       ${F.cheques.length > 1 ? `<button class="btn small" type="button" data-a="dc-cheque-menos" data-i="${i}" aria-label="Quitar el cheque ${i + 1}">Quitar</button>` : ''}
     </div></div>`;
   }).join('');
   const titulo = abierta ? `<p class="hint m0">Operación guardada de <b>${esc(abierta.cliente)}</b> del ${esc(fmtLargo(abierta.fecha))}. Lo que cambies se guarda con «Guardar cambios».</p>` : '';
-  return `${titulo}<h4>Cliente</h4>
+  return `${titulo}<h4 class="dc-paso">1 · Cheque</h4>
+    ${cheques}
+    <div><button class="btn small" type="button" data-a="dc-cheque-mas">+ Agregar otro cheque</button></div>
+    <h4 class="dc-paso">2 · Socio</h4>
     <div class="sim-form">
       ${campo('cliente', 'Apellido y nombre', ' maxlength="200" placeholder="A quién se le compran los cheques"', 'text')}
       ${campo('cuit', 'CUIT o CUIL', ' maxlength="20"', 'numeric')}
       ${campo('socio', 'N° de socio', ' maxlength="40"', 'text')}
-      <label class="f">Fecha de la liquidación<input type="date" data-k="${k('fecha')}" value="${esc(F.fecha)}"></label>
     </div>
-    <h4>Condiciones</h4>
+    <label class="f">Notas<input id="dc_notas" ${atar(k('notas'))} maxlength="4000" autocomplete="off" placeholder="Opcional"></label>
+    <h4 class="dc-paso">3 · Liquidación</h4>
     <div class="sim-form">
+      <label class="f">Fecha de la liquidación<input type="date" data-k="${k('fecha')}" value="${esc(F.fecha)}"></label>
       ${campo('tasa', 'Interés (% mensual)', ' placeholder="ej.: 4"')}
       ${campo('comision', 'Comisión (%)', ' placeholder="0"')}
       ${campo('sellado', 'Sellado (%)', ' placeholder="0"')}
@@ -1243,12 +1250,39 @@ function formDescuento() {
       ${campo('dias', 'Días extra de clearing (0 a 5)', ' maxlength="1" placeholder="0"', 'numeric')}
     </div>
     <p class="hint m0">Los días de cada cheque se cuentan solos, de la fecha de la liquidación a la fecha de pago. «Días extra de clearing» es solo lo que tarda el banco en acreditarlo después de esa fecha (casi siempre 0, 1 o 2). El interés es simple, por cada 30 días, sobre el valor del cheque. Sin IVA.</p>
-    ${cheques}
-    <div><button class="btn small" type="button" data-a="dc-cheque-mas">+ Agregar otro cheque</button></div>
-    <label class="f">Notas<input id="dc_notas" ${atar(k('notas'))} maxlength="4000" autocomplete="off" placeholder="Opcional"></label>
-    <h4>Liquidación</h4>
     <div id="dcResultado" aria-live="polite">${resultadoDescuento()}</div>
     <div class="actions">${accionesDescuento(abierta)}</div>`;
+}
+
+// ── Semáforo del BCRA debajo del CUIT del librador ──
+// Al escribir un CUIT válido se consulta solo (queda guardada como cualquier consulta, en «Deudas por CUIT»). Si ya hay una
+// consulta de ese CUIT de las últimas horas se muestra esa, sin preguntar de nuevo. Al abrir una operación guardada solo
+// se muestra la última consulta que haya (no se consulta sin que la persona toque nada).
+const HORAS_BCRA = 6;
+const ultimaBcra = (cuit) => D.consultas_bcra.find((x) => x.cuit === cuit) || null; // la lista está con la más nueva primero
+function bcraDeCheque(i) {
+  const c = S.cred.dc.f?.cheques[i], cuit = soloDigitos(c?.cuit); if (!cuit) return '';
+  const a = avisoCuit(cuit);
+  if (!a.ok) return a.mal ? `<p class="hint m0 malo">${esc(a.texto)}</p>` : '';
+  const e = S.cred.dc.bcra[cuit], ult = ultimaBcra(cuit);
+  const otra = `<button class="btn small" type="button" data-a="dc-bcra-de" data-i="${i}">Consultar de nuevo</button>`;
+  if (e?.estado === 'consultando') return '<p class="hint m0">Consultando al BCRA…</p>';
+  if (e?.estado === 'error') return `<p class="aviso-chico" role="alert">${esc(e.error)}</p><button class="btn small" type="button" data-a="dc-bcra-de" data-i="${i}">Reintentar</button>`;
+  if (!ult) return D.creditos ? `<button class="btn small" type="button" data-a="dc-bcra-de" data-i="${i}">Consultar BCRA</button>` : '';
+  const ver = `<div class="actions"><button class="btn small" type="button" data-a="dc-bcra-ver" data-id="${esc(ult.id)}">Ver detalle completo</button>${otra}</div>`;
+  return resumenBcraCheque(ult, { ver });
+}
+function pintarBcra() { (S.cred.dc.f?.cheques || []).forEach((_, i) => { const d = $('#dcBcra' + i); if (d) d.innerHTML = bcraDeCheque(i); }); }
+/** Consulta al BCRA el CUIT del librador del cheque `i` (`forzar`: aunque haya una consulta reciente). */
+async function consultarLibrador(i, forzar = false) {
+  const C = S.cred.dc, cuit = soloDigitos(C.f?.cheques[i]?.cuit);
+  if (!avisoCuit(cuit).ok || !D.creditos || C.bcra[cuit]?.estado === 'consultando') return;
+  const ult = ultimaBcra(cuit);
+  if (!forzar && ult && Date.now() - new Date(ult.momento).getTime() < HORAS_BCRA * 36e5) { delete C.bcra[cuit]; pintarBcra(); return; }
+  C.bcra[cuit] = { estado: 'consultando' }; pintarBcra();
+  try { await consultarBCRA(cuit); delete C.bcra[cuit]; }
+  catch (e) { C.bcra[cuit] = { estado: 'error', error: e.sinSesion ? mensaje(e) : e.message || 'No se pudo consultar al BCRA' }; }
+  pintarBcra();
 }
 function resultadoDescuento() {
   const e = dcEstado();
@@ -1349,6 +1383,8 @@ async function accionDescuento(act, a) {
     if (!(e.total.importe > 0)) { toast('Cargá al menos un cheque con su importe'); return; }
     bajar(hojaDescuento(fila, e, hoy()), `descuento-cheques-${slug(fila.cliente) || 'cliente'}-${e.fecha || hoy()}.xlsx`); return;
   }
+  if (act === 'dc-bcra-de') { await consultarLibrador(+a.dataset.i, true); return; }
+  if (act === 'dc-bcra-ver') { cambiarModo('cuit'); await abrirConsulta(a.dataset.id); return; }
   if (act === 'dc-bcra') { Object.assign(S.cred, { cuit: a.dataset.cuit }); cambiarModo('cuit'); await consultarCuit(a.dataset.cuit); return; }
   if (act === 'dc-denunciado') {
     const op = D.descuentos_cheques.find((o) => o.id === a.dataset.op), c = op?.cheques.find((x) => x.id === a.dataset.ch); if (!c) return;
@@ -2847,7 +2883,11 @@ document.addEventListener('input', (e) => {
   if (k === 'cred.refi.q' || k === 'cred.dp.q') { render(); return; }
   if (k.startsWith('cred.refi.')) { actualizarRefi(k); return; }
   if (k === 'cred.dc.q') { render(); return; }
-  if (k.startsWith('cred.dc.f.')) { if (/\.banco$/.test(k)) { bancoDelCheque(k, el.value); mostrarBancos(el.dataset.dcI); } actualizarDescuento(); return; }
+  if (k.startsWith('cred.dc.f.')) {
+    if (/\.banco$/.test(k)) { bancoDelCheque(k, el.value); mostrarBancos(el.dataset.dcI); }
+    const q = k.match(/\.cheques\.(\d+)\.cuit$/); if (q) { pintarBcra(); consultarLibrador(+q[1]); }
+    actualizarDescuento(); return;
+  }
   if (k === 'cred.cuit') { actualizarCuit(); return; }
   if (k === 'cred.numero' || k === 'cred.entidad') { actualizarCheque(); return; }
   if (k === 'cred.filtro' || k === 'cred.chFiltro' || k === 'cred.veh.fm' || k === 'cred.veh.fv') { render(); return; }
