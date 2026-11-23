@@ -63,7 +63,7 @@ test('la agencia ve la «M», chatea con el asistente y pide un representante (c
   const p = agenciaPag;
   await entrarAgencia(p);
   await p.waitForSelector('#btnM');
-  assert.equal(norm(await p.textContent('#btnM')), 'M');
+  assert.equal(await p.locator('#btnM img[src="img/m.png"]').count(), 1); // el botón es la imagen de la Mutual
   assert.equal(await p.getAttribute('#btnM', 'aria-expanded'), 'false');
   await p.click('#btnM');
   await p.waitForSelector('#chatPanel');
