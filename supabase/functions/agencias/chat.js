@@ -78,3 +78,22 @@ export function textoDeAgencia(x) {
   const t = String(x ?? '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '').replace(/\r\n?/g, '\n').trim();
   return t ? t.slice(0, MAX_TEXTO) : null;
 }
+
+// ───────────────────────── Mensajes de voz de la agencia (migración 0040) ─────────────────────────
+export const MAX_AUDIO_BYTES = 3 * 1024 * 1024; // lo mismo que el tope de la carpeta `chat-audios`
+export const MAX_AUDIO_SEG = 120;
+export const TEXTO_AUDIO = 'Mensaje de voz';
+
+/** mp4 (iPhone), webm (Android y PC) u ogg según los primeros bytes, no según el nombre. null si no es ninguno. */
+export function tipoAudio(b) {
+  if (b.length >= 12 && b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70) return { tipo: 'audio/mp4', ext: 'm4a' }; // «ftyp»
+  if (b.length >= 4 && b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3) return { tipo: 'audio/webm', ext: 'webm' };
+  if (b.length >= 4 && b[0] === 0x4f && b[1] === 0x67 && b[2] === 0x67 && b[3] === 0x53) return { tipo: 'audio/ogg', ext: 'ogg' }; // «OggS»
+  return null;
+}
+
+/** La duración que dice la agencia → segundos enteros de 1 a MAX_AUDIO_SEG; si no viene bien, null. */
+export function segundosDeAudio(x) {
+  const n = Math.round(Number(x));
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, MAX_AUDIO_SEG) : null;
+}

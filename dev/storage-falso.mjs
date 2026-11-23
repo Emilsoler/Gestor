@@ -51,7 +51,9 @@ http.createServer(async (req, res) => {
       const clave = `${m[1]}/${m[2]}`;
       if (objetos.has(clave) && req.headers['x-upsert'] !== 'true') return json(res, 400, { statusCode: '409', error: 'Duplicate', message: 'The resource already exists' });
       const tipo = String(req.headers['content-type'] || '');
-      if (!['application/pdf', 'image/jpeg'].includes(tipo)) return json(res, 400, { statusCode: '415', error: 'invalid_mime_type', message: `mime type ${tipo} is not supported` });
+      // Los mismos tipos que admiten las carpetas reales (migraciones 0028 y 0040).
+      const admitidos = m[1] === 'chat-audios' ? ['audio/mp4', 'audio/webm', 'audio/ogg'] : ['application/pdf', 'image/jpeg'];
+      if (!admitidos.includes(tipo)) return json(res, 400, { statusCode: '415', error: 'invalid_mime_type', message: `mime type ${tipo} is not supported` });
       const bytes = await leer(req, MAX);
       objetos.set(clave, { bytes, tipo });
       return json(res, 200, { Key: clave, Id: randomBytes(8).toString('hex') });

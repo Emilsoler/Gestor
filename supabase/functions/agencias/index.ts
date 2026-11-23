@@ -17,8 +17,9 @@
 // anios {ref}, cotizar {ref, anio, cuotas, monto?, vehiculo?}, bcra {cuit}, solicitar {consulta, ref, anio,
 // cuotas, monto?, vehiculo?, ingresos, ingreso, categoria, datos, consentimiento}, archivo (multipart: id, slot,
 // archivo), enviar {id}, solicitudes, rapida {capital, cuotas, tasa, gastos} (solo la agencia con simulacion_rapida); y para la Mutual, archivos {id}, eliminar {id} y crear_agencia {nombre, email, notas}.
-// Chat «M» (migración 0038): de la agencia, chat_leer {desde, leido}, chat_enviar {texto}, chat_representante y chat_cerrar;
-// de la Mutual, chats, chat_resumen, chat_ver, chat_responder, chat_cerrar {chat}, push_clave, push_suscribir, push_quitar y push_probar.
+// Chat «M» (migración 0038): de la agencia, chat_leer {desde, leido}, chat_enviar {texto}, chat_audio (multipart: audio, seg; 0040),
+// chat_audio_ver {mensaje}, chat_representante y chat_cerrar;
+// de la Mutual, chats, chat_resumen, chat_ver, chat_responder, chat_audio_ver, chat_cerrar {chat}, push_clave, push_suscribir, push_quitar y push_probar.
 //
 // BCRA: la agencia consulta el CUIT de su cliente en la Central de Deudores (API pública). La consulta queda
 // guardada entera en consultas_bcra para la Mutual; a la agencia se le devuelven el color, el nombre y, del último
@@ -34,7 +35,7 @@ import { ErrorBCRA, consultar, cuitValido, resumir, sinCuit, soloDigitos, ultimo
 // Copia exacta de docs/agencias/solicitud.js (las pruebas lo controlan): documentos y controles de la solicitud.
 import { MAX_FOTO, base64, tipoImagen, urlDeFoto } from './foto.js';
 // Chat de las agencias (botón «M»): el asistente, su hoja de respuestas y los avisos a la Mutual (migración 0038).
-import { RESPUESTA_SEGURA, SIN_ASISTENTE, armarMensajes, instrucciones, limpiarRespuesta, textoDeAgencia } from './chat.js';
+import { MAX_AUDIO_BYTES, RESPUESTA_SEGURA, SIN_ASISTENTE, TEXTO_AUDIO, armarMensajes, instrucciones, limpiarRespuesta, segundosDeAudio, textoDeAgencia, tipoAudio } from './chat.js';
 import { enviarPush, nuevasClaves } from './push.js';
 import { CATEGORIAS, DOCS, MAX_BYTES, docsRequeridos, relacionCuota, revisarDatos, tipoArchivo } from './solicitud.js';
 
@@ -100,25 +101,26 @@ const CARPETA = 'solicitudes';
 const almacen = (ruta: string) => `${URL_BASE}/storage/v1/object${ruta}`;
 const conClave = { apikey: CLAVE_SERVICIO, authorization: `Bearer ${CLAVE_SERVICIO}` };
 
-async function subirArchivo(path: string, bytes: Uint8Array, tipo: string) {
-  const r = await fetch(almacen(`/${CARPETA}/${path}`), { method: 'POST', headers: { ...conClave, 'content-type': tipo, 'x-upsert': 'false' }, body: bytes });
+const CARPETA_AUDIOS = 'chat-audios'; // los mensajes de voz del chat (migración 0040)
+async function subirArchivo(path: string, bytes: Uint8Array, tipo: string, carpeta = CARPETA) {
+  const r = await fetch(almacen(`/${carpeta}/${path}`), { method: 'POST', headers: { ...conClave, 'content-type': tipo, 'x-upsert': 'false' }, body: bytes });
   if (!r.ok) {
     console.error(JSON.stringify({ agencias: 'almacen', status: r.status }));
     throw new Falla('No se pudo guardar el archivo. Probá de nuevo en un momento.', 502, 'almacen');
   }
 }
 
-async function borrarArchivos(paths: string[]) {
+async function borrarArchivos(paths: string[], carpeta = CARPETA) {
   const xs = paths.filter((p) => typeof p === 'string' && p);
   if (!xs.length) return;
   try {
-    await fetch(almacen(`/${CARPETA}`), { method: 'DELETE', headers: { ...conClave, 'content-type': 'application/json' }, body: JSON.stringify({ prefixes: xs }) });
+    await fetch(almacen(`/${carpeta}`), { method: 'DELETE', headers: { ...conClave, 'content-type': 'application/json' }, body: JSON.stringify({ prefixes: xs }) });
   } catch { /* quedan huérfanos: no traban nada */ }
 }
 
 /** Un enlace para abrir el archivo, que vence a los 15 minutos. */
-async function enlace(path: string): Promise<string | null> {
-  const r = await fetch(almacen(`/sign/${CARPETA}/${path}`), { method: 'POST', headers: { ...conClave, 'content-type': 'application/json' }, body: JSON.stringify({ expiresIn: 900 }) });
+async function enlace(path: string, carpeta = CARPETA): Promise<string | null> {
+  const r = await fetch(almacen(`/sign/${carpeta}/${path}`), { method: 'POST', headers: { ...conClave, 'content-type': 'application/json' }, body: JSON.stringify({ expiresIn: 900 }) });
   if (!r.ok) return null;
   const d = await r.json().catch(() => null);
   const u = String(d?.signedURL ?? d?.signedUrl ?? '');
@@ -394,11 +396,12 @@ async function chatNuevo(ag: any): Promise<any> {
     throw e;
   }
 }
+// Del audio solo sale que existe y cuánto dura (`audio_seg`): la ruta no la ve nadie fuera de la función.
 const mensajesDe = (chat: string, desde = 0): Promise<any[]> =>
-  rest('GET', `mensajes_agencia?chat_id=eq.${chat}&id=gt.${Math.max(0, Math.trunc(desde) || 0)}&select=id,de,texto,momento&order=id.asc&limit=300`);
-async function agregar(chat: string, de: string, texto: string): Promise<any> {
-  const [m] = await rest('POST', 'mensajes_agencia', { chat_id: chat, de, texto });
-  return { id: m.id, de: m.de, texto: m.texto, momento: m.momento };
+  rest('GET', `mensajes_agencia?chat_id=eq.${chat}&id=gt.${Math.max(0, Math.trunc(desde) || 0)}&select=id,de,texto,momento,audio_seg&order=id.asc&limit=300`);
+async function agregar(chat: string, de: string, texto: string, audio?: Record<string, unknown>): Promise<any> {
+  const [m] = await rest('POST', 'mensajes_agencia', { chat_id: chat, de, texto, ...(audio || {}) });
+  return { id: m.id, de: m.de, texto: m.texto, momento: m.momento, audio_seg: m.audio_seg ?? null };
 }
 const marcar = (chat: string, cambios: Record<string, unknown>) => rest('PATCH', `chats_agencia?id=eq.${chat}`, { actualizado: ahoraISO(), ...cambios });
 const vistaChat = (c: any) => (c ? { id: c.id, estado: c.estado, sin_leer: !!c.sin_leer_agencia } : null);
@@ -473,12 +476,32 @@ async function avisarMutual(titulo: string, cuerpo: string, url: string, soloUsu
   }
   return res;
 }
+const aBase64 = (b: Uint8Array) => { let s = ''; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000)); return btoa(s); };
+
+/** El audio de un mensaje, ya bajado (base64): así el navegador lo reproduce sin abrir otra conexión ni ver la ruta.
+ *  `agenciaId`: si viene, solo se entrega si el mensaje es de una conversación de esa agencia. */
+async function audioDeMensaje(id: unknown, agenciaId?: string): Promise<{ tipo: string; seg: number; datos: string }> {
+  const n = Number(id);
+  if (!Number.isSafeInteger(n) || n < 1) throw new Falla('Falta el mensaje.', 400, 'pedido');
+  const [m] = await rest('GET', `mensajes_agencia?id=eq.${n}&select=chat_id,audio_path,audio_tipo,audio_seg`);
+  if (!m?.audio_path) throw new Falla('Ese mensaje no tiene audio.', 404, 'audio');
+  if (agenciaId && !(await rest('GET', `chats_agencia?id=eq.${m.chat_id}&agencia_id=eq.${agenciaId}&select=id`))?.length) throw new Falla('Ese mensaje no tiene audio.', 404, 'audio');
+  const url = await enlace(String(m.audio_path), CARPETA_AUDIOS);
+  const r = url ? await fetch(url) : null;
+  if (!r || !r.ok) throw new Falla('No se pudo traer el audio. Probá de nuevo en un momento.', 502, 'almacen');
+  return { tipo: String(m.audio_tipo), seg: Number(m.audio_seg) || 0, datos: aBase64(new Uint8Array(await r.arrayBuffer())) };
+}
+
+const controlarTope = async (agenciaId: string) => {
+  if (await contar(`mensajes_agencia?de=eq.agencia&momento=gte.${encodeURIComponent(inicioDelDia())}&select=id,chats_agencia!inner(agencia_id)&chats_agencia.agencia_id=eq.${agenciaId}`) >= TOPE_AGENCIA_DIA)
+    throw new Falla('Llegaste al tope de mensajes de hoy. Probá mañana o consultá con la Mutual.', 429, 'tope');
+};
 const URL_CHATS = '/Gestor/cobranzas/#agencias-chats';
 const resumen = (t: string, n = 140) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
 
 /** Todas las acciones del chat y de los avisos. `ag.miembro`: la Mutual (responde y administra); si no, una agencia. */
-async function accionChat(accion: string, pedido: any, ctx: { ag: any; a: any; uid: string }, cors: Cors): Promise<Response> {
-  const { ag, a, uid } = ctx;
+async function accionChat(accion: string, pedido: any, ctx: { ag: any; a: any; uid: string; form: FormData | null }, cors: Cors): Promise<Response> {
+  const { ag, a, uid, form } = ctx;
   const ok = (cuerpo: unknown) => responder(cuerpo, 200, cors);
 
   // ── La Mutual ──
@@ -514,6 +537,7 @@ async function accionChat(accion: string, pedido: any, ctx: { ag: any; a: any; u
     await marcar(pedido.chat, { estado: 'cerrado', espera_desde: null, sin_leer_mutual: false });
     return ok({ ok: true });
   }
+  if (accion === 'chat_audio_ver' && ag.miembro) return ok(await audioDeMensaje(pedido.mensaje));
   if (accion === 'push_clave') {
     if (!ag.miembro) throw new Falla('Pedido desconocido.', 400, 'accion');
     return ok({ publica: (await clavesPush()).publica });
@@ -552,8 +576,7 @@ async function accionChat(accion: string, pedido: any, ctx: { ag: any; a: any; u
   if (accion === 'chat_enviar') {
     const t = textoDeAgencia(pedido.texto);
     if (!t) throw new Falla('Escribí tu mensaje.', 400, 'pedido');
-    if (await contar(`mensajes_agencia?de=eq.agencia&momento=gte.${encodeURIComponent(inicioDelDia())}&select=id,chats_agencia!inner(agencia_id)&chats_agencia.agencia_id=eq.${ag.id}`) >= TOPE_AGENCIA_DIA)
-      throw new Falla('Llegaste al tope de mensajes de hoy. Probá mañana o consultá con la Mutual.', 429, 'tope');
+    await controlarTope(ag.id);
     const c = (await chatAbierto(ag.id)) || (await chatNuevo(ag));
     const mio = await agregar(c.id, 'agencia', t);
     const nuevos = [mio];
@@ -575,6 +598,26 @@ async function accionChat(accion: string, pedido: any, ctx: { ag: any; a: any; u
       if (!c.sin_leer_mutual) await avisarMutual(`${ag.nombre}: mensaje nuevo`, resumen(t), URL_CHATS);
     }
     return ok({ chat: { id: c.id, estado, sin_leer: false }, mensajes: nuevos, derivar });
+  }
+  if (accion === 'chat_audio_ver') return ok(await audioDeMensaje(pedido.mensaje, ag.id));
+  if (accion === 'chat_audio') {
+    // Un mensaje de voz solo se manda cuando ya hay una persona de la Mutual en la conversación: el asistente no escucha audios.
+    const c = await chatAbierto(ag.id);
+    if (!c || c.estado === 'bot') throw new Falla('Los audios son para hablar con una persona de la Mutual: primero tocá «Hablar con un representante».', 409, 'audio_sin_representante');
+    const f = form?.get('audio'), seg = segundosDeAudio(pedido.seg);
+    if (!(f instanceof File) || !seg) throw new Falla('Falta el audio.', 400, 'pedido');
+    if (!f.size) throw new Falla('El audio está vacío. Probá grabarlo de nuevo.', 400, 'vacio');
+    if (f.size > MAX_AUDIO_BYTES) throw new Falla('El audio es muy largo. Grabalo más corto (hasta 2 minutos).', 413, 'tamano');
+    const bytes = new Uint8Array(await f.arrayBuffer()), tipo = tipoAudio(bytes);
+    if (!tipo) throw new Falla('Ese archivo no es un audio que podamos recibir. Probá grabarlo de nuevo.', 415, 'tipo');
+    await controlarTope(ag.id);
+    const path = `${c.id}/${crypto.randomUUID()}.${tipo.ext}`;
+    await subirArchivo(path, bytes, tipo.tipo, CARPETA_AUDIOS);
+    let m;
+    try { m = await agregar(c.id, 'agencia', TEXTO_AUDIO, { audio_path: path, audio_seg: seg, audio_tipo: tipo.tipo }); } catch (e) { await borrarArchivos([path], CARPETA_AUDIOS); throw e; }
+    await marcar(c.id, { sin_leer_mutual: true });
+    if (!c.sin_leer_mutual) await avisarMutual(`${ag.nombre}: mensaje de voz`, `Te mandó un audio de ${seg} s.`, URL_CHATS);
+    return ok({ chat: { id: c.id, estado: c.estado, sin_leer: false }, mensajes: [m] });
   }
   if (accion === 'chat_representante') {
     const c = await chatAbierto(ag.id);
@@ -608,8 +651,8 @@ export async function manejar(req: Request): Promise<Response> {
     let pedido: any, form: FormData | null = null;
     if (/multipart\/form-data/i.test(req.headers.get('content-type') || '')) {
       try { form = await req.formData(); } catch { throw new Falla('El archivo no se pudo leer. Probá de nuevo.', 400, 'pedido'); }
-      pedido = { accion: String(form.get('accion') || '') };
-      if (pedido.accion !== 'archivo') throw new Falla('Pedido desconocido.', 400, 'accion');
+      pedido = { accion: String(form.get('accion') || ''), seg: form.get('seg') };
+      if (pedido.accion !== 'archivo' && pedido.accion !== 'chat_audio') throw new Falla('Pedido desconocido.', 400, 'accion');
     } else {
       try { pedido = await req.json(); } catch { throw new Falla('El pedido no se pudo leer.', 400, 'pedido'); }
     }
@@ -632,7 +675,7 @@ export async function manejar(req: Request): Promise<Response> {
     if (ag.clave_temporal) throw new Falla('Antes de cotizar, elegí tu contraseña definitiva.', 403, 'clave_temporal');
     if (!a.habilitado && !ag.miembro) throw new Falla('El cotizador todavía no está habilitado. Consultá con la Mutual.', 403, 'deshabilitado');
 
-    if (/^(chat|push_)/.test(accion) || accion === 'chats') return await accionChat(accion, pedido, { ag, a, uid }, cors);
+    if (/^(chat|push_)/.test(accion) || accion === 'chats') return await accionChat(accion, pedido, { ag, a, uid, form }, cors);
 
     if (accion === 'marcas') {
       const xs = await todas('/brands/');

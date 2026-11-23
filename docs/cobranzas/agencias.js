@@ -296,7 +296,12 @@ function htmlHilo(C) {
   if (!c) return '';
   const [t, clase] = ESTADO_CHAT[c.estado] || [c.estado, ''];
   const abierta = c.estado !== 'cerrado';
-  const msgs = (C.mensajes || []).map((m) => `<div class="ag-msg ${esc(m.de)}"><span class="ag-msg-de">${esc(DE_CHAT[m.de] || m.de)} · ${esc(fechaHora(m.momento))}</span><p>${esc(m.texto)}</p></div>`).join('');
+  const mmss = (n) => `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`;
+  // Un mensaje de voz de la agencia: se escucha con el botón (se trae de la función al tocarlo; no se baja solo).
+  const cuerpoMsg = (m) => (m.audio_seg
+    ? `<button class="btn small" data-a="ag-chat-audio" data-id="${esc(m.id)}"${C.cargandoAudio === String(m.id) ? ' disabled' : ''}>${C.sonando === String(m.id) ? 'Detener' : C.cargandoAudio === String(m.id) ? 'Cargando…' : 'Escuchar audio'} · ${mmss(m.audio_seg)}</button>`
+    : `<p>${esc(m.texto)}</p>`);
+  const msgs = (C.mensajes || []).map((m) => `<div class="ag-msg ${esc(m.de)}"><span class="ag-msg-de">${esc(DE_CHAT[m.de] || m.de)} · ${esc(fechaHora(m.momento))}</span>${cuerpoMsg(m)}</div>`).join('');
   return `<section class="card ag-hilo"><div class="card-cab"><h3>${esc(c.agencia)} <span class="tag ${clase}">${esc(t)}</span></h3><button class="btn small" data-a="ag-chat-volver">← Todas las conversaciones</button></div>
     <div class="ag-msgs" id="agMsgs" role="log">${msgs || '<p class="hint m0">Todavía no hay mensajes.</p>'}</div>
     ${abierta ? `<label class="f">Tu respuesta<textarea data-k="ag.chat.texto" id="agChatTexto" rows="3" maxlength="1500" placeholder="Escribí la respuesta para la agencia">${esc(C.texto || '')}</textarea></label>

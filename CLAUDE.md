@@ -898,7 +898,27 @@ agencia lo pide («Hablar con un representante»), avisa a la Mutual; ahí conte
   «Activar avisos» (Agencias → Chats). El service worker `docs/cobranzas/sw.js` atiende `push` y `notificationclick`.
 - **Publicar**: migración 0038 y `deploy_edge_function` de `agencias` con **siete** archivos (`index.ts`, `credito.js`, `bcra.ts`,
   `solicitud.js`, `foto.js`, `chat.js`, `push.js`); después subir la app. `PUSH_PERMITIR_LOCAL=1` solo lo pone `dev/stack.sh`.
-- Pruebas: `agencias-chat-puro`, `agencias-chat` y `agencias-chat-app` (incluidas en `npm run test:agencias`).
+- Pruebas: `agencias-chat-puro`, `agencias-chat`, `agencias-chat-audio`, `agencias-chat-app` y `agencias-chat-voz-app` (incluidas en `npm run test:agencias`).
+- **Voz** (migración 0040, pedido de la persona del 22/11/2026: que la agencia pueda hablar y escuchar, pero sin que la persona grabe su voz):
+  - **«Escuchar»** en cada mensaje del asistente y de la Mutual (y en el saludo): lo lee en voz alta la voz del dispositivo
+    (`speechSynthesis`, en español de Argentina si la hay). No se graba ni se manda nada; sin voz en el navegador, el botón no aparece.
+    La Mutual responde **siempre por escrito**.
+  - **Audios de la agencia a una persona de la Mutual** (botón del micrófono junto al campo de texto, `docs/agencias/chat.js`): solo
+    cuando la conversación está en `espera` o `humano`; con el asistente no se ve el botón y la función contesta 409 (`audio_sin_representante`),
+    porque el asistente no escucha audios. Se graba con `MediaRecorder` (mp4 si el navegador puede —lo que se reproduce en el iPhone—,
+    si no webm u ogg), hasta 2 minutos (`MAX_AUDIO_SEG`) y 3 MB (`MAX_AUDIO_BYTES`); se sube a la función (acción `chat_audio`, multipart:
+    `audio` y `seg`). La función reconoce el formato por los primeros bytes (`tipoAudio` en `chat.js`), lo guarda en la carpeta privada
+    **`chat-audios`** del almacenamiento (sin políticas, como `solicitudes`; la crea la migración 0040) y registra el mensaje con
+    texto «Mensaje de voz» y `audio_path`, `audio_seg`, `audio_tipo` (la base exige que sea completo, de la agencia y de un tipo conocido).
+    Cuenta para el tope de 200 mensajes por día y avisa a la Mutual como un mensaje más.
+  - **Escucharlos** (acción `chat_audio_ver {mensaje}`, la Mutual o la propia agencia; otra agencia recibe 404): la función baja el audio
+    y lo devuelve en base64, con su tipo y duración; el navegador lo arma como `blob:` y lo reproduce (por eso las dos páginas, `agencias/` y
+    `cobranzas/`, tienen `media-src blob:` en la política de seguridad). La ruta del audio no sale nunca de la función. Los audios no se
+    borran solos con la conversación: quedan en `chat-audios` (si hace falta limpiar, se borran desde el panel de Supabase).
+  - Sin micrófono (o sin permiso) la agencia sigue con texto. En el iPhone con la app instalada en la pantalla de inicio el permiso del
+    micrófono puede pedirse de nuevo: probarlo en un celular real antes de contárselo a las agencias.
+  - **Publicar**: migración 0040, `deploy_edge_function` de `agencias` (los mismos siete archivos: `chat.js` e `index.ts` cambiaron) y subir la app
+    (`docs/cobranzas/sw.js` ya sube a `cobranzas-v49`).
 
 Para Claude, por el conector:
 
