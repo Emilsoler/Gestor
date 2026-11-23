@@ -325,7 +325,7 @@ function dibujar(alFinal = false) {
         <div><b>Mutual Bell</b><small>${esc(ESTADOS[C.estado] || ESTADOS.bot)}</small></div>
         <div class="chat-cab-botones">
           ${C.items.length ? '<button type="button" class="btn chico" id="chatNueva">Nueva conversación</button>' : ''}
-          <button type="button" class="chat-x" id="chatCerrar" aria-label="Cerrar el chat">×</button>
+          <button type="button" class="chat-x" id="chatCerrar" aria-label="Cerrar el chat">Volver</button>
         </div>
       </header>
       <div class="chat-msgs" id="chatMsgs" role="log" aria-live="polite">${cuerpo}</div>
