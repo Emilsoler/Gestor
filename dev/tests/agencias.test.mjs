@@ -410,6 +410,47 @@ test('las reglas de la solicitud: copia igual en la función, casilleros como en
   assert.equal(SOL.tipoArchivo(new TextEncoder().encode('<html>')), null);
 });
 
+test('cuota deseada: en cada plazo, el monto más alto cuya cuota no pasa de lo pedido (sin dejar leer el valor)', async () => {
+  // Parámetros propios (las pruebas de antes los cambian): 50 %, plazos 12/18/24/36, tasa 7 %, mismos gastos.
+  sql(`update public.ajustes_agencias set habilitado = true, pct_financiable = 50, redondeo = 50000, plazos = '{12,18,24,36}', tasas = '[]', anio_minimo = null, antiguedad_max = null, tasa_mensual = 7,
+       monto_minimo = 0, monto_maximo = null, gastos = '{"sellado":1.2,"arancel":0.1,"arancelMin":13000,"contratos":20000,"envio":20000,"gestoria":29000,"redondeo":null,"seguro":0.1,"administrativos":50,"cuotaSocial":200,"igr":3}';`);
+  const ref = (await pedir(agencia, { accion: 'versiones', marca: 1, grupo: 10 })).datos.versiones[0].ref;
+  const g = gastosDe(GASTOS_DEFECTO);
+  const cuotaDe = (monto, n) => simInterno({ capital: monto, cuotas: n, g, tasa: 7 }).cuota;
+  // Un monto puede coincidir con un precio del doble por casualidad: acá se mira que no aparezcan palabras de InfoAuto ni nada sobre el máximo.
+  const limpio = (texto) => assert.ok(!/codia|valuaci|precio|price|infoauto/i.test(texto), texto.slice(0, 300));
+  const pedida = 1_000_000;
+  const r = await pedir(agencia, { accion: 'cotizar', ref, anio: '0km', cuotas: 24, cuota_max: pedida });
+  assert.equal(r.status, 200, r.texto);
+  limpio(r.texto);
+  const d = r.datos;
+  assert.equal(d.cuota_max, pedida);
+  assert.ok(d.cuota <= pedida && d.monto <= d.maximo);
+  assert.equal(d.cuota, cuotaDe(d.monto, 24));
+  // Es el más alto: $ 50.000 más ya pasaría la cuota (salvo que ya esté en el máximo).
+  if (d.monto < d.maximo) assert.ok(cuotaDe(d.monto + 50_000, 24) > pedida);
+  // Cada plazo tiene su monto, y con más cuotas llega a más.
+  assert.deepEqual(d.opciones.map((o) => o.cuotas), [12, 18, 24, 36]);
+  for (const o of d.opciones) { assert.ok(o.cuota <= pedida && o.monto <= d.maximo); assert.equal(o.cuota, cuotaDe(o.monto, o.cuotas)); }
+  const montos = d.opciones.map((o) => o.monto);
+  assert.deepEqual([...montos].sort((x, y) => x - y), montos);
+
+  // Una cuota muy alta no pasa del máximo; con un monto pedido menor, ese es el techo.
+  let r2 = await pedir(agencia, { accion: 'cotizar', ref, anio: '0km', cuotas: 36, cuota_max: 99_000_000 });
+  assert.equal(r2.datos.monto, r2.datos.maximo);
+  r2 = await pedir(agencia, { accion: 'cotizar', ref, anio: '0km', cuotas: 36, cuota_max: 99_000_000, monto: 3_000_000 });
+  assert.equal(r2.datos.monto, 3_000_000);
+  // Una cuota que no alcanza ni para el monto mínimo del plazo: error claro.
+  sql('update public.ajustes_agencias set monto_minimo = 1000000;');
+  r2 = await pedir(agencia, { accion: 'cotizar', ref, anio: '0km', cuotas: 12, cuota_max: 1_000 });
+  assert.equal(r2.status, 400);
+  assert.match(r2.datos.error || r2.texto, /cuota/i);
+  sql('update public.ajustes_agencias set monto_minimo = 0;');
+  // Sin cuota deseada, la respuesta es la de siempre (sin `monto` en los plazos).
+  r2 = await pedir(agencia, { accion: 'cotizar', ref, anio: '0km', cuotas: 24 });
+  assert.ok(!('cuota_max' in r2.datos) && r2.datos.opciones.every((o) => !('monto' in o)));
+});
+
 test('semáforo: rojo no apto; amarillo y sin antecedentes siguen, sujetos a revisión', async () => {
   sql(PARAMS_MUTUAL + "; delete from public.solicitudes_credito");
   await cargarCasosBCRA();

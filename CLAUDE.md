@@ -901,6 +901,13 @@ Mutual y no nombra a InfoAuto.
   `select gestor.pausar_vendedor('vendedor@agencia.com')` (la cuenta de login hay que crearla antes). Publicar: migración 0042,
   `deploy_edge_function` de `agencias` (siete archivos) y subir la app. Pruebas: el test «vendedores» de `agencias.test.mjs` y el del panel en `agencias-admin.test.mjs`.
 
+- **Cuota deseada, precio y anticipo** (pedido de la persona del 23/11/2026, sin migración): en el paso 2 hay tres campos opcionales.
+  «Cuota que quiere pagar (hasta)» manda `cuota_max` a `cotizar`: en cada plazo, la función busca (por mitades, de a $ 1.000 o el `redondeo`)
+  el monto más alto cuya cuota no pase de lo pedido, sin pasar el máximo ni el monto solicitado; devuelve `cuota_max` y `opciones` con
+  `monto` por plazo (sin `cuota_max`, todo igual que antes). «Precio de venta» y «Anticipo» son del lado de la app: con los dos, el
+  monto solicitado = precio − anticipo, y el resultado explica cuánto pone el cliente (`avisosDeMonto`). El precio es el de la agencia,
+  nunca el de InfoAuto: no se guarda ni viaja a la función. Prueba: el test «cuota deseada» de `agencias.test.mjs` y `agencias-cotizar-app.test.mjs`.
+
 ### Chat «M» con la Mutual (migración 0038, pedido de la persona del 22/11/2026)
 
 Botón flotante «M» en el cotizador (`docs/agencias/chat.js`): abre un chat con un asistente que responde dudas básicas y, si la

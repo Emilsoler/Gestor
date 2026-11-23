@@ -329,15 +329,37 @@ async function calcular(pedido: any, a: any) {
   if (!maximo) return { financiable: false as const };
   const pedidoMonto = Math.round(Number(pedido.monto) || 0);
   const minimo = Math.max(Number(a.monto_minimo) || 0, 1);
-  const monto = pedidoMonto > 0 ? Math.min(pedidoMonto, maximo) : maximo;
-  if (monto < minimo) throw new Falla(`El monto mínimo es de $ ${minimo.toLocaleString('es-AR')}.`, 400, 'monto');
+  // Lo más que se puede prestar: lo que pidió la agencia (si pidió algo) sin pasar el máximo de la Mutual.
+  const techo = pedidoMonto > 0 ? Math.min(pedidoMonto, maximo) : maximo;
+  if (techo < minimo) throw new Falla(`El monto mínimo es de $ ${minimo.toLocaleString('es-AR')}.`, 400, 'monto');
   const tasa = tasaPara(anio, a, actual);
+  // «Quiero pagar hasta $X por mes»: en cada plazo, el monto más alto (de a `paso` pesos) cuya cuota no pase de X.
+  // La cuota crece con el monto, así que se busca por mitades. Nunca pasa del techo, que ya está por debajo del máximo.
+  const cuotaMax = Math.round(Number(pedido.cuota_max) || 0);
+  const paso = Math.max(1000, Number(a.redondeo) || 0);
+  const montoParaCuota = (n: number): number => {
+    const cuotaDeMonto = (m: number) => cuotaDe(m, n, a, tasa)?.cuota ?? Infinity;
+    if (cuotaDeMonto(techo) <= cuotaMax) return techo;
+    let lo = Math.ceil(minimo / paso), hi = Math.floor(techo / paso);
+    if (lo > hi || cuotaDeMonto(lo * paso) > cuotaMax) return 0;
+    while (lo < hi) { const mid = Math.ceil((lo + hi) / 2); if (cuotaDeMonto(mid * paso) <= cuotaMax) lo = mid; else hi = mid - 1; }
+    return lo * paso;
+  };
+  let monto = techo;
+  if (cuotaMax > 0) {
+    monto = montoParaCuota(cuotas);
+    if (!monto) throw new Falla(`Con una cuota de hasta $ ${cuotaMax.toLocaleString('es-AR')} no se llega al monto mínimo en ${cuotas} ${cuotas === 1 ? 'cuota' : 'cuotas'}. Probá con más cuotas o una cuota mayor.`, 400, 'cuota_max');
+  }
   const sim = cuotaDe(monto, cuotas, a, tasa);
   if (!sim) throw new Falla('No se pudo calcular el crédito con estos datos.', 400, 'calculo');
-  const opciones = plazos.map((n) => { const s = cuotaDe(monto, n, a, tasa); return s ? { cuotas: n, cuota: s.cuota } : null; }).filter(Boolean);
+  const opciones = plazos.map((n) => {
+    const m = cuotaMax > 0 ? montoParaCuota(n) : monto;
+    const s = m ? cuotaDe(m, n, a, tasa) : null;
+    return s ? (cuotaMax > 0 ? { cuotas: n, cuota: s.cuota, monto: m } : { cuotas: n, cuota: s.cuota }) : null;
+  }).filter(Boolean);
   // Qué parte del valor del vehículo se presta: solo para la Mutual (va en los datos de la solicitud, que la agencia no ve).
   const pct = Math.round((monto / valor) * 1000) / 10;
-  return { financiable: true as const, anio, maximo, monto, cuotas, tasa, sim, opciones, pct };
+  return { financiable: true as const, anio, maximo, monto, cuotas, tasa, sim, opciones, pct, cuotaMax };
 }
 
 // ───────────────────────── Foto del vehículo (ver foto.js) ─────────────────────────
@@ -740,6 +762,7 @@ export async function manejar(req: Request): Promise<Response> {
       return responder({
         financiable: true, anio: c.anio, maximo: c.maximo, monto: c.monto, cuotas: c.cuotas, cuota: c.sim.cuota, total: c.sim.totalCredito,
         gastos_otorgamiento: c.sim.gastos, ...tasasDelCredito(c.sim), opciones: c.opciones,
+        ...(c.cuotaMax > 0 ? { cuota_max: c.cuotaMax } : {}),
         leyenda: String(a.leyenda || ''), contacto: String(a.contacto || ''),
       }, 200, cors);
     }

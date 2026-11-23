@@ -35,7 +35,7 @@ const S = {
   yo: null, // { agencia, miembro, clave_temporal, habilitado, plazos, leyenda, contacto }
   vista: 'cotizar', // cotizar | solicitudes (agencia) | admin (Mutual)
   marcas: null, marca: '', modelos: null, modelo: '', versiones: null, version: '', anios: null, anio: '', buscaVer: '',
-  plazo: 0, monto: '', cargando: '', res: null,
+  plazo: 0, monto: '', cuotaMax: '', precio: '', anticipo: '', cargando: '', res: null,
   foto: null, // { ref, src }: la foto de la versión elegida (src null si no hay); la pide `cargarFoto`
   cuit: '', bcra: null, bcraError: '', continuo: false, confirmarOtro: false, sols: null, novedades: null,
   sol: null, // la solicitud que se está armando (nuevaSol)
@@ -168,7 +168,7 @@ async function consultarCliente() {
 function otroCliente() {
   // Si ya cargó datos o documentos de este cliente, pide que lo confirme con un segundo toque.
   if (S.sol.abierta && !S.sol.enviada && !S.confirmarOtro) { S.confirmarOtro = true; render(); return; }
-  Object.assign(S, { cuit: '', bcra: null, bcraError: '', continuo: false, confirmarOtro: false, res: null, monto: '', sol: nuevaSol() });
+  Object.assign(S, { cuit: '', bcra: null, bcraError: '', continuo: false, confirmarOtro: false, res: null, monto: '', cuotaMax: '', precio: '', anticipo: '', sol: nuevaSol() });
   render();
 }
 
@@ -384,8 +384,10 @@ async function cotizar() {
   if (!S.version || !S.anio || !S.plazo) { S.error = 'Elegí el vehículo, el año y el plazo.'; render(); return; }
   S.cargando = 'cotizar'; S.error = ''; render();
   try {
-    S.res = await fn({ accion: 'cotizar', ref: S.version, anio: S.anio, cuotas: S.plazo, monto: soloNumero(S.monto) || undefined, vehiculo: vehiculoElegido(), cuit: soloDigitos(S.cuit) });
+    S.res = await fn({ accion: 'cotizar', ref: S.version, anio: S.anio, cuotas: S.plazo, monto: soloNumero(S.monto) || undefined, cuota_max: soloNumero(S.cuotaMax) || undefined, vehiculo: vehiculoElegido(), cuit: soloDigitos(S.cuit) });
     S.res.vehiculo = vehiculoElegido();
+    // Lo que escribió la agencia, para explicar el resultado (el precio es el de ella, no el de InfoAuto).
+    S.res.precio = soloNumero(S.precio) || 0; S.res.pidio = soloNumero(S.monto) || 0;
   } catch (e) { S.cargando = ''; S.res = null; falla(e); return; }
   S.cargando = ''; render();
   $('#resultado')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -644,6 +646,9 @@ function vistaCotizar() {
       ${S.modelos && !S.modelos.length ? '<p class="aviso suave ancho m0">Esta marca no tiene modelos para financiar.</p>' : ''}
       ${plazo}
       <label class="f">Monto solicitado<input id="inMonto" inputmode="numeric" autocomplete="off" value="${esc(S.monto)}"><small class="ayuda-monto">Si dejas este espacio vacío se hará la simulación por el máximo permitido</small></label>
+      <label class="f">Cuota que quiere pagar (hasta)<input id="inCuotaMax" inputmode="numeric" autocomplete="off" value="${esc(S.cuotaMax)}"><small class="ayuda-monto">Opcional: te decimos hasta qué monto llega con esa cuota, en cada plazo</small></label>
+      <label class="f">Precio de venta<input id="inPrecio" inputmode="numeric" autocomplete="off" value="${esc(S.precio)}"><small class="ayuda-monto">Opcional: tu precio al cliente. Te decimos cuánto tiene que poner de anticipo</small></label>
+      <label class="f">Anticipo del cliente<input id="inAnticipo" inputmode="numeric" autocomplete="off" value="${esc(S.anticipo)}"><small class="ayuda-monto">Con precio y anticipo, el monto solicitado se calcula solo</small></label>
     </div>
     ${S.error ? `<p class="aviso m0" role="alert">${esc(S.error)}</p>` : ''}
     <div class="acciones"><button class="btn primario" type="button" id="btnCotizar" ${!S.version || !S.anio || c ? 'disabled' : ''}>${c === 'cotizar' ? 'Calculando…' : 'Ver crédito'}</button></div>
@@ -798,6 +803,23 @@ async function imprimir() {
   window.print();
 }
 
+/** Las filas de la tabla «cuota de hasta $X»: en cada plazo, hasta qué monto llega. */
+function opcionesPorCuota(r) {
+  return opcionesVisibles(r).map((o) => `<tr class="${o.cuotas === r.cuotas ? 'elegido' : ''}"><td>${o.cuotas} ${o.cuotas === 1 ? 'cuota' : 'cuotas'}</td><td class="num">${plata(o.monto)}</td><td class="num">${plata(o.cuota)}</td></tr>`).join('');
+}
+
+/** Lo que explica de dónde sale el monto: la cuota pedida y el anticipo (cuentas con lo que escribió la agencia). */
+function avisosDeMonto(r) {
+  const xs = [];
+  if (r.cuota_max && r.pidio && r.monto < r.pidio) xs.push(`Con una cuota de hasta ${plata(r.cuota_max)} en ${r.cuotas} cuotas se llega a ${plata(r.monto)}: faltan ${plata(r.pidio - r.monto)} del monto pedido. Probá con más cuotas.`);
+  else if (!r.cuota_max && r.pidio && r.monto < r.pidio) xs.push(`Pediste ${plata(r.pidio)}, pero la Mutual financia hasta ${plata(r.monto)}.`);
+  if (r.precio > 0) {
+    if (r.monto >= r.precio) xs.push('El crédito cubre todo el precio: no hace falta anticipo.');
+    else xs.push(`Precio ${plata(r.precio)} − crédito ${plata(r.monto)} = el cliente pone de anticipo al menos ${plata(r.precio - r.monto)}.`);
+  }
+  return xs.map((x) => `<p class="aviso suave m0 no-imprimir">${esc(x)}</p>`).join('');
+}
+
 function vistaResultado(r) {
   if (!r.financiable) return `<section class="card resultado" id="resultado"><h2>No se puede financiar</h2><p class="m0">${esc(r.mensaje || 'Este vehículo no alcanza las condiciones del crédito.')}</p></section>`;
   const opciones = opcionesVisibles(r).map((o) => `<tr class="${o.cuotas === r.cuotas ? 'elegido' : ''}"><td>${o.cuotas} ${o.cuotas === 1 ? 'cuota' : 'cuotas'}</td><td class="num">${plata(o.cuota)}</td></tr>`).join('');
@@ -808,11 +830,14 @@ function vistaResultado(r) {
     </div>
     <div class="destacado"><span class="titulo">Monto máximo que financia la Mutual</span><span class="cifra">${plata(r.maximo)}</span></div>
     <div class="cuota-grande">Crédito de <b>${plata(r.monto)}</b> en ${r.cuotas} ${r.cuotas === 1 ? 'cuota' : 'cuotas'} de <b>${plata(r.cuota)}</b></div>
+    ${avisosDeMonto(r)}
     <table><tbody>
       <tr><td>Total a pagar</td><td class="num">${plata(r.total)}</td></tr>
       <tr><td>Gastos de otorgamiento (incluidos en las cuotas)</td><td class="num">${plata(r.gastos_otorgamiento)}</td></tr>
     </tbody></table>
-    <div class="scroll"><table><thead><tr><th>Otros plazos con este monto</th><th class="num">Cuota</th></tr></thead><tbody>${opciones}</tbody></table></div>
+    ${r.cuota_max
+      ? `<div class="scroll"><table><thead><tr><th>Con una cuota de hasta ${plata(r.cuota_max)}</th><th class="num">Monto</th><th class="num">Cuota</th></tr></thead><tbody>${opcionesPorCuota(r)}</tbody></table></div>`
+      : `<div class="scroll"><table><thead><tr><th>Otros plazos con este monto</th><th class="num">Cuota</th></tr></thead><tbody>${opciones}</tbody></table></div>`}
     <p class="leyenda tasas m0">TNA ${pct(r.tna)} · TEA ${pct(r.tea)} · CFT ${pct(r.cft)}. El CFT incluye los gastos de otorgamiento de prenda, contratos, tasa y arancel de inscripción de prenda en R.P.A. No incluye IVA. ${esc(r.leyenda || '')}</p>
     ${r.contacto ? `<p class="leyenda m0">${esc(r.contacto)}</p>` : ''}
     ${hojaImprimir(r, `${r.vehiculo} · ${etiquetaAnio(r.anio)}`)}
@@ -923,6 +948,17 @@ document.addEventListener('input', (e) => {
     const n = soloNumero(t.value);
     S.monto = n ? n.toLocaleString('es-AR') : '';
     if (t.value !== S.monto) { t.value = S.monto; }
+  } else if (t.id === 'inCuotaMax') {
+    const n = soloNumero(t.value);
+    S.cuotaMax = n ? n.toLocaleString('es-AR') : '';
+    if (t.value !== S.cuotaMax) t.value = S.cuotaMax;
+  } else if (t.id === 'inPrecio' || t.id === 'inAnticipo') {
+    const n = soloNumero(t.value), k = t.id === 'inPrecio' ? 'precio' : 'anticipo';
+    S[k] = n ? n.toLocaleString('es-AR') : '';
+    if (t.value !== S[k]) t.value = S[k];
+    // Con precio y anticipo, lo que hay que financiar es la diferencia: se completa solo el monto solicitado.
+    const p = soloNumero(S.precio), an = soloNumero(S.anticipo);
+    if (p && an && p > an) { S.monto = (p - an).toLocaleString('es-AR'); const m = $('#inMonto'); if (m) m.value = S.monto; }
   } else if (t.id === 'inVersion') {
     // Se escribe para buscar: si había una versión elegida, deja de estarlo. Solo se redibuja la lista (no se pierde el teclado).
     S.buscaVer = t.value;
