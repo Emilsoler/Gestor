@@ -5,7 +5,7 @@
 // configuración, las cuentas de importes, el armado de Excel y las tipografías (../).
 //
 // Al cambiar la lista de archivos o una tipografía/ícono, subir VERSION para renovar la copia.
-const VERSION = 'cobranzas-v49';
+const VERSION = 'cobranzas-v50';
 const ESPERA_MS = 4000;
 
 const NUCLEO = [
@@ -14,6 +14,7 @@ const NUCLEO = [
   '../vendor/supabase.js', '../config.js', '../liquidacion.js', '../excel.js', '../oficio.js', '../agencias/solicitud.js',
   '../fonts/plex-sans-latin-300.woff2', '../fonts/plex-sans-latin-400.woff2', '../fonts/plex-sans-latin-500.woff2', '../fonts/plex-sans-latin-600.woff2',
   '../fonts/plex-mono-latin-400.woff2', '../fonts/plex-mono-latin-500.woff2',
+  '../fonts/cinzel-latin-400-normal.woff2', '../fonts/eb-garamond-latin-400-italic.woff2', '../fonts/poppins-latin-600-normal.woff2', '../fonts/poppins-latin-700-normal.woff2',
 ];
 
 self.addEventListener('install', (e) => {

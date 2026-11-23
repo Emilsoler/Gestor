@@ -687,8 +687,15 @@ vista; a la persona no le gustó (las fotos se veían pixeladas) y pidió volver
 `styles.css`). Si se toca una cuenta, también
 `gestor.liquidacion_deudor` (migración nueva). Probar con `npm run test:cobranzas` (y las del gestor);
 capturas en ancho de PC y de celular. Su service worker es `docs/cobranzas/sw.js` (`VERSION`
-propia); el del gestor no atiende nada de `cobranzas/`. Estilo: el del gestor, con verde petróleo y
-acento esmeralda (`--grad`); la barra de los gráficos (`--barra`) está validada contra la superficie.
+propia); el del gestor no atiende nada de `cobranzas/`. Estilo (nov 2026, pedido de la persona: «una pauta similar a la del
+gestor»): la del rediseño oscuro del gestor, en verde y **sin fotos ni videos** (ya se probaron y no le gustaron). Fondo negro,
+tarjetas verde casi negro, bordes más redondeados (`--r` 20 px), acento esmeralda (`--grad`; el dorado queda para el gestor),
+títulos de tarjeta en Poppins y el nombre en Cinzel (ingreso, barra lateral y portada de Inicio). **Inicio** (`vistaInicio`,
+`presentacion` y `ajustarNombre` en `app.js`): «Créditos y Cobros» de lado a lado (en el celular, dos renglones), «Estudio Soler»,
+una máxima del derecho en cursiva al azar en cada apertura (`FRASES`: solo máximas conocidas, sin citas dudosas), las acciones
+rápidas (`data-inicio`: Nuevo deudor, Consultar el BCRA, Descontar cheques, Armar una refinanciación) y las cinco cifras como
+tarjetas (`.kpi`, la primera más ancha). En el celular las vistas son una barra fija abajo (con ícono), como en el gestor.
+La barra de los gráficos (`--barra`) está validada contra la superficie.
 
 ## Prenda (`docs/prenda/`)
 

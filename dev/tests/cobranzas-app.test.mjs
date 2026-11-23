@@ -96,6 +96,30 @@ test('ingreso y tablero de inicio', async () => {
   assert.equal(await page.locator('#main tbody tr').count(), 3);
 });
 
+test('inicio: el nombre, la máxima y las acciones rápidas llevan a cada herramienta', async () => {
+  await page.click('#v_inicio');
+  await page.waitForSelector('.presenta');
+  assert.match(norm(await page.locator('.nombre').textContent()), /Créditos y Cobros/);
+  assert.equal((await page.locator('.prof').textContent()).trim(), 'Estudio Soler');
+  assert.ok((await page.locator('.frase p').textContent()).trim().length > 3, 'hay una máxima');
+  // El nombre ocupa el ancho de la columna, sin pasarse.
+  const caja = await page.evaluate(() => { const n = document.querySelector('.nombre').getBoundingClientRect(), p = document.querySelector('.presenta').getBoundingClientRect(); return { n: n.width, p: p.width }; });
+  assert.ok(caja.n <= caja.p + 1 && caja.n > caja.p * 0.9, `el nombre entra y ocupa casi todo el ancho (${Math.round(caja.n)} de ${Math.round(caja.p)})`);
+  // Cada acción abre su herramienta de «Créditos».
+  for (const [k, pestana] of [['cuit', 'Deudas por CUIT'], ['descuento', 'Descuento de cheques'], ['refi', 'Estado de Deuda y Refinanciación']]) {
+    await page.click('#v_inicio');
+    await page.click(`[data-inicio="${k}"]`);
+    await page.waitForSelector('.cr-modos');
+    assert.equal(norm(await page.locator('.cr-modos [aria-selected="true"]').textContent()).trim(), pestana);
+    assert.equal(await page.getAttribute('#v_creditos', 'aria-pressed'), 'true');
+  }
+  await page.click('#v_inicio');
+  await page.click('[data-inicio="deudor"]');
+  await page.waitForSelector('.panel');
+  await cerrar(page);
+  await page.click('#v_inicio');
+});
+
 test('listado: búsqueda, filtros y orden', async () => {
   await page.click('#v_deudores');
   await page.fill('#q', 'ZZZ999'); // por dominio del vehículo
@@ -456,6 +480,12 @@ test('celular: tarjetas, ficha a pantalla completa y nada se sale de costado', a
     await p.click('#v_' + v); await p.waitForTimeout(100);
     assert.ok(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `la vista ${v} no se sale de costado`);
   }
+  // Las vistas son una barra fija abajo, y el nombre de Inicio entra en dos renglones sin salirse.
+  const barra = await p.evaluate(() => { const r = document.querySelector('#vistas').getBoundingClientRect(); return { abajo: r.bottom, alto: window.innerHeight, pos: getComputedStyle(document.querySelector('#vistas')).position }; });
+  assert.equal(barra.pos, 'fixed');
+  assert.ok(Math.abs(barra.abajo - barra.alto) <= 1, 'la barra de vistas queda pegada abajo');
+  await p.click('#v_inicio');
+  assert.ok(await p.evaluate(() => document.querySelector('.nombre').classList.contains('dos')), 'el nombre va en dos renglones');
   await p.click('#v_deudores');
   await p.locator('#main .fila').first().click();
   await p.waitForSelector('.panel.ficha');

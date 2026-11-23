@@ -275,6 +275,7 @@ function render() {
   if (S.pantalla !== 'listo') return;
   const main = $('#main'), foco = guardarFoco(main);
   for (const v of Object.keys(VISTAS)) $('#v_' + v).setAttribute('aria-pressed', S.vista === v);
+  document.body.dataset.vista = S.vista;
   $('#tVista').textContent = VISTAS[S.vista];
   $('#btnCuenta').textContent = (D.acceso?.nombre || D.usuario?.email || '?').trim().charAt(0).toUpperCase();
   renderFranja();
@@ -297,7 +298,8 @@ function render() {
     inicio: (t) => avisoInicio(S.ag.pend, S.ag.chat.atencion) + vistaInicio(t), deudores: vistaDeudores, planes: vistaPlanes, creditos: vistaCreditos, agencias: vistaAgencias,
   }[S.vista](todos);
   aplicarAnchos(main);
-  $('#fabNuevo').hidden = S.vista === 'creditos' || S.vista === 'agencias'; // en el celular taparía el resultado, y ahí no hace falta
+  if (S.vista === 'inicio') ajustarNombre();
+  $('#fabNuevo').hidden = ['inicio', 'creditos', 'agencias'].includes(S.vista); // en el celular taparía el resultado, y ahí no hace falta (en Inicio está en las acciones rápidas)
   // Los 24 meses se ven desde el más reciente: si no entran (celular), el corrimiento arranca a la derecha.
   main.querySelectorAll('.historia-caja').forEach((el) => { el.scrollLeft = el.scrollWidth; });
   devolverFoco(foco);
@@ -305,10 +307,45 @@ function render() {
 
 // ───────────────────────── Inicio: el tablero ─────────────────────────
 
+// Una máxima del derecho, distinta en cada apertura de la app (el gestor lleva una frase de los filósofos griegos con su busto).
+const FRASES = [
+  { t: 'Pacta sunt servanda', a: 'Lo pactado obliga' },
+  { t: 'Suum cuique tribuere', a: 'Dar a cada uno lo suyo (Ulpiano)' },
+  { t: 'Dura lex, sed lex', a: 'La ley es dura, pero es la ley' },
+  { t: 'Verba volant, scripta manent', a: 'Las palabras vuelan, lo escrito permanece' },
+  { t: 'Ubi ius, ibi remedium', a: 'Donde hay un derecho, hay un remedio' },
+];
+const FRASE = FRASES[Math.floor(Math.random() * FRASES.length)];
+
+// Lo mismo que Inicio del gestor, sin fotos: el nombre de lado a lado, la máxima y las acciones rápidas.
+function presentacion() {
+  return `<section class="presenta" aria-label="Presentación">
+    <h2 class="nombre" id="nombre"><span><i>C</i>réditos</span> <span>y <i>C</i>obros</span></h2>
+    <div class="prof">Estudio Soler</div>
+    <blockquote class="frase"><p>${esc(FRASE.t)}</p><footer>${esc(FRASE.a)}</footer></blockquote>
+  </section>`;
+}
+const ACCIONES_INICIO = [
+  ['deudor', 'Nuevo deudor'], ['cuit', 'Consultar el BCRA'], ['descuento', 'Descontar cheques'], ['refi', 'Armar una refinanciación'],
+];
+const accionesRapidas = () => `<aside class="acciones-rapidas" aria-label="Acciones rápidas"><h3>Acciones rápidas</h3>${
+  ACCIONES_INICIO.map(([k, t]) => `<button type="button" class="btn" data-inicio="${k}"><span class="mas" aria-hidden="true">+</span>${esc(t)}</button>`).join('')}</aside>`;
+
+// El nombre ocupa todo el ancho: se mide con un tamaño de prueba y se escala (en el celular, en dos renglones).
+function ajustarNombre() {
+  const h = $('#nombre'); if (!h) return;
+  h.classList.toggle('dos', window.innerWidth < 640);
+  h.style.fontSize = '100px';
+  const w = h.getBoundingClientRect().width, ancho = h.parentElement.clientWidth;
+  if (w > 0 && ancho > 0) h.style.fontSize = (100 * ancho / w * 0.995) + 'px';
+}
+window.addEventListener('resize', ajustarNombre);
+if (document.fonts?.ready) document.fonts.ready.then(ajustarNombre);
+
 function vistaInicio(todos) {
   const dia = hoy();
   subtitulo(`Al ${fmtLargo(dia)}`);
-  if (!todos.length) return vacio('Todavía no hay deudores cargados', 'Usá “+ Nuevo deudor” para cargar el primero, o pedile a Claude que importe el listado de la Mutual.');
+  if (!todos.length) return presentacion() + vacio('Todavía no hay deudores cargados', 'Usá “+ Nuevo deudor” para cargar el primero, o pedile a Claude que importe el listado de la Mutual.');
   const activos = todos.filter((x) => x.r.activo);
   const deuda = suma(activos, (x) => x.r.saldo);
   const mes = mesDe(dia), mesAnt = mesMas(mes, -1);
@@ -362,7 +399,7 @@ function vistaInicio(todos) {
     ${ultimos.length ? `<div class="mini">${ultimos.map((x) => `<button class="mini-f" data-abrir="${esc(x.d.id)}" data-tab="pagos"><span class="mono">${fmt(x.p.fecha)}</span><span class="mini-n">${esc(nombre(x.d))}</span><b class="mono">${esc(plata(x.total))}</b></button>`).join('')}</div>`
       : '<p class="hint m0">Todavía no registraste cobros. Se cargan desde la ficha de cada deudor, en “Pagos”.</p>'}
   </section>`;
-  return `${tiles}<div class="tablero">${mora}${hacer}${cobros}</div>`;
+  return `${presentacion()}<div class="inicio">${accionesRapidas()}${tiles}</div><div class="tablero">${mora}${hacer}${cobros}</div>`;
 }
 
 // ───────────────────────── Deudores ─────────────────────────
@@ -2746,6 +2783,15 @@ const verVista = (v) => {
   render(); window.scrollTo(0, 0);
 };
 
+// Las acciones rápidas de Inicio: cargar un deudor o abrir esa herramienta de «Créditos».
+function accionDeInicio(k) {
+  if (k === 'deudor') { abrirPanel('nuevo'); return; }
+  if (!['cuit', 'descuento', 'refi'].includes(k)) return;
+  S.cred.modo = k;
+  try { localStorage.setItem('cb.credModo', k); } catch { /* sin almacenamiento */ }
+  verVista('creditos');
+}
+
 document.addEventListener('click', async (e) => {
   const t = e.target;
   const ing = t.closest('[data-ing]');
@@ -2754,6 +2800,7 @@ document.addEventListener('click', async (e) => {
   // Un enlace del menú abre la otra app en otra pestaña; el menú se cierra después de seguirlo.
   if (t.closest('.menu a.op')) { setTimeout(() => { S.menu = false; renderMenu(); }); return; }
   const mn = t.closest('[data-m]'); if (mn) { if (mn.dataset.m === 'cerrar') { S.menu = false; renderMenu(); } else await menuAct(mn); return; }
+  const ai = t.closest('[data-inicio]'); if (ai) { accionDeInicio(ai.dataset.inicio); return; }
   const ir = t.closest('[data-ir]'); if (ir) { const [v, chip] = ir.dataset.ir.split(':'); if (chip) { S.chip = chip; S.tramo = ''; } verVista(v); return; }
   const tr = t.closest('[data-tramo]'); if (tr) { S.chip = 'mora'; S.tramo = tr.dataset.tramo; S.orden = 'mora'; verVista('deudores'); return; }
   if (t.closest('[data-tramo-x]')) { S.tramo = ''; render(); return; }

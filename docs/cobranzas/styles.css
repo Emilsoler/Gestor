@@ -16,26 +16,36 @@
 @font-face{font-family:"IBM Plex Mono";font-style:normal;font-weight:400;font-display:swap;src:url(../fonts/plex-mono-latin-400.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
 @font-face{font-family:"IBM Plex Mono";font-style:normal;font-weight:500;font-display:swap;src:url(../fonts/plex-mono-latin-500.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
 
+/* Las de la portada, como en el gestor (el nombre, la frase y los títulos de las tarjetas). */
+@font-face{font-family:"Cinzel";font-style:normal;font-weight:400;font-display:swap;src:url(../fonts/cinzel-latin-400-normal.woff2) format("woff2")}
+@font-face{font-family:"EB Garamond Cursiva";font-style:italic;font-weight:400;font-display:swap;src:url(../fonts/eb-garamond-latin-400-italic.woff2) format("woff2")}
+@font-face{font-family:"Poppins";font-style:normal;font-weight:600;font-display:swap;src:url(../fonts/poppins-latin-600-normal.woff2) format("woff2")}
+@font-face{font-family:"Poppins";font-style:normal;font-weight:700;font-display:swap;src:url(../fonts/poppins-latin-700-normal.woff2) format("woff2")}
+
 /* ───────── Colores y medidas ─────────
-   Un solo tema, oscuro. El acento es esmeralda; "al día / pagado" va en un verde lima, para no
+   Un solo tema, oscuro, con la pauta del gestor (fondo negro, tarjetas redondeadas, el nombre en Cinzel)
+   pero en verde: el acento es esmeralda, el de «cobrado». "Al día / pagado" va en un verde lima, para no
    confundirse con lo elegido. Los colores de estado están aclarados para leerse con contraste AA
    sobre los fondos suaves de pastillas y etiquetas. La barra de los gráficos (--barra) está
    validada contra la superficie de las tarjetas (banda de luminosidad y contraste 3:1). */
 :root{
   color-scheme:dark;
-  --bg:#0f2124; --side:#0a181b; --surface:#15292c; --raised:#1b3337; --hover:#193033; --sunken:#0c1b1e;
-  --line:#284446; --line-soft:rgba(126,190,178,.14);
-  --fg:#e7f4f1; --soft:#c0d8d2; --muted:#8aa9a2;
+  --bg:#000; --side:#050d0e; --surface:#0d1a1c; --raised:#142528; --hover:#112124; --sunken:#071012;
+  --line:#25403f; --line-soft:rgba(126,190,178,.16);
+  --fg:#e7f4f1; --soft:#c0d8d2; --muted:#8fada6;
   --accent:#34d3a0; --accent-txt:#8be9c9; --accent-fg:#ffffff; --accent-soft:rgba(52,211,160,.15);
   --grad:linear-gradient(120deg,#0b6e74 0%,#0a7d58 55%,#10804a 100%);
   --barra:#26a882;
   --ok:#a6e07e; --ok-soft:rgba(166,224,126,.13); --warn:#f6bd60; --warn-soft:rgba(246,189,96,.13);
   --bad:#ff8e76; --bad-soft:rgba(255,142,118,.14); --info:#7ab6ff; --info-soft:rgba(122,182,255,.14);
   --violet:#b8a0ff; --violet-soft:rgba(184,160,255,.15);
-  --sombra:0 12px 30px rgba(2,12,12,.34);
+  --sombra:0 6px 18px rgba(0,0,0,.55);
   --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
   --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
-  --r:14px; --r-s:10px;
+  --f-nombre:"Cinzel","Trajan Pro",Georgia,serif;
+  --f-cursiva:"EB Garamond Cursiva","EB Garamond",Georgia,serif;
+  --f-titulo:"Poppins","IBM Plex Sans",system-ui,sans-serif;
+  --r:20px; --r-s:12px;
   --lat:0px; --pad:16px;
   --arriba:env(safe-area-inset-top,0px); --abajo:env(safe-area-inset-bottom,0px);
 
@@ -57,8 +67,7 @@
 /* ───────── Base ───────── */
 *{box-sizing:border-box}
 html{scroll-padding-top:var(--arriba);-webkit-text-size-adjust:100%;background:var(--bg);accent-color:var(--accent);scrollbar-color:#2f4d4f transparent}
-body{margin:0;min-height:100dvh;color:var(--fg);font:14px/1.45 var(--f-body);font-optical-sizing:auto;
-  background:radial-gradient(900px 520px at 82% -10%,rgba(20,184,134,.12),transparent 64%),radial-gradient(760px 520px at -12% 108%,rgba(11,110,116,.12),transparent 62%),var(--bg)}
+body{margin:0;min-height:100dvh;color:var(--fg);font:14px/1.45 var(--f-body);font-optical-sizing:auto;background:var(--bg)}
 [hidden]{display:none!important}
 button,select,input,textarea{font:inherit;color:inherit}
 textarea{resize:vertical}
@@ -88,7 +97,11 @@ header{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;
 .titulos{min-width:0}
 h1{font:600 20px/1.15 var(--f-body);margin:0;letter-spacing:.14em;text-transform:uppercase}
 .j{color:var(--accent)}
+.h-marca{font:400 24px/1.1 var(--f-nombre);letter-spacing:.05em;text-transform:none;color:#eef5f3}
+.h-marca .j{font-size:1.2em;line-height:0}
 .h-vista{display:none}
+body[data-vista="inicio"] .h-marca{display:none}
+body[data-vista="inicio"] .h-vista{display:inline}
 .sub{color:var(--muted);margin-top:5px;font-size:13px}
 .pildoras{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:10px}
 
@@ -125,25 +138,44 @@ h1{font:600 20px/1.15 var(--f-body);margin:0;letter-spacing:.14em;text-transform
 .chip[aria-pressed="true"]{background:var(--accent-soft);border-color:rgba(52,211,160,.55);color:#fff}
 .chip.quitar{border-color:rgba(246,189,96,.45);color:var(--warn)}
 
-/* ───────── Tablero de inicio ─────────
-   Una fila de cifras (cada una lleva a su listado) y tres tarjetas: la mora por antigüedad, lo
-   que hay que hacer y los últimos cobros. */
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
-.kpi{position:relative;display:grid;align-content:start;gap:6px;min-height:118px;padding:16px 16px 14px;text-align:left;cursor:pointer;color:var(--fg);
-  background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--r);box-shadow:var(--sombra)}
-.kpi:hover{border-color:var(--line);background:var(--raised)}
-.kpi-l{color:var(--muted);font-size:12.5px;padding-right:26px}
-.kpi-v{font:300 30px/1.05 var(--f-body);letter-spacing:-.01em;overflow-wrap:anywhere}  /* cifras proporcionales: se ven parejas en grande */
+/* ───────── Inicio ─────────
+   Como el del gestor, sin fotos: el nombre de lado a lado, una máxima latina en cursiva, las acciones
+   rápidas y las cifras como tarjetas que llevan a su listado. Después, la mora por antigüedad, lo que
+   hay que hacer y los últimos cobros. */
+.presenta{padding:14px 0 10px}
+.nombre{display:inline-block;white-space:nowrap;margin:0;font:400 96px/1 var(--f-nombre);letter-spacing:.05em;color:#eef5f3;text-transform:none}
+.nombre i{font-style:normal;font-size:1.28em;line-height:0}
+.nombre.dos span{display:block}
+.prof{margin-top:12px;color:var(--accent-txt);font:400 clamp(13px,1.5vw,18px)/1.2 var(--f-nombre);letter-spacing:.55em;text-transform:uppercase}
+.frase{margin:22px 0 0;max-width:720px}
+.frase p{margin:0;font:italic 400 clamp(22px,2.6vw,30px)/1.3 var(--f-cursiva);color:var(--fg)}
+.frase footer{margin-top:8px;color:var(--accent-txt);font-size:14px}
+
+.inicio{display:grid;grid-template-columns:280px minmax(0,1fr);gap:22px;align-items:start}
+.acciones-rapidas{display:grid;gap:10px;padding:16px;background:var(--surface);border:1px solid var(--line-soft);border-radius:16px}
+.acciones-rapidas h3{margin:0 0 4px;font:600 15px var(--f-titulo);color:var(--accent-txt)}
+.acciones-rapidas .btn{display:flex;justify-content:flex-start;align-items:center;gap:10px;border-radius:12px;text-align:left;white-space:normal;padding:11px 12px;background:var(--raised)}
+.acciones-rapidas .btn:hover{border-color:var(--accent)}
+.mas{display:grid;place-items:center;flex:none;width:22px;height:22px;border-radius:50%;background:var(--accent);color:#04201a;font-weight:700;line-height:1}
+
+.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.kpi{position:relative;display:grid;align-content:start;gap:6px;min-height:128px;padding:16px 16px 14px;text-align:left;cursor:pointer;color:var(--fg);
+  background:var(--surface);border:1px solid var(--line-soft);border-radius:16px}
+.kpi:first-child{grid-column:span 2}
+.kpi:hover,.kpi:focus-visible{border-color:var(--accent);background:var(--raised)}
+.kpi-l{color:var(--fg);font:600 14.5px/1.25 var(--f-titulo);padding-right:26px}
+.kpi-v{font:300 34px/1.05 var(--f-body);letter-spacing:-.01em;overflow-wrap:anywhere}  /* cifras proporcionales: se ven parejas en grande */
+.kpi:first-child .kpi-v{font-size:46px}
 .kpi-s{font-size:12.5px;color:var(--soft)}
 .kpi-s.sube{color:var(--ok)} .kpi-s.baja{color:var(--bad)}
-.kpi::after{content:"";position:absolute;right:14px;top:16px;width:19px;height:19px;background:currentColor;opacity:.38;-webkit-mask:var(--i) center/contain no-repeat;mask:var(--i) center/contain no-repeat}
+.kpi::after{content:"";position:absolute;right:14px;top:16px;width:19px;height:19px;background:var(--accent-txt);opacity:.7;-webkit-mask:var(--i) center/contain no-repeat;mask:var(--i) center/contain no-repeat}
 .kpi[data-i="balanza"]{--i:var(--i-balanza)} .kpi[data-i="billete"]{--i:var(--i-billete)} .kpi[data-i="alarma"]{--i:var(--i-alarma)}
 .kpi[data-i="cuotas"]{--i:var(--i-agenda)} .kpi[data-i="apreton"]{--i:var(--i-bandera)}
 
 .tablero{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;align-items:start}
-.card{background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--r);padding:16px;display:grid;gap:12px;box-shadow:var(--sombra);min-width:0}
+.card{background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--r);padding:18px;display:grid;gap:12px;box-shadow:var(--sombra);min-width:0}
 .card-cab{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
-.card h3{margin:0;font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:500}
+.card h3{margin:0;font:600 15px/1.25 var(--f-titulo);color:var(--fg)}
 
 /* Mora por antigüedad: barras horizontales finas (máx. 14 px), extremo redondeado y base recta. */
 .tramos{display:grid;gap:4px}
@@ -157,7 +189,7 @@ h1{font:600 20px/1.15 var(--f-body);margin:0;letter-spacing:.14em;text-transform
 .tramo-c{font-size:12px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
 
 .pgrupo{display:grid;gap:4px}
-.pgrupo h4{margin:2px 2px 2px;font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:500}
+.pgrupo h4{margin:2px 2px 2px;font:600 12.5px/1.25 var(--f-titulo);color:var(--muted)}
 .pgrupo.tarde h4{color:var(--bad)}
 .pitem{display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid var(--line-soft);background:rgba(8,20,22,.25);border-radius:var(--r-s);padding:9px 11px;cursor:pointer;color:var(--fg);text-align:left;width:100%}
 .pitem:hover{border-color:var(--line);background:var(--hover)}
@@ -385,7 +417,7 @@ table.lista{width:100%;border-collapse:collapse;min-width:900px}
 .tabcuerpo{display:grid;gap:14px;align-content:start}
 
 .sec{background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--r);padding:14px;display:grid;grid-template-columns:minmax(0,1fr);gap:12px;min-width:0}
-.sec h4{margin:0;font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:500}
+.sec h4{margin:0;font:600 14px/1.25 var(--f-titulo);color:var(--fg)}
 .sec h5{margin:4px 0 -4px;font-size:12px;color:var(--soft);font-weight:500}
 .sec-cab{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
 .sec.peligro{background:none;border-style:dashed}
@@ -498,7 +530,8 @@ label.f input[readonly]{color:var(--soft)}
 .portada{min-height:100dvh;display:grid;align-content:start;justify-items:center;padding:calc(var(--arriba) + min(18vh,150px)) 16px calc(var(--abajo) + 40px)}
 .caratula{position:relative;overflow:hidden;width:min(420px,100%);background:var(--surface);border:1px solid var(--line-soft);border-radius:18px;padding:32px 30px 28px 36px;display:grid;gap:20px;box-shadow:0 26px 60px rgba(1,8,8,.55)}
 .caratula::before{content:"";position:absolute;left:0;top:0;bottom:0;width:8px;background:var(--grad)}
-.caratula h1{font-size:28px;letter-spacing:.16em}
+.caratula h1{font:400 34px/1.08 var(--f-nombre);letter-spacing:.05em;text-transform:none;color:#eef5f3}
+.caratula h1 .j{font-size:1.28em;line-height:0}
 .caratula .estudio{color:var(--muted);margin-top:6px;font-size:14px}
 .caratula-cuerpo{display:grid;gap:16px}
 .caratula-cuerpo b{font-size:15px}
@@ -549,7 +582,7 @@ label.f input[readonly]{color:var(--soft)}
 @media (min-width:1140px){
   :root{--lat:236px;--pad:28px}
   .lateral{padding:calc(var(--arriba) + 26px) 14px 20px}
-  .marca{display:block;place-items:normal;padding:2px 12px 0;font-size:17px}
+  .marca{display:block;place-items:normal;padding:2px 12px 0;font:400 22px/1.1 var(--f-nombre);letter-spacing:.05em;text-transform:none;color:#eef5f3}
   .marca-j{display:inline;width:auto;height:auto;padding:0;border-radius:0;background:none;box-shadow:none;color:var(--accent);font-size:inherit;letter-spacing:inherit}
   .marca-txt{display:inline}
   .marca small{display:block;margin-top:6px;font-size:12px;font-weight:400;letter-spacing:.02em;text-transform:none;color:var(--muted)}
@@ -567,16 +600,28 @@ label.f input[readonly]{color:var(--soft)}
 
 /* ───────── Pantallas chicas ───────── */
 @media (max-width:720px){
-  .app{padding-bottom:calc(var(--abajo) + 96px)}
+  .app{padding-bottom:calc(var(--abajo) + 150px)}
   header{padding-top:14px}
+  .inicio{grid-template-columns:minmax(0,1fr);gap:16px}
+  .nombre{white-space:normal}
+  .prof{letter-spacing:.4em}
+  .frase{margin-top:16px}
+  /* Las vistas, una barra fija abajo (como en el gestor): ícono y nombre, al alcance del pulgar. */
+  #vistas{position:fixed;left:0;right:0;bottom:0;z-index:8;order:0;border-radius:0;border:0;border-top:1px solid var(--line-soft);
+    background:var(--side);padding:4px 2px calc(var(--abajo) + 4px);gap:0}
+  #vistas button{position:relative;flex:1 1 0;flex-direction:column;gap:3px;padding:7px 2px;font-size:11px;border-radius:10px}
+  #vistas button::before{content:"";width:20px;height:20px;background:currentColor;-webkit-mask:var(--i) center/contain no-repeat;mask:var(--i) center/contain no-repeat}
+  #vistas button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent-txt)}
+  #vistas .badge{position:absolute;top:4px;right:calc(50% - 18px)}
   header .solo-escritorio{display:none}
   .solo-movil{display:inline-flex}
   .menu .solo-movil{display:block}
-  .kpis{display:flex;flex-wrap:nowrap;overflow-x:auto;margin:0 -16px;padding:2px 16px 12px;scrollbar-width:none;scroll-snap-type:x proximity;scroll-padding:0 16px}
-  .kpis::-webkit-scrollbar{display:none}
-  .kpi{flex:none;width:168px;min-height:0;scroll-snap-align:start;box-shadow:none}
-  .kpi-v{font-size:24px}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .kpi{min-height:0;padding:14px}
+  .kpi-v{font-size:26px}
+  .kpi:first-child .kpi-v{font-size:34px}
   .kpi::after{display:none}
+  .kpi-l{padding-right:0}
   #chips{display:flex;flex-wrap:nowrap;overflow-x:auto;margin:0 -16px;padding:0 16px 4px;scrollbar-width:none}
   #chips::-webkit-scrollbar{display:none}
   .chip{flex:none;padding:6px 12px}
@@ -590,7 +635,8 @@ label.f input[readonly]{color:var(--soft)}
   .panel [data-a=maxi]{display:none}
   .ppie,.tabcuerpo .ppie{margin:0 -14px;padding-left:14px;padding-right:14px}
   .tramo{grid-template-columns:96px minmax(0,1fr) 78px 20px;gap:8px}
-  .fab{display:inline-flex;position:fixed;right:16px;bottom:calc(var(--abajo) + 18px);z-index:9;padding:13px 20px;font-size:15px;box-shadow:0 10px 26px rgba(10,125,88,.5)}
+  .toast{bottom:calc(var(--abajo) + 76px)}
+  .fab{display:inline-flex;position:fixed;right:16px;bottom:calc(var(--abajo) + 130px);z-index:9;padding:13px 20px;font-size:15px;box-shadow:0 10px 26px rgba(10,125,88,.5)}
   .menu{top:auto;bottom:0;left:0;right:0;width:auto;border-radius:18px 18px 0 0;border-width:1px 0 0;padding:8px 8px calc(var(--abajo) + 10px)}
   .menu .op{padding:13px 12px;font-size:15px}
   .scrim.claro{background:rgba(3,12,13,.64)}
