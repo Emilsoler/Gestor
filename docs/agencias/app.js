@@ -12,7 +12,7 @@
 // «Continuar – Sujeto a revisión»; rojo «No apto»); 2) vehículo y crédito; 3) si quieren avanzar: ingresos
 // demostrables (sin eso no sigue) y el ingreso mensual (la cuota no puede pasar el 45 %); cómo obtiene los
 // ingresos; 4) su documentación; 5) datos del cliente con la suya; y se envía todo a la Mutual.
-import { iniciarChat, apagarChat } from './chat.js?v=20261122b';
+import { iniciarChat, apagarChat } from './chat.js?v=20261122c';
 import { CATEGORIAS, DOCS, MAX_BYTES, docsPermitidos, docsRequeridos, dniDelCuit, relacionCuota, revisarDatos, tipoArchivo } from './solicitud.js';
 
 const cfg = window.GESTOR_CONFIG || {};
