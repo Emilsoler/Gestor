@@ -26,7 +26,7 @@ const MM = 72 / 25.4;
 // del formulario en blanco, no imprimir esas sobre el papel oficial sin probar antes en una hoja común.
 const SW = 1240, SH = 1755;
 const HOJAS = { f03: [202, 305], a: [214, 328], b: [213, 317] }; // Formulario 03, contrato original, copia no negociable
-const CAL = { f03: [{ k: 0.189, ox: -15.7, oy: -5.0 }, null], a: [null, null], b: [{ kx: 0.205, ky: 0.192, ox: -12.6, oy: 1.8, xmax: 207.5 }, null] }; // por hoja: frente y dorso
+const CAL = { f03: [{ k: 0.189, ox: -15.7, oy: -5.0 }, null], a: [null, null], b: [{ kx: 0.2, ky: 0.192, ox: -10.2, oy: 1.8, xmax: 205 }, null] }; // por hoja: frente y dorso
 const tam = (clave) => HOJAS[clave].map((m) => m * MM);
 const calDe = new WeakMap(); // página → su calibración (la pone `nuevaPagina`)
 const anchoDe = (pg, c) => {
@@ -137,7 +137,7 @@ const CA = {
 
 // Contrato B (modelo «Ministerio de Justicia»), hoja 1 y 2.
 const CB = {
-  lugar: { x: 762, y: 303, w: 290 }, lugar2: { x: 1080, y: 303, w: 90 },
+  lugar: { x: 700, y: 303, w: 255 }, lugar2: { x: 980, y: 303, w: 34 },
   suma: { x: 576, y: 398, w: 550 }, senor: { x: 684, y: 424, w: 440 }, senor2: { x: 276, y: 443, w: 735 },
   concepto: { x: 384, y: 468, w: 740 }, acreedor: { x: 312, y: 491, w: 486 },
   bienes: [{ x: 320, y: 536, w: 806 }, { x: 270, y: 560, w: 856 }, { x: 270, y: 584, w: 856 }, { x: 270, y: 608, w: 856 }, { x: 270, y: 632, w: 856 }, { x: 270, y: 655, w: 730 }],
@@ -150,7 +150,7 @@ const CB = {
   segSuma: { x: 838, y: 1000, w: 288 }, segContra: { x: 630, y: 1026, w: 190 }, segCompania: { x: 936, y: 1022, w: 190 },
   segCalle: { x: 442, y: 1047, w: 262 }, segNro: { x: 733, y: 1045, w: 80 }, segPoliza: { x: 1000, y: 1048, w: 126 },
   segVence: { x: 436, y: 1070, w: 262 }, segVenceMes: { x: 722, y: 1068, w: 45 }, segPoder: { x: 984, y: 1070, w: 142 },
-  acr: { insc: { x: 470, y: 1092, w: 228 }, nombre: { x: 416, y: 1115, w: 282 }, ec: { x: 360, y: 1137, w: 112 }, prof: { x: 550, y: 1135, w: 148 }, nac: { x: 374, y: 1158, w: 175 }, edad: { x: 590, y: 1157, w: 48 }, dom: { x: 340, y: 1182, w: 358 }, doc: { x: 454, y: 1207, w: 244 } },
+  acr: { insc: { x: 470, y: 1092, w: 228 }, nombre: { x: 416, y: 1115, w: 282 }, ec: { x: 360, y: 1137, w: 112 }, prof: { x: 550, y: 1135, w: 124 }, nac: { x: 374, y: 1158, w: 175 }, edad: { x: 590, y: 1157, w: 48 }, dom: { x: 340, y: 1182, w: 358 }, doc: { x: 454, y: 1207, w: 244 } },
   deu: { nombre: { x: 868, y: 1114, w: 258 }, ec: { x: 812, y: 1136, w: 120 }, prof: { x: 1006, y: 1136, w: 120 }, nac: { x: 822, y: 1158, w: 155 }, edad: { x: 1022, y: 1158, w: 70 }, dom: { x: 788, y: 1181, w: 338 }, doc: { x: 904, y: 1203, w: 222 } },
   tachaPagares: { con: [493, 340, 531, 340], sin: [543, 340, 571, 340] },
   tachaClase: { fija: [990, 243, 1027, 243], flotante: [1052, 243, 1136, 243] },
@@ -307,7 +307,9 @@ export async function armarFormularios(p, { dx = 0, dy = 0, hoy = '', fondos = n
   // ---- Contratos de prenda (A y B) ----------------------------------------------------------------------------
   const contrato = async (clave, C) => {
     const pg = await pagina(clave, 0);
-    T(pg, C.lugar, lugarDia); T(pg, C.lugar2, mesAnio);
+    // en la copia, como lo escribe el Registro: «Bell Ville, 24 de noviembre» en el renglón largo y el año antes del «de» impreso
+    if (clave === 'b' && fp) { T(pg, C.lugar, `${lugarDia} de ${MESES[fp.m - 1]}`); T(pg, C.lugar2, String(fp.a)); }
+    else { T(pg, C.lugar, lugarDia); T(pg, C.lugar2, mesAnio); }
     if (p.pagares === 'con') raya(pg, C.tachaPagares.sin); else if (p.pagares === 'sin') raya(pg, C.tachaPagares.con);
     if (p.clase === 'fija') raya(pg, C.tachaClase.flotante); else if (p.clase === 'flotante') raya(pg, C.tachaClase.fija);
     T(pg, C.suma, montoTxt); if (C.sumaLetras) T(pg, C.sumaLetras, letras);
