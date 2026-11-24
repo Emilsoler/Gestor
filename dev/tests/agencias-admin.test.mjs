@@ -303,6 +303,8 @@ test('Créditos y Cobros: estadísticas por agencia, con período', async () => 
   const fila = async () => norm(await p.locator('tbody tr', { hasText: nombre }).first().locator('td.num').first().textContent());
   // 30 días: 4 de las 5 cotizaciones; desde siempre: las 5.
   assert.equal(await fila(), '4');
+  assert.ok(await p.locator('svg.gr rect.gr-a').count() >= 1, 'se dibuja el gráfico de barras');
+  await p.screenshot({ path: '/tmp/estad.png' });
   await p.click('[data-a="ag-est-dias"][data-dias=""]');
   await p.waitForFunction((n) => [...document.querySelectorAll('tbody tr')].some((r) => r.textContent.includes(n) && r.querySelector('td.num')?.textContent.trim() === '5'), nombre);
   await p.context().close();

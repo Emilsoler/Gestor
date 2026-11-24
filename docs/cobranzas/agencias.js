@@ -195,6 +195,22 @@ function solicitud(x, A, est, notas) {
  * Toda la vista. `est`: { tab, msg, docs: Map(id → {cargando}|{lista}|{error}), notas: {id: texto}, p: parámetros en texto,
  * alta: {email, nombre, notas} }.
  */
+/** Barras horizontales en SVG (sin librerías ni estilos en línea): una fila por agencia, una barra por serie. */
+function graficoBarras(filas, series, fmt = (n) => String(n)) {
+  const max = Math.max(1, ...filas.flatMap((x) => series.map(([k]) => Number(x[k] || 0))));
+  const W = 640, izq = 150, ancho = W - izq - 120, alto = 12, sep = 3, pad = 14;
+  const hFila = series.length * (alto + sep) + pad;
+  const barras = filas.map((x, i) => {
+    const y0 = i * hFila;
+    return `<text class="gr-nombre" x="0" y="${y0 + 12}">${esc(corto(x.nombre, 22))}</text>` + series.map(([k, , c], j) => {
+      const v = Number(x[k] || 0), w = Math.max(v ? 2 : 0, Math.round((v / max) * ancho)), y = y0 + j * (alto + sep);
+      return `<rect class="gr-${c}" x="${izq}" y="${y}" width="${w}" height="${alto}" rx="3"/><text class="gr-valor" x="${izq + w + 6}" y="${y + alto - 2}">${esc(fmt(v))}</text>`;
+    }).join('');
+  }).join('');
+  const leyenda = series.map(([, t, c]) => `<span class="gr-ley"><i class="gr-${c}"></i>${esc(t)}</span>`).join('');
+  return `<div class="gr-ley-fila">${leyenda}</div><svg class="gr" viewBox="0 0 ${W} ${filas.length * hFila}" role="img" aria-label="Gráfico por agencia">${barras}</svg>`;
+}
+
 export function htmlAgencias(A, est) {
   const tabs = `<nav class="tabs" role="tablist" aria-label="Agencias">${TABS_AGENCIAS.map(([k, l]) => {
     const n = k === 'solicitudes' ? pendientes(A.solicitudes).length : k === 'agencias' ? A.agencias.filter((x) => x.activa).length : k === 'chats' ? est.chat?.atencion || 0 : 0;
@@ -300,6 +316,9 @@ export function htmlAgencias(A, est) {
       ${E.error ? `<p class="aviso-chico" role="alert">${esc(E.error)}</p>` : !E.filas ? '<p class="hint m0">Calculando…</p>'
         : !filas.length ? '<p class="hint m0">Todavía no hay agencias.</p>'
         : `<p class="m0"><b>${tot.c}</b> cotizaciones · <b>${tot.s}</b> solicitudes · <b>${tot.ap}</b> aprobadas · ${plata(tot.m)} aprobados</p>
+          <h4 class="gr-tit">Cotizaciones, solicitudes y aprobadas</h4>${graficoBarras(filas, [['cotizaciones', 'Cotizaciones', 'a'], ['solicitudes', 'Solicitudes', 'b'], ['aprobadas', 'Aprobadas', 'c']])}
+          ${filas.some((x) => Number(x.monto_aprobado)) ? `<h4 class="gr-tit">Monto aprobado</h4>${graficoBarras(filas.filter((x) => Number(x.monto_aprobado)), [['monto_aprobado', 'Monto aprobado', 'c']], plata)}` : ''}
+          <h4 class="gr-tit">Detalle</h4>
           <div class="ag-tabla"><table class="tabla"><thead><tr><th>Agencia</th><th class="num">Cotizaciones</th><th class="num">Solicitudes</th><th class="num">Aprobadas</th><th class="num">Rechazadas</th><th class="num">Abiertas</th><th class="num">Cotiz. → solicitud</th><th class="num">Monto aprobado</th></tr></thead><tbody>${tabla}</tbody></table></div>`}
       <p class="hint m0">Las solicitudes se cuentan por la fecha en que la agencia las mandó. «Cotiz. → solicitud» es qué parte de las cotizaciones terminó en una solicitud: sirve para ver quién cotiza y quién avanza.</p></section>`;
   } else {

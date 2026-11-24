@@ -853,3 +853,15 @@ body:has(#drawer:not([hidden])) #btnClaudeWeb,body:has(#menu:not([hidden])) #btn
 .ag-msg p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
 .ag-msg-de{display:block;font-size:11.5px;color:var(--muted);margin-bottom:2px}
 .ag-msg.mutual{justify-self:end;border-color:var(--accent)}
+
+/* Gráficos de estadísticas por agencia (barras en SVG; colores validados contra la superficie) */
+.gr{width:100%;max-width:680px;height:auto;display:block;margin:6px 0 14px}
+.gr-nombre{fill:var(--fg);font-size:12px;font-weight:600}
+.gr-valor{fill:var(--fg);font-size:11px}
+.gr rect.gr-a,.gr-ley i.gr-a{fill:#7aa7ff;background:#7aa7ff}
+.gr rect.gr-b,.gr-ley i.gr-b{fill:#f6bd60;background:#f6bd60}
+.gr rect.gr-c,.gr-ley i.gr-c{fill:var(--barra);background:var(--barra)}
+.gr-ley-fila{display:flex;flex-wrap:wrap;gap:14px;margin:8px 0 2px;font-size:.85rem}
+.gr-ley{display:inline-flex;align-items:center;gap:6px}
+.gr-ley i{width:12px;height:12px;border-radius:3px;display:inline-block}
+.gr-tit{margin:14px 0 0;font-size:.95rem}
