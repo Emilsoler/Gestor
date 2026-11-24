@@ -356,7 +356,7 @@ const objetos = async () => (await fetch(`${ALMACEN}/__objetos`)).json();
 const PDF = (texto = 'hola') => new TextEncoder().encode(`%PDF-1.4\n% ${texto}\n%%EOF\n`);
 const JPG = (n = 1) => new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, n, 0xff, 0xd9]);
 const CBU = '2850590940090418135201'; // válido (dígitos verificadores)
-const DATOS = { dni: '11111111', domicilio: 'Bv. Colón 135, Bell Ville', estado_civil: 'casado', matrimonio_lugar: 'Bell Ville', matrimonio_fecha: '2015-03-20', celular: '3534 123456', cbu: CBU, cuenta: 'propia' };
+const DATOS = { dni: '11111111', domicilio: 'Bv. Colón 135, Bell Ville', estado_civil: 'casado', matrimonio_lugar: 'Bell Ville', matrimonio_fecha: '2015-03-20', conyuge_nombre: 'GOMEZ MARIA', conyuge_dni: '22333444', conyuge_nacionalidad: 'Argentina', conyuge_domicilio: 'Bv. Colón 135, Bell Ville', conyuge_nacimiento: '1985-05-10', celular: '3534 123456', cbu: CBU, cuenta: 'propia' };
 
 async function subir(jwt, id, slot, bytes, nombre = `${slot}.pdf`) {
   const fd = new FormData();
@@ -393,8 +393,9 @@ test('las reglas de la solicitud: copia igual en la función, casilleros como en
   assert.equal(SOL.relacionCuota(1, 0), null);
   assert.deepEqual(SOL.revisarDatos(DATOS, '2026-11-17').datos, { ...DATOS, celular: '3534123456' });
   const { errores } = SOL.revisarDatos({ dni: '12', domicilio: 'x', estado_civil: 'casado', matrimonio_fecha: '2030-01-01', celular: '12', cbu: CBU.slice(0, 21) + '9' }, '2026-11-17');
-  assert.equal(errores.length, 7, errores.join(' | '));
+  assert.equal(errores.length, 12, errores.join(' | ')); // 7 de antes + los 5 datos del cónyuge
   assert.deepEqual(SOL.revisarDatos({ ...DATOS, estado_civil: 'soltero' }, '2026-11-17').datos.matrimonio_lugar, undefined);
+  assert.equal(SOL.revisarDatos({ ...DATOS, estado_civil: 'soltero' }, '2026-11-17').datos.conyuge_nombre, undefined);
   // Cuenta de un tercero: titular y su CUIT (válido); la relación es opcional.
   const tercero = { ...DATOS, cuenta: 'terceros', cuenta_titular: 'Autos del Sur SA', cuenta_cuit: '30-44444444-0', cuenta_relacion: 'Agencia vendedora' };
   assert.deepEqual(SOL.revisarDatos(tercero, '2026-11-17').datos, { ...tercero, celular: '3534123456', cuenta_cuit: '30444444440' });

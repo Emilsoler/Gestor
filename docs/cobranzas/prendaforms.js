@@ -383,6 +383,11 @@ export function datosDeSolicitud(x, hoy = '') {
     nombre: String(x.denominacion || '').trim(), dni: String(d.dni || ''), estadoCivil: d.estado_civil === 'casado' ? 'casado' : d.estado_civil === 'soltero' ? 'soltero' : '',
     profesion: String(d.actividad || ''), calle: dom.calle, numero: dom.numero, localidad: dom.localidad,
   });
+  // Cónyuge: lo que la agencia cargó en la solicitud (solo si el cliente es casado/a). La profesión no se pide: queda para completar.
+  if (d.estado_civil === 'casado' && d.conyuge_nombre) {
+    const edad = edadDe(d.conyuge_nacimiento, hoy);
+    Object.assign(p.conyuge, { nombre: String(d.conyuge_nombre), dni: String(d.conyuge_dni || ''), nacionalidad: String(d.conyuge_nacionalidad || ''), domicilio: String(d.conyuge_domicilio || ''), estadoCivil: 'casado', edad: edad ? String(edad) : '' });
+  }
   Object.assign(p.vehiculo, { marca: v.marca, modelo: v.modelo || String(x.vehiculo || ''), anio: x.anio && /^\d{4}$/.test(String(x.anio)) ? String(x.anio) : '', dominio: v.dominio, motor: v.motor, chasis: v.chasis });
   Object.assign(p, DEFECTOS_CONTRATO, { primerVto: sumarDias(hoy, DIAS_PRIMERA_CUOTA) });
   return p;

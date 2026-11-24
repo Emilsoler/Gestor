@@ -857,7 +857,7 @@ Mutual y no nombra a InfoAuto.
      Ya no se sabe qué archivo es cuál: la Mutual los mira y, si falta algo, lo pide por otra vía. Antes eran un casillero por documento
      (DNI, recibos, título, servicio, CBU…): las solicitudes anteriores conservan sus archivos con esos `slot`, y `docsSinAdjuntar`
      (solicitud.js) mide lo que falta con los grupos de entonces o con el casillero único, según la solicitud.
-  5. **Datos del cliente** (empleo o actividad opcional, DNI, domicilio real, estado civil —casado: lugar y fecha del matrimonio—, celular,
+  5. **Datos del cliente** (empleo o actividad opcional, DNI, domicilio real, estado civil —casado: lugar y fecha del matrimonio y, desde el 24/11/2026, los datos del cónyuge: apellido y nombre, DNI, nacionalidad, fecha de nacimiento y domicilio, todos obligatorios, en `datos.conyuge_*` sin migración; la copia no negociable del contrato de prenda los toma de ahí—, celular,
      y CBU o CVU **opcional**, con una casilla alternativa para el **alias** de la cuenta, también opcional —6 a 20 caracteres: letras, números,
      puntos o guiones, sin espacios; pueden ir los dos; pedido de la persona del 24/11/2026, `aliasValido` en `solicitud.js`, se guarda en
      `datos.alias` sin migración—; si se escribe el CBU, se controlan sus dígitos verificadores, y con CBU o alias hay que decir si la cuenta es **propia o de un tercero**

@@ -47,7 +47,7 @@ const S = {
 function nuevaSol() {
   return {
     abierta: false, ingresos: null, ingreso: '', categoria: '', docs: {}, chk: {},
-    actividad: '', dni: '', domicilio: '', estado_civil: '', matrimonio_lugar: '', matrimonio_fecha: '', celular: '', cbu: '', alias: '', conformidad: false,
+    actividad: '', dni: '', domicilio: '', estado_civil: '', matrimonio_lugar: '', matrimonio_fecha: '', conyuge_nombre: '', conyuge_dni: '', conyuge_nacionalidad: '', conyuge_domicilio: '', conyuge_nacimiento: '', celular: '', cbu: '', alias: '', conformidad: false,
     cuenta: '', cuenta_titular: '', cuenta_cuit: '', cuenta_relacion: '',
     errores: [], error: '', enviando: false, progreso: '', preparando: 0, enviada: false, envio: null,
   };
@@ -242,6 +242,7 @@ const sinAdjuntar = () => docsRequeridos(S.sol.categoria, S.res.anio).filter((k)
 function revisarSolicitud() {
   const L = S.sol, errores = [];
   const rd = revisarDatos({ actividad: L.actividad, dni: L.dni, domicilio: L.domicilio, estado_civil: L.estado_civil, matrimonio_lugar: L.matrimonio_lugar, matrimonio_fecha: L.matrimonio_fecha,
+    conyuge_nombre: L.conyuge_nombre, conyuge_dni: L.conyuge_dni, conyuge_nacionalidad: L.conyuge_nacionalidad, conyuge_domicilio: L.conyuge_domicilio, conyuge_nacimiento: L.conyuge_nacimiento,
     celular: L.celular, cbu: L.cbu, alias: L.alias, cuenta: L.cuenta, cuenta_titular: L.cuenta_titular, cuenta_cuit: L.cuenta_cuit, cuenta_relacion: L.cuenta_relacion }, hoy());
   if (rd.errores) errores.push(...rd.errores);
   if (!L.conformidad) errores.push('Marcá que el cliente está de acuerdo con enviar sus datos y documentos a la Mutual.');
@@ -764,7 +765,14 @@ function vistaSolicitud() {
         <button type="button" role="radio" data-civil="casado" aria-checked="${L.estado_civil === 'casado'}">Casado/a</button></div></div>
       ${L.estado_civil === 'casado' ? `<div class="grilla">
         <label class="f">Lugar del matrimonio<input data-campo="matrimonio_lugar" autocomplete="off" maxlength="200" value="${v('matrimonio_lugar')}"></label>
-        <label class="f">Fecha del matrimonio<input data-campo="matrimonio_fecha" type="date" max="${hoy()}" value="${v('matrimonio_fecha')}"></label></div>` : ''}</div>
+        <label class="f">Fecha del matrimonio<input data-campo="matrimonio_fecha" type="date" max="${hoy()}" value="${v('matrimonio_fecha')}"></label></div>
+      <p class="hint m0"><b>Datos del cónyuge</b></p>
+      <div class="grilla">
+        <label class="f">Apellido y nombre<input data-campo="conyuge_nombre" autocomplete="off" maxlength="200" value="${v('conyuge_nombre')}"></label>
+        <label class="f">DNI<input data-campo="conyuge_dni" inputmode="numeric" autocomplete="off" maxlength="10" value="${v('conyuge_dni')}"></label>
+        <label class="f">Nacionalidad<input data-campo="conyuge_nacionalidad" autocomplete="off" maxlength="80" value="${v('conyuge_nacionalidad')}"></label>
+        <label class="f">Fecha de nacimiento<input data-campo="conyuge_nacimiento" type="date" max="${hoy()}" value="${v('conyuge_nacimiento')}"></label>
+        <label class="f ancho">Domicilio<input data-campo="conyuge_domicilio" autocomplete="off" maxlength="300" value="${v('conyuge_domicilio')}"></label></div>` : ''}</div>
     <div class="bloque"><label class="f">Celular, con característica<input data-campo="celular" type="tel" inputmode="tel" autocomplete="off" maxlength="25" placeholder="Ej.: 3534 123456" value="${v('celular')}"></label></div>
     <div class="bloque"><label class="f">CBU o CVU donde se deposita el crédito (opcional)<input data-campo="cbu" inputmode="numeric" autocomplete="off" maxlength="30" value="${v('cbu')}"></label>
       <label class="f">O, si no lo tenés a mano, el alias de la cuenta (opcional)<input data-campo="alias" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="20" placeholder="Ej.: juan.perez.mp" value="${v('alias')}"></label>

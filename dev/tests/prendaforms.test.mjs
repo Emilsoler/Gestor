@@ -6,6 +6,7 @@ import { datosDeSolicitud, textoVencimientos, faltanFormularios, armarFormulario
 
 const sol = { denominacion: 'PEREZ JUAN CARLOS', cuit: '20123456786', monto: 4200000, cuotas: 24, cuota: 301500.5, tasa: 5, vehiculo: 'FIAT CRONOS 1.3 DRIVE', anio: 2021,
   datos: { dni: '12345678', domicilio: 'San Martín 450, Bell Ville', estado_civil: 'casado', actividad: 'Comerciante' } };
+const solCasado = { ...sol, datos: { ...sol.datos, conyuge_nombre: 'GOMEZ MARIA', conyuge_dni: '22333444', conyuge_nacionalidad: 'Argentina', conyuge_domicilio: 'San Martín 450, Bell Ville', conyuge_nacimiento: '1985-05-10' } };
 
 test('los datos de la solicitud se pasan sin inventar nada', () => {
   const p = datosDeSolicitud(sol, '2026-11-24');
@@ -43,6 +44,13 @@ test('cónyuge: con guion si el deudor no es casado, a completar si lo es', () =
   const soltero = conDomicilioDelDeudor(datosDeSolicitud({ ...sol, datos: { ...sol.datos, estado_civil: 'soltero' } }, '2026-11-24'));
   for (const v of Object.values(soltero.conyuge)) assert.equal(v, '-');
   assert.ok(faltanFormularios(casado).includes('Cónyuge: nombre y apellido'));
+});
+
+test('el cónyuge se toma de lo que cargó la agencia', () => {
+  const p = conDomicilioDelDeudor(datosDeSolicitud(solCasado, '2026-11-24'));
+  assert.equal(p.conyuge.nombre, 'GOMEZ MARIA'); assert.equal(p.conyuge.dni, '22333444'); assert.equal(p.conyuge.edad, '41');
+  assert.equal(p.conyuge.nacionalidad, 'Argentina'); assert.equal(p.conyuge.estadoCivil, 'casado');
+  assert.ok(!faltanFormularios(p).includes('Cónyuge: nombre y apellido'));
 });
 
 test('vencimientos: solo si se sabe la primera cuota', () => {

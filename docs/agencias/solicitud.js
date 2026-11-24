@@ -113,12 +113,21 @@ export function revisarDatos(d, hoy) {
   if (domicilio.length < 5) errores.push('Escribí el domicilio real del cliente.');
   const estado = d?.estado_civil;
   if (!['soltero', 'casado'].includes(estado)) errores.push('Elegí el estado civil.');
-  let lugar = '', fecha = '';
+  let lugar = '', fecha = '', conyuge = {};
   if (estado === 'casado') {
     lugar = txt(d?.matrimonio_lugar, 200);
     fecha = String(d?.matrimonio_fecha ?? '');
     if (lugar.length < 2) errores.push('Escribí el lugar del matrimonio.');
     if (!fechaValida(fecha) || fecha < '1930-01-01' || fecha > hoy) errores.push('Escribí la fecha del matrimonio.');
+    // Datos del cónyuge (nov 2026): salen en la copia no negociable del contrato de prenda.
+    const cNombre = txt(d?.conyuge_nombre, 200), cDni = String(d?.conyuge_dni ?? '').replace(/\D/g, ''), cNac = txt(d?.conyuge_nacionalidad, 80);
+    const cDom = txt(d?.conyuge_domicilio, 300), cFecha = String(d?.conyuge_nacimiento ?? '');
+    if (cNombre.length < 3) errores.push('Escribí el apellido y nombre del cónyuge.');
+    if (!/^\d{7,8}$/.test(cDni)) errores.push('El DNI del cónyuge tiene que tener 7 u 8 números.');
+    if (cNac.length < 3) errores.push('Escribí la nacionalidad del cónyuge.');
+    if (cDom.length < 5) errores.push('Escribí el domicilio del cónyuge.');
+    if (!fechaValida(cFecha) || cFecha < '1900-01-01' || cFecha > hoy) errores.push('Escribí la fecha de nacimiento del cónyuge.');
+    conyuge = { conyuge_nombre: cNombre, conyuge_dni: cDni, conyuge_nacionalidad: cNac, conyuge_domicilio: cDom, conyuge_nacimiento: cFecha };
   }
   const celular = String(d?.celular ?? '').replace(/\D/g, '');
   if (celular.length < 8 || celular.length > 15) errores.push('El celular tiene que tener entre 8 y 15 números, con la característica.');
@@ -143,6 +152,6 @@ export function revisarDatos(d, hoy) {
   const actividad = txt(d?.actividad, 200);
   if (errores.length) return { errores };
   return {
-    datos: { ...(actividad ? { actividad } : {}), dni, domicilio, estado_civil: estado, ...(estado === 'casado' ? { matrimonio_lugar: lugar, matrimonio_fecha: fecha } : {}), celular, ...(cbu ? { cbu } : {}), ...(alias ? { alias } : {}), ...(hayCuenta ? { cuenta } : {}), ...tercero },
+    datos: { ...(actividad ? { actividad } : {}), dni, domicilio, estado_civil: estado, ...(estado === 'casado' ? { matrimonio_lugar: lugar, matrimonio_fecha: fecha, ...conyuge } : {}), celular, ...(cbu ? { cbu } : {}), ...(alias ? { alias } : {}), ...(hayCuenta ? { cuenta } : {}), ...tercero },
   };
 }
