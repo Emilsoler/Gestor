@@ -76,6 +76,9 @@ export function cbuValido(s) {
     && dv(c.slice(8, 21), [3, 9, 7, 1, 3, 9, 7, 1, 3, 9, 7, 1, 3]) === Number(c[21]);
 }
 
+/** Alias de CBU/CVU: de 6 a 20 caracteres, con letras, números, puntos y guiones (sin espacios). */
+export const aliasValido = (s) => /^[a-zA-Z0-9.-]{6,20}$/.test(String(s ?? '').trim());
+
 /** CUIT, CUIL o CDI: 11 números y el último, el dígito verificador (módulo 11). Igual que en bcra.ts. */
 export function cuitValido(s) {
   const c = String(s ?? '').replace(/\D/g, '');
@@ -123,9 +126,13 @@ export function revisarDatos(d, hoy) {
   // también hay que decir de quién es la cuenta: del cliente o de un tercero (con quién es el titular).
   const cbu = String(d?.cbu ?? '').replace(/\D/g, '');
   if (cbu && !cbuValido(cbu)) errores.push(cbu.length === 22 ? 'Ese CBU o CVU no es válido: revisá los números.' : 'El CBU o CVU tiene que tener 22 números.');
-  const cuenta = cbu ? d?.cuenta : undefined;
+  // Alternativa al CBU/CVU: el alias de la cuenta (también opcional; pueden ir los dos).
+  const alias = String(d?.alias ?? '').trim();
+  if (alias && !aliasValido(alias)) errores.push('El alias tiene que tener de 6 a 20 caracteres: letras, números, puntos o guiones, sin espacios.');
+  const hayCuenta = Boolean(cbu || alias);
+  const cuenta = hayCuenta ? d?.cuenta : undefined;
   let tercero = {};
-  if (cbu && !['propia', 'terceros'].includes(cuenta)) errores.push('Elegí si la cuenta es del cliente o de un tercero.');
+  if (hayCuenta && !['propia', 'terceros'].includes(cuenta)) errores.push('Elegí si la cuenta es del cliente o de un tercero.');
   if (cuenta === 'terceros') {
     const titular = txt(d?.cuenta_titular, 200), cuit = String(d?.cuenta_cuit ?? '').replace(/\D/g, '');
     if (titular.length < 3) errores.push('Escribí el nombre o la razón social del titular de la cuenta.');
@@ -136,6 +143,6 @@ export function revisarDatos(d, hoy) {
   const actividad = txt(d?.actividad, 200);
   if (errores.length) return { errores };
   return {
-    datos: { ...(actividad ? { actividad } : {}), dni, domicilio, estado_civil: estado, ...(estado === 'casado' ? { matrimonio_lugar: lugar, matrimonio_fecha: fecha } : {}), celular, ...(cbu ? { cbu, cuenta } : {}), ...tercero },
+    datos: { ...(actividad ? { actividad } : {}), dni, domicilio, estado_civil: estado, ...(estado === 'casado' ? { matrimonio_lugar: lugar, matrimonio_fecha: fecha } : {}), celular, ...(cbu ? { cbu } : {}), ...(alias ? { alias } : {}), ...(hayCuenta ? { cuenta } : {}), ...tercero },
   };
 }

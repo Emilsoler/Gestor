@@ -47,7 +47,7 @@ const S = {
 function nuevaSol() {
   return {
     abierta: false, ingresos: null, ingreso: '', categoria: '', docs: {}, chk: {},
-    actividad: '', dni: '', domicilio: '', estado_civil: '', matrimonio_lugar: '', matrimonio_fecha: '', celular: '', cbu: '', conformidad: false,
+    actividad: '', dni: '', domicilio: '', estado_civil: '', matrimonio_lugar: '', matrimonio_fecha: '', celular: '', cbu: '', alias: '', conformidad: false,
     cuenta: '', cuenta_titular: '', cuenta_cuit: '', cuenta_relacion: '',
     errores: [], error: '', enviando: false, progreso: '', preparando: 0, enviada: false, envio: null,
   };
@@ -242,7 +242,7 @@ const sinAdjuntar = () => docsRequeridos(S.sol.categoria, S.res.anio).filter((k)
 function revisarSolicitud() {
   const L = S.sol, errores = [];
   const rd = revisarDatos({ actividad: L.actividad, dni: L.dni, domicilio: L.domicilio, estado_civil: L.estado_civil, matrimonio_lugar: L.matrimonio_lugar, matrimonio_fecha: L.matrimonio_fecha,
-    celular: L.celular, cbu: L.cbu, cuenta: L.cuenta, cuenta_titular: L.cuenta_titular, cuenta_cuit: L.cuenta_cuit, cuenta_relacion: L.cuenta_relacion }, hoy());
+    celular: L.celular, cbu: L.cbu, alias: L.alias, cuenta: L.cuenta, cuenta_titular: L.cuenta_titular, cuenta_cuit: L.cuenta_cuit, cuenta_relacion: L.cuenta_relacion }, hoy());
   if (rd.errores) errores.push(...rd.errores);
   if (!L.conformidad) errores.push('Marcá que el cliente está de acuerdo con enviar sus datos y documentos a la Mutual.');
   return { errores, datos: rd.datos };
@@ -767,6 +767,7 @@ function vistaSolicitud() {
         <label class="f">Fecha del matrimonio<input data-campo="matrimonio_fecha" type="date" max="${hoy()}" value="${v('matrimonio_fecha')}"></label></div>` : ''}</div>
     <div class="bloque"><label class="f">Celular, con característica<input data-campo="celular" type="tel" inputmode="tel" autocomplete="off" maxlength="25" placeholder="Ej.: 3534 123456" value="${v('celular')}"></label></div>
     <div class="bloque"><label class="f">CBU o CVU donde se deposita el crédito (opcional)<input data-campo="cbu" inputmode="numeric" autocomplete="off" maxlength="30" value="${v('cbu')}"></label>
+      <label class="f">O, si no lo tenés a mano, el alias de la cuenta (opcional)<input data-campo="alias" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="20" placeholder="Ej.: juan.perez.mp" value="${v('alias')}"></label>
       <div class="f">¿De quién es la cuenta?<div class="opciones2" role="radiogroup" aria-label="Titular de la cuenta">
         <button type="button" role="radio" data-cuenta="propia" aria-checked="${L.cuenta === 'propia'}">Cuenta propia</button>
         <button type="button" role="radio" data-cuenta="terceros" aria-checked="${L.cuenta === 'terceros'}">De un tercero</button></div></div>
@@ -774,7 +775,7 @@ function vistaSolicitud() {
         <label class="f">Titular de la cuenta (nombre o razón social)<input data-campo="cuenta_titular" autocomplete="off" maxlength="200" value="${v('cuenta_titular')}"></label>
         <label class="f">CUIT o CUIL del titular<input data-campo="cuenta_cuit" inputmode="numeric" autocomplete="off" maxlength="20" value="${v('cuenta_cuit')}"></label>
         <label class="f ancho">Relación con el cliente (opcional)<input data-campo="cuenta_relacion" autocomplete="off" maxlength="120" placeholder="Ej.: agencia vendedora, cónyuge" value="${v('cuenta_relacion')}"></label></div>` : ''}
-      ${L.cuenta === 'terceros' ? '<p class="hint m0">Si la cuenta es de un tercero, sumá a los archivos una constancia que muestre el CBU y quién es el titular.</p>' : ''}</div>
+      ${L.cuenta === 'terceros' ? '<p class="hint m0">Si la cuenta es de un tercero, sumá a los archivos una constancia que muestre el CBU o alias y quién es el titular.</p>' : ''}</div>
     <label class="check"><input type="checkbox" id="chkConformidad" ${L.conformidad ? 'checked' : ''}> El cliente está de acuerdo con enviar estos datos y documentos a la Asociación Mutual Bell para que evalúe el crédito.</label>
     ${sinAdjuntar().length ? '<p class="hint m0">No adjuntaste ningún archivo. Podés enviar la solicitud igual y mandar los documentos a la Mutual por otra vía.</p>' : ''}
     ${L.errores.length ? `<div class="aviso m0" role="alert" id="erroresSol"><b>Antes de enviar, falta:</b><ul>${L.errores.map((e) => `<li>${esc(e)}</li>`).join('')}</ul></div>` : ''}
