@@ -853,7 +853,9 @@ Mutual y no nombra a InfoAuto.
      (DNI, recibos, título, servicio, CBU…): las solicitudes anteriores conservan sus archivos con esos `slot`, y `docsSinAdjuntar`
      (solicitud.js) mide lo que falta con los grupos de entonces o con el casillero único, según la solicitud.
   5. **Datos del cliente** (empleo o actividad opcional, DNI, domicilio real, estado civil —casado: lugar y fecha del matrimonio—, celular,
-     y CBU o CVU **opcional**; si se escribe, se controlan sus dígitos verificadores y hay que decir si la cuenta es **propia o de un tercero**
+     y CBU o CVU **opcional**, con una casilla alternativa para el **alias** de la cuenta, también opcional —6 a 20 caracteres: letras, números,
+     puntos o guiones, sin espacios; pueden ir los dos; pedido de la persona del 24/11/2026, `aliasValido` en `solicitud.js`, se guarda en
+     `datos.alias` sin migración—; si se escribe el CBU, se controlan sus dígitos verificadores, y con CBU o alias hay que decir si la cuenta es **propia o de un tercero**
      (de un tercero: titular, su CUIT o CUIL —validado— y la relación con el cliente, opcional). Más la conformidad del cliente para mandar
      sus datos a la Mutual. Los datos son obligatorios; **los documentos no** (migración 0030, pedido de la persona del 17/11/2026: a veces
      llegan por otra vía). La app avisa «No adjuntaste ningún archivo» y deja enviar; la Mutual ve en la solicitud que no hay archivos.
