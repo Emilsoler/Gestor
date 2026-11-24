@@ -300,7 +300,7 @@ function aniosDeVersion(m: any, minimo: number, actual: number): string[] {
   if (m?.list_price) xs.push('0km');
   if (m?.prices) {
     const hasta = Math.min(Math.trunc(Number(m.prices_to)) || 0, actual + 1);
-    const desde = Math.max(Math.trunc(Number(m.prices_from)) || hasta, minimo || 0, 1990);
+    const desde = Math.max(Math.trunc(Number(m.prices_from)) || hasta, minimo || 0, 1900);
     for (let y = hasta; y >= desde; y--) xs.push(String(y));
   }
   return xs;
@@ -677,7 +677,9 @@ export async function manejar(req: Request): Promise<Response> {
     if (!uid) throw new Falla('La sesión venció: volvé a ingresar.', 401, 'sin_sesion');
     const ses = await rpc('agencia_sesion', { p_user: uid });
     if (!ses?.agencia) throw new Falla('Esta cuenta no está habilitada para usar el cotizador.', 403, 'sin_acceso');
-    const ag = ses.agencia, a = ses.ajustes || {};
+    const ag = ses.agencia;
+    // «Todos los años» (solo la agencia marcada, la cuenta de la persona): sin piso de año ni tope de antigüedad.
+    const a = ag.todos_los_anios ? { ...(ses.ajustes || {}), anio_minimo: 0, antiguedad_max: null } : (ses.ajustes || {});
 
     // Los archivos llegan como formulario (multipart), uno por pedido; todo lo demás, en JSON.
     let pedido: any, form: FormData | null = null;

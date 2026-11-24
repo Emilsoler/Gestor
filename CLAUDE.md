@@ -807,6 +807,11 @@ Mutual y no nombra a InfoAuto.
 - **Agencia de prueba**: «Emiliano Soler» (emiliano_soler@hotmail.com; se llamaba «PROPIO» hasta el 19/11/2026, el nombre está en la base, no en el código), cuenta de la persona para probar el recorrido de una agencia;
   su `informada_infoauto` es la fecha del alta (17/11/2026), no un aviso real (lo dice su nota). Ocupa uno de los 20 lugares:
   pausarla (`gestor.pausar_agencia`) cuando no se use.
+- **Todos los años** (migración 0047, pedido de la persona del 24/11/2026): `agencias.todos_los_anios = true` (hoy solo la cuenta «Emiliano Soler»)
+  hace que la función `agencias` ignore `anio_minimo` y `antiguedad_max` **para esa agencia** (`index.ts`, justo después de `agencia_sesion`): el cotizador le
+  ofrece modelos y años de cualquier antigüedad. Las demás agencias siguen con los parámetros de la Mutual. Sigue sin llegar ningún precio ni CODIA
+  (las reglas de InfoAuto no cambian). La tasa de un año sin tramo en `tasas` es `tasa_mensual`. Para dársela o quitársela a otra cuenta:
+  `update public.agencias set todos_los_anios = … where email = '…'` (con `set_config('gestor.autor', 'Claude', true)`), solo si la persona lo pide.
 - **Simulación rápida** (migración 0036, pedido de la persona del 19/11/2026): solapa «Simulación rápida» del cotizador, **solo para
   la agencia con `agencias.simulacion_rapida = true`** (la cuenta «Emiliano Soler» y las agencias que la persona pidió; la lista está en la base: `select nombre from public.agencias where simulacion_rapida`). Capital, cuotas, tasa mensual y los gastos de
   `GASTOS_DEFECTO` escritos a mano (arrancan en la tasa del 0 km y los gastos de los parámetros), sin CUIT, sin BCRA y sin vehículo.
