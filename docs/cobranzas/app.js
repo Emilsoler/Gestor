@@ -755,10 +755,10 @@ async function accionAgencias(act, b) {
     render(); return;
   }
   if (act === 'ag-pdf') { await pdfDeSolicitud(id); return; }
-  if (act === 'gen-abrir') { await abrirGenerar(id, b.dataset.tipo); return; }
-  if (act === 'gen-cerrar') { G.gen = null; render(); return; }
-  if (act === 'gen-pdf') { await generarFormularios(); return; }
-  if (act === 'gen-prueba') { await hojaPruebaFormularios(); return; }
+  if (act === 'ag-gen-abrir') { await abrirGenerar(id, b.dataset.tipo); return; }
+  if (act === 'ag-gen-cerrar') { G.gen = null; render(); return; }
+  if (act === 'ag-gen-pdf') { await generarFormularios(); return; }
+  if (act === 'ag-gen-prueba') { await hojaPruebaFormularios(); return; }
   if (act === 'ag-borrar-preguntar' || act === 'ag-borrar-no') { G.borrar = act === 'ag-borrar-preguntar' ? id : ''; render(); return; }
   if (act === 'ag-borrar') {
     try { await eliminarSolicitud(id); } catch (e) { toast(mensaje(e, 'no se pudo eliminar la solicitud')); return; }

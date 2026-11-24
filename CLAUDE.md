@@ -927,7 +927,7 @@ de la solicitud, editables, y la lista de lo que va a salir en blanco.
   dibujo del formulario. Una hoja por hoja oficial: 03 frente y dorso, contrato original frente y dorso, copia no negociable
   frente y dorso. «Hoja de prueba» (cruces) y ajuste `dx`/`dy` en mm, que se recuerda en el dispositivo (`cb.prendaAjuste`).
 - **Código**: `docs/cobranzas/prendaforms.js` (posiciones medidas sobre los escaneos a 150 dpi; `datosDeSolicitud`, `faltanFormularios`,
-  `armarFormularios`, `hojaDePrueba`), la pantalla en `agencias.js` (`htmlGenerar`) y las acciones en `app.js` (`gen-*`). Usa pdf-lib
+  `armarFormularios`, `hojaDePrueba`), la pantalla en `agencias.js` (`htmlGenerar`) y las acciones en `app.js` (`ag-gen-*`). Usa pdf-lib
   (carga diferida, como `unirpdf.js`). Prueba: `node --test dev/tests/prendaforms.test.mjs` (sin stack).
 - **Datos fijos de la Mutual** (`MUTUAL`, en el código: son institucionales): inscripción 30-62154758-1, «ASOCIACION MUTUAL BELL» y debajo
   «A. ECONOMICA» (su actividad; en el contrato va en el renglón de «Profesión»), Bv. Colón 135, Bell Ville, personería INAES N° 447 del
