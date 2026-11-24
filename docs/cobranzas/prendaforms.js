@@ -17,14 +17,28 @@ let lib = null;
 const cargarLib = async () => (lib ||= await import('../vendor/pdf-lib.js'));
 
 const MM = 72 / 25.4;
-// El escaneo (A4, 1240 × 1755 px) es la hoja entera estirada a A4: cada hoja oficial tiene su tamaño real (ancho × alto, en mm,
-// medidos por la persona el 24/11/2026) y las posiciones se llevan de los píxeles del escaneo a ese tamaño, en cada eje.
+// Cada hoja oficial tiene su tamaño real (ancho × alto, en mm, medidos por la persona el 24/11/2026). Las posiciones de abajo
+// están en píxeles de los escaneos (1240 × 1755), pero el escaneo NO es la hoja entera estirada: tiene márgenes y su propia
+// escala. El 24/11/2026 una impresión salió corrida (arriba casi bien, abajo hasta 2 cm más arriba) y se midió sobre una foto
+// enderezada del formulario completo: en el 03 (hoja 1) un píxel son 0,189 mm, igual en los dos ejes, y la esquina de la hoja
+// está en el píxel (83; 26). Esa relación es la de CAL: mm = px × k + o. Las hojas sin medir (dorso del 03 y los dos
+// contratos) siguen con el supuesto anterior (hoja entera estirada), que se sabe equivocado: hasta medirlas sobre una foto
+// del formulario en blanco, no imprimir esas sobre el papel oficial sin probar antes en una hoja común.
 const SW = 1240, SH = 1755;
 const HOJAS = { f03: [202, 305], a: [214, 328], b: [213, 317] }; // Formulario 03, contrato original, copia no negociable
+const CAL = { f03: [{ k: 0.189, ox: -15.7, oy: -5.0 }, null], a: [null, null], b: [null, null] }; // por hoja: frente y dorso
 const tam = (clave) => HOJAS[clave].map((m) => m * MM);
-const escala = (pg) => { const { width, height } = pg.getSize(); return { sx: width / SW, sy: height / SH, H: height }; };
+const calDe = new WeakMap(); // página → su calibración (la pone `nuevaPagina`)
+const nuevaPagina = (doc, clave, i) => { const pg = doc.addPage(tam(clave)); calDe.set(pg, CAL[clave]?.[i] || null); return pg; };
+/** De píxeles del escaneo a puntos del PDF: x = px × sx + ox; y (desde arriba) = py × sy + oy. */
+const escala = (pg) => {
+  const { width, height } = pg.getSize(), c = calDe.get(pg);
+  if (c) return { sx: c.k * MM, sy: c.k * MM, ox: c.ox * MM, oy: c.oy * MM, H: height };
+  return { sx: width / SW, sy: height / SH, ox: 0, oy: 0, H: height };
+};
 
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+const dosCifras = (a) => String(a % 100).padStart(2, '0'); // los casilleros del 03 son de dos cifras para el año
 const partes = (iso) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || ''); return m ? { a: +m[1], m: +m[2], d: +m[3] } : null; };
 
 /**
@@ -63,7 +77,7 @@ export const nuevosDatos = () => ({
 // Formulario 03, hoja 1. Columna del acreedor (izquierda) y del deudor (derecha, a +404 px).
 const COL = { A: 317, D: 721 };
 const F03 = {
-  dia: { x: 358, y: 247, w: 24, tam: 8 }, mes: { x: 401, y: 247, w: 24, tam: 8 }, anio: { x: 443, y: 247, w: 30, tam: 8 },
+  dia: { x: 334, y: 253, w: 24, tam: 8 }, mes: { x: 384, y: 253, w: 24, tam: 8 }, anio: { x: 418, y: 253, w: 24, tam: 8 },
   monto: { x: 322, y: 288, w: 185 }, dominio: { x: 548, y: 288, w: 228 },
   inscripcion: { x: 460, y: 379, w: 230 },
   nombre: [{ y: 421 }, { y: 462 }, { y: 491 }],
@@ -73,11 +87,11 @@ const F03 = {
   partido: { y: 663, w: 222 }, provincia: { dx: 240, y: 663, w: 132 },
   // personas físicas (deudor)
   docNro: { x: 725, y: 797, w: 130 }, autoridad: { x: 872, y: 797, w: 222 },
-  nac: { dia: { x: 734, y: 887, w: 26 }, mes: { x: 773, y: 887, w: 26 }, anio: { x: 808, y: 887, w: 36 } },
+  nac: { dia: { x: 724, y: 887, w: 26 }, mes: { x: 768, y: 887, w: 26 }, anio: { x: 808, y: 887, w: 36 } },
   conyuge: { x: 725, y: 926, w: 370 },
   // entes jurídicos (acreedor)
   personeria: { x: 322, y: 977, w: 370 }, datosInsc: { x: 322, y: 1051, w: 222 },
-  finsc: { dia: { x: 559, y: 1051, w: 30 }, mes: { x: 608, y: 1051, w: 30 }, anio: { x: 659, y: 1051, w: 34 } },
+  finsc: { dia: { x: 580, y: 1051, w: 30 }, mes: { x: 624, y: 1051, w: 30 }, anio: { x: 690, y: 1051, w: 34 } },
   // G: automotor
   g: {
     dominio: { x: 512, y: 1264, w: 180 }, marca: { x: 382, y: 1301, w: 310 }, tipo: { x: 358, y: 1338, w: 334 },
@@ -199,7 +213,7 @@ export async function armarFormularios(p, { dx = 0, dy = 0, hoy = '', fondos = n
 
   const seguro = (t) => { let o = ''; for (const c of String(t ?? '')) { try { fn.encodeText(c); o += c; } catch { o += '?'; } } return o; };
   const pagina = async (clave, i) => {
-    const pg = doc.addPage(tam(clave));
+    const pg = nuevaPagina(doc, clave, i);
     const img = fondos?.[clave]?.[i];
     if (img) { const im = await doc.embedJpg(img); const { width, height } = pg.getSize(); pg.drawImage(im, { x: 0, y: 0, width, height }); }
     return pg;
@@ -209,19 +223,19 @@ export async function armarFormularios(p, { dx = 0, dy = 0, hoy = '', fondos = n
     const t = seguro(texto).replace(/\s+/g, ' ').trim();
     if (!t || !c) return;
     let tam = c.tam || 9.5;
-    const { sx, sy, H } = escala(pg);
+    const { sx, sy, ox, oy, H } = escala(pg);
     const w = (c.w || 9999) * sx;
     while (tam > 6 && fn.widthOfTextAtSize(t, tam) > w) tam -= 0.25;
-    pg.drawText(t, { x: (c.x + (extra.dx || 0)) * sx + dx * MM, y: H - c.y * sy - dy * MM, size: tam, font: fn, color: tinta });
+    pg.drawText(t, { x: (c.x + (extra.dx || 0)) * sx + ox + dx * MM, y: H - (c.y * sy + oy) - dy * MM, size: tam, font: fn, color: tinta });
   };
   const X = (pg, [cx, cy]) => {
-    const { sx, sy, H } = escala(pg), tam = 13, w = fb.widthOfTextAtSize('X', tam);
-    pg.drawText('X', { x: cx * sx - w / 2 + dx * MM, y: H - cy * sy - tam * 0.35 - dy * MM, size: tam, font: fb, color: tinta });
+    const { sx, sy, ox, oy, H } = escala(pg), tam = 13, w = fb.widthOfTextAtSize('X', tam);
+    pg.drawText('X', { x: cx * sx + ox - w / 2 + dx * MM, y: H - (cy * sy + oy) - tam * 0.35 - dy * MM, size: tam, font: fb, color: tinta });
   };
   const raya = (pg, [x1, y1, x2, y2]) => {
     if (!x2) return;
-    const { sx, sy, H } = escala(pg);
-    pg.drawLine({ start: { x: x1 * sx + dx * MM, y: H - y1 * sy - dy * MM }, end: { x: x2 * sx + dx * MM, y: H - y2 * sy - dy * MM }, thickness: 1.2, color: tinta });
+    const { sx, sy, ox, oy, H } = escala(pg);
+    pg.drawLine({ start: { x: x1 * sx + ox + dx * MM, y: H - (y1 * sy + oy) - dy * MM }, end: { x: x2 * sx + ox + dx * MM, y: H - (y2 * sy + oy) - dy * MM }, thickness: 1.2, color: tinta });
   };
   // un texto largo repartido en varios renglones (el vehículo, los vencimientos…)
   const renglones = (pg, lineas, texto) => {
@@ -256,7 +270,7 @@ export async function armarFormularios(p, { dx = 0, dy = 0, hoy = '', fondos = n
   // ---- Formulario 03 ----------------------------------------------------------------------------------------
   if (cuales.includes('f03')) {
     const pg = await pagina('f03', 0);
-    if (fp) { T(pg, F03.dia, String(fp.d).padStart(2, '0')); T(pg, F03.mes, String(fp.m).padStart(2, '0')); T(pg, F03.anio, String(fp.a)); }
+    if (fp) { T(pg, F03.dia, String(fp.d).padStart(2, '0')); T(pg, F03.mes, String(fp.m).padStart(2, '0')); T(pg, F03.anio, dosCifras(fp.a)); }
     T(pg, F03.monto, montoTxt); T(pg, F03.dominio, v.dominio);
     T(pg, F03.inscripcion, ac.inscripcion);
     // acreedor (ente jurídico) y deudor (persona física): mismos renglones, columnas distintas
@@ -273,12 +287,12 @@ export async function armarFormularios(p, { dx = 0, dy = 0, hoy = '', fondos = n
     // deudor: documento, nacimiento, estado civil, cónyuge
     if (docCaja) X(pg, CAJA_DOC[docCaja]);
     T(pg, F03.docNro, dniOficio(de.dni)); T(pg, F03.autoridad, de.autoridad);
-    if (nac) { T(pg, F03.nac.dia, String(nac.d).padStart(2, '0')); T(pg, F03.nac.mes, String(nac.m).padStart(2, '0')); T(pg, F03.nac.anio, String(nac.a)); }
+    if (nac) { T(pg, F03.nac.dia, String(nac.d).padStart(2, '0')); T(pg, F03.nac.mes, String(nac.m).padStart(2, '0')); T(pg, F03.nac.anio, dosCifras(nac.a)); }
     if (CAJA_EC[de.estadoCivil]) X(pg, CAJA_EC[de.estadoCivil]);
     if (de.estadoCivil === 'casado') T(pg, F03.conyuge, cy.nombre);
     // acreedor: ente jurídico
     T(pg, F03.personeria, ac.personeria); T(pg, F03.datosInsc, ac.datosInscripcion);
-    if (finsc) { T(pg, F03.finsc.dia, String(finsc.d).padStart(2, '0')); T(pg, F03.finsc.mes, String(finsc.m).padStart(2, '0')); T(pg, F03.finsc.anio, String(finsc.a)); }
+    if (finsc) { T(pg, F03.finsc.dia, String(finsc.d).padStart(2, '0')); T(pg, F03.finsc.mes, String(finsc.m).padStart(2, '0')); T(pg, F03.finsc.anio, dosCifras(finsc.a)); }
     // automotor y modalidades
     for (const k of Object.keys(F03.g)) T(pg, F03.g[k], v[k]);
     if (CAJA_CONCEPTO[p.modalidad]) X(pg, CAJA_CONCEPTO[p.modalidad]);
@@ -338,25 +352,29 @@ export async function armarFormularios(p, { dx = 0, dy = 0, hoy = '', fondos = n
 }
 
 /**
- * Hoja de prueba: una cruz en cada esquina y en el centro del escaneo, y las medidas. Se imprime sobre el papel en blanco
- * del formulario (o sobre una hoja común, a contraluz contra el formulario) para ver cuánto corre la impresora: ese
- * corrimiento, en milímetros, es lo que se carga en «Ajuste de impresión».
+ * Hoja de prueba: una cruz a 12 mm de cada borde del papel y otra en el centro, más una regla de 100 mm (horizontal) y otra de
+ * 200 mm (vertical) con marcas cada 10 mm. Va en el tamaño real de cada formulario y no depende de ningún escaneo: se imprime
+ * sobre el papel oficial en blanco (o sobre una hoja común) y se mide con una regla desde los bordes. Si las cruces están a
+ * 12 mm de los bordes y las reglas miden 100 y 200 mm, la impresora no corre nada; si no, la diferencia en milímetros es lo
+ * que se carga en «Ajuste de impresión» (o la foto de la hoja con una regla al lado alcanza para calcularlo).
  */
 export async function hojaDePrueba({ dx = 0, dy = 0 } = {}) {
   const { PDFDocument, StandardFonts, rgb } = await cargarLib();
   const doc = await PDFDocument.create();
   const f = await doc.embedFont(StandardFonts.Helvetica);
-  const cruces = [[30, 30], [1210, 30], [30, 1725], [1210, 1725], [620, 862], [317, 421], [1096, 1194]]; // px del escaneo
   const nombres = { f03: 'Formulario 03', a: 'Contrato de prenda (original)', b: 'Contrato de prenda (copia no negociable)' };
+  const negro = rgb(0, 0, 0);
   for (const clave of Object.keys(HOJAS)) { // una hoja de cada tamaño, para probar con cada formulario oficial
-    const pg = doc.addPage(tam(clave)), { sx, sy, H } = escala(pg), [w, h] = HOJAS[clave];
-    for (const [px, py] of cruces) {
-      const x = px * sx + dx * MM, y = H - py * sy - dy * MM;
-      pg.drawLine({ start: { x: x - 10, y }, end: { x: x + 10, y }, thickness: 0.6, color: rgb(0, 0, 0) });
-      pg.drawLine({ start: { x, y: y - 10 }, end: { x, y: y + 10 }, thickness: 0.6, color: rgb(0, 0, 0) });
-    }
-    pg.drawText(`Hoja de prueba: ${nombres[clave]} (${w / 10} x ${h / 10} cm). Imprimir al 100 % (sin "ajustar a la página").`, { x: 60, y: H - 60, size: 8, font: f });
-    pg.drawText('Las cruces tienen que caer sobre las esquinas del formulario. Medir cuánto se corren (mm) y cargarlo en el ajuste.', { x: 60, y: H - 72, size: 8, font: f });
+    const [w, h] = HOJAS[clave], pg = doc.addPage(tam(clave)), H = h * MM;
+    const P = (x, y) => ({ x: x * MM + dx * MM, y: H - y * MM - dy * MM }); // mm desde arriba a la izquierda → puntos
+    const linea = (x1, y1, x2, y2, t = 0.6) => pg.drawLine({ start: P(x1, y1), end: P(x2, y2), thickness: t, color: negro });
+    for (const [cx, cy] of [[12, 12], [w - 12, 12], [12, h - 12], [w - 12, h - 12], [w / 2, h / 2]]) { linea(cx - 4, cy, cx + 4, cy); linea(cx, cy - 4, cx, cy + 4); }
+    linea(30, 30, 130, 30); for (let m = 0; m <= 100; m += 10) linea(30 + m, 30, 30 + m, m % 50 === 0 ? 24 : 27);
+    linea(30, 30, 30, 230); for (let m = 0; m <= 200; m += 10) linea(30, 30 + m, m % 50 === 0 ? 24 : 27, 30 + m);
+    const texto = (t, x, y, size = 8) => { const q = P(x, y); pg.drawText(t, { x: q.x, y: q.y, size, font: f, color: negro }); };
+    texto(`Hoja de prueba: ${nombres[clave]} (${w / 10} x ${h / 10} cm). Imprimir al 100 % (sin "ajustar a la página").`, 40, 40);
+    texto('Las cruces de las esquinas están a 12 mm de los bordes del papel. La regla de arriba mide 100 mm y la de la izquierda 200 mm.', 40, 49);
+    texto('Medí desde el borde del papel hasta cada cruz y la regla: la diferencia, en mm, es lo que se carga en el ajuste.', 40, 58);
   }
   return doc.save();
 }
