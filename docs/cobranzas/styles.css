@@ -870,3 +870,10 @@ body:has(#drawer:not([hidden])) #btnClaudeWeb,body:has(#menu:not([hidden])) #btn
 .gr-tit{margin:14px 0 0;font-size:.95rem}
 .ag-est-det>summary{cursor:pointer;font-size:14px;font-weight:500;color:var(--accent-txt);padding:8px 0}
 .ag-est-det[open]>summary{margin-bottom:6px}
+
+/* Documentación del Registro del Automotor (solicitudes aprobadas) */
+.ag-gen{display:grid;gap:8px;padding:12px;margin-top:8px;border:2px solid var(--text);border-radius:var(--r)}
+.ag-gen-btn{font-weight:700}
+.ag-gen-panel{display:grid;gap:10px;padding-top:10px;border-top:1px solid var(--line-soft)}
+.ag-gen-grupo{border:1px solid var(--line-soft);border-radius:12px;padding:8px 12px}
+.ag-gen-grupo legend{font-weight:600;padding:0 6px}

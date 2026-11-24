@@ -9,7 +9,7 @@ const VERSION = 'cobranzas-v56';
 const ESPERA_MS = 4000;
 
 const NUCLEO = [
-  './', 'styles.css', 'app.js', 'datos.js', 'calculo.js', 'textos.js', 'creditos.js', 'chat.js', 'vehiculos.js', 'refinanciacion.js', 'acuerdo.js', 'demanda.js', 'descuento.js', 'agencias.js', 'modelos/acuerdo-refinanciacion.docx', 'modelos/demanda-prendaria.docx', 'manifest.webmanifest',
+  './', 'styles.css', 'app.js', 'datos.js', 'calculo.js', 'textos.js', 'creditos.js', 'chat.js', 'vehiculos.js', 'refinanciacion.js', 'acuerdo.js', 'demanda.js', 'descuento.js', 'agencias.js', 'prendaforms.js', 'modelos/acuerdo-refinanciacion.docx', 'modelos/demanda-prendaria.docx', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
   '../vendor/supabase.js', '../config.js', '../liquidacion.js', '../excel.js', '../oficio.js', '../agencias/solicitud.js',
   '../fonts/plex-sans-latin-300.woff2', '../fonts/plex-sans-latin-400.woff2', '../fonts/plex-sans-latin-500.woff2', '../fonts/plex-sans-latin-600.woff2',

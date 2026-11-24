@@ -916,6 +916,29 @@ Mutual y no nombra a InfoAuto.
 
 - **Estadísticas por agencia** (migración 0044, pedido de la persona del 23/11/2026): solapa «Estadísticas» de Créditos y Cobros → Agencias. Función `public.estadisticas_agencias(p_dias)` (SECURITY INVOKER: solo los miembros ven filas, por las políticas de las tablas; `null` = desde siempre) con, por agencia, cotizaciones, solicitudes mandadas, aprobadas, rechazadas, abiertas, monto aprobado y última cotización. La pantalla (`htmlAgencias`, `cargarEstadisticas` en `app.js`) ofrece 30 días, 90 días o desde siempre y muestra qué parte de las cotizaciones terminó en solicitud. Con gráficos de barras en SVG (`graficoBarras` en `agencias.js`, clases `.gr-*`): cotizaciones, solicitudes y aprobadas por agencia, y monto aprobado. Prueba: «estadísticas» de `agencias-admin.test.mjs`. Publicar: migración 0044 y subir la app (la función `agencias` no cambia).
 
+### Documentación para el Registro del Automotor (nov 2026, pedido de la persona del 24/11/2026)
+
+En Créditos y Cobros → Agencias → Solicitudes, cada solicitud **aprobada** tiene un recuadro con dos botones: «Generar PRENDA»
+(Formulario 03) y «Generar CONTRATOS» (el contrato de prenda original y la copia no negociable, con los mismos datos). **Solo lo ve
+la Mutual** (es parte de la administración): las agencias no ven nada de esto. Se abre una pantalla de revisión con los datos
+de la solicitud, editables, y la lista de lo que va a salir en blanco.
+
+- **Se imprime solo lo escrito**, sobre los formularios oficiales en blanco (tienen su propia numeración): el PDF no lleva ningún
+  dibujo del formulario. Una hoja por hoja oficial: 03 frente y dorso, contrato original frente y dorso, copia no negociable
+  frente y dorso. «Hoja de prueba» (cruces) y ajuste `dx`/`dy` en mm, que se recuerda en el dispositivo (`cb.prendaAjuste`).
+- **Código**: `docs/cobranzas/prendaforms.js` (posiciones medidas sobre los escaneos a 150 dpi; `datosDeSolicitud`, `faltanFormularios`,
+  `armarFormularios`, `hojaDePrueba`), la pantalla en `agencias.js` (`htmlGenerar`) y las acciones en `app.js` (`gen-*`). Usa pdf-lib
+  (carga diferida, como `unirpdf.js`). Prueba: `node --test dev/tests/prendaforms.test.mjs` (sin stack).
+- **Datos fijos de la Mutual** (`MUTUAL`, en el código: son institucionales): inscripción 30-62154758-1, «ASOCIACION MUTUAL BELL» y debajo
+  «A. ECONOMICA» (su actividad; en el contrato va en el renglón de «Profesión»), Bv. Colón 135, Bell Ville, personería INAES N° 447 del
+  25/11/1987; grado 1, cláusula de actualización NO, concepto PRÉSTAMO; tribunales de Bell Ville.
+- **No se inventa nada**: lo que la solicitud no trae (dominio, motor, chasis, nacionalidad, nacimiento, fija/flotante, pagarés, concepto,
+  lugar de pago, primera cuota) queda en blanco y se avisa. Interés punitorio, base del %, seguro y «autorizado a diligenciar» salen en
+  blanco a propósito (se podrán completar; el seguro se elegirá más adelante). El **texto de los modelos no se cambia**; la única
+  leyenda agregada es la de jurisdicción en el espacio libre de la copia no negociable (texto del estudio).
+- **Pendiente**: leer dominio, motor y chasis del título del automotor que sube la agencia (con revisión humana antes de generar).
+  Requiere una acción nueva en la función `agencias`.
+
 ### Chat «M» con la Mutual (migración 0038, pedido de la persona del 22/11/2026)
 
 Botón flotante «M» en el cotizador (`docs/agencias/chat.js`): abre un chat con un asistente que responde dudas básicas y, si la

@@ -5,6 +5,7 @@
 import { esc, plata, cuantos } from './textos.js';
 // Los casilleros de documentos y los nombres de las categorías son los del cotizador (un solo lugar).
 import { CATEGORIAS, DOCS, docsSinAdjuntar, dniDelCuit } from '../agencias/solicitud.js';
+import { faltanFormularios, textoVencimientos } from './prendaforms.js';
 
 export const TABS_AGENCIAS = [['solicitudes', 'Solicitudes'], ['chats', 'Chats'], ['parametros', 'Parámetros'], ['agencias', 'Agencias'], ['cotizaciones', 'Cotizaciones'], ['estadisticas', 'Estadísticas']];
 
@@ -186,9 +187,71 @@ function solicitud(x, A, est, notas) {
       : `<p class="hint m0">${esc(x.resuelto_por || '')} · ${esc(fechaHora(x.resuelto))}${x.nota ? ` · «${esc(x.nota)}»` : ''}
         <button class="btn small" data-a="ag-resolver" data-id="${esc(x.id)}" data-estado="pendiente">Volver a recibida</button>
         ${est.borrar === x.id ? '' : `<button class="btn small" data-a="ag-borrar-preguntar" data-id="${esc(x.id)}">Eliminar</button>`}</p>`}
+    ${x.estado === 'aprobada' ? htmlGenerarBloque(x, est) : ''}
     ${est.borrar === x.id ? `<div class="aviso-chico ag-borrar" role="alert"><span>¿Eliminar la solicitud de ${esc(x.denominacion || cuitLindo(x.cuit))}? Se borran también sus documentos y no se puede deshacer desde la app.</span>
       <div class="actions"><button class="btn danger small" data-a="ag-borrar" data-id="${esc(x.id)}">Sí, eliminar</button><button class="btn small" data-a="ag-borrar-no" data-id="${esc(x.id)}">No</button></div></div>` : ''}
   </section>`;
+}
+
+// ---- Documentación del Registro del Automotor (Formulario 03 y contratos de prenda) --------------------------------------
+const OPC_EC = [['', '—'], ['soltero', 'Soltero/a'], ['casado', 'Casado/a'], ['viudo', 'Viudo/a'], ['divorciado', 'Divorciado/a']];
+// [ruta dentro de los datos, rótulo, tipo (t texto, d fecha, n número, s lista, c casilla)]
+const GEN_PRENDA = [
+  ['Datos del contrato', [['fecha', 'Fecha', 'd'], ['lugar', 'Lugar', 't'], ['monto', 'Monto del crédito ($)', 'n'], ['registroSeccional', 'Registro Seccional (dorso)', 't']]],
+  ['Deudor', [['deudor.nombre', 'Apellido y nombre', 't'], ['deudor.dni', 'DNI', 't'], ['deudor.nacionalidad', 'Nacionalidad', 't'], ['deudor.nacimiento', 'Fecha de nacimiento', 'd'], ['deudor.estadoCivil', 'Estado civil', 's'], ['conyuge.nombre', 'Cónyuge (si es casado/a)', 't'],
+    ['deudor.calle', 'Calle', 't'], ['deudor.numero', 'Número', 't'], ['deudor.piso', 'Piso', 't'], ['deudor.dep', 'Depto.', 't'], ['deudor.cp', 'Código postal', 't'], ['deudor.localidad', 'Localidad', 't'], ['deudor.partido', 'Departamento', 't'], ['deudor.provincia', 'Provincia', 't']]],
+  ['Vehículo (del título del automotor)', [['vehiculo.dominio', 'Dominio', 't'], ['vehiculo.marca', 'Marca', 't'], ['vehiculo.tipo', 'Tipo', 't'], ['vehiculo.modelo', 'Modelo', 't'], ['vehiculo.marcaMotor', 'Marca del motor', 't'], ['vehiculo.motor', 'N° de motor', 't'], ['vehiculo.marcaChasis', 'Marca del chasis', 't'], ['vehiculo.chasis', 'N° de chasis', 't']]],
+  ['Autorizado a diligenciar (dorso)', [['autorizado.nombre', 'Nombre', 't'], ['autorizado.tipoDoc', 'Tipo de documento', 't'], ['autorizado.numero', 'Número', 't']]],
+];
+const GEN_CONTRATOS = [
+  ['Datos del contrato', [['fecha', 'Fecha', 'd'], ['lugar', 'Lugar', 't'], ['monto', 'Monto del crédito ($)', 'n'], ['cuotas', 'Cantidad de cuotas', 'n'], ['cuota', 'Valor de la cuota ($)', 'n'], ['primerVto', 'Vencimiento de la primera cuota', 'd'], ['tna', 'Interés anual (TNA %)', 'n'],
+    ['clase', 'Prenda', 's:clase'], ['pagares', 'Pagarés', 's:pagares'], ['concepto', 'Concepto de la deuda', 't'], ['lugarPago', 'Lugar de pago', 't'], ['inspeccion', 'Derechos de inspección del acreedor', 't'], ['gravamenes', 'Gravámenes', 't'],
+    ['punitorioAnual', 'Interés punitorio anual (original)', 'n'], ['punitorioMensual', 'Interés punitorio mensual (copia)', 'n'], ['basePct', '% de la deuda como base (copia)', 'n']]],
+  ['Deudor', [['deudor.nombre', 'Apellido y nombre', 't'], ['deudor.dni', 'DNI', 't'], ['deudor.nacionalidad', 'Nacionalidad', 't'], ['deudor.nacimiento', 'Fecha de nacimiento (para la edad)', 'd'], ['deudor.estadoCivil', 'Estado civil', 's'], ['deudor.profesion', 'Profesión', 't'],
+    ['deudor.calle', 'Calle', 't'], ['deudor.numero', 'Número', 't'], ['deudor.localidad', 'Localidad', 't'], ['domicilioLegal.calle', 'Domicilio constituido: calle', 't'], ['domicilioLegal.numero', 'Número', 't'], ['domicilioLegal.ciudad', 'Ciudad', 't']]],
+  ['Cónyuge (copia no negociable)', [['conyuge.nombre', 'Apellido y nombre', 't'], ['conyuge.estadoCivil', 'Estado civil', 't'], ['conyuge.profesion', 'Profesión', 't'], ['conyuge.nacionalidad', 'Nacionalidad', 't'], ['conyuge.edad', 'Edad', 't'], ['conyuge.domicilio', 'Domicilio', 't'], ['conyuge.dni', 'DNI', 't']]],
+  ['Vehículo (del título del automotor)', [['vehiculo.dominio', 'Dominio', 't'], ['vehiculo.marca', 'Marca', 't'], ['vehiculo.tipo', 'Tipo', 't'], ['vehiculo.modelo', 'Modelo', 't'], ['vehiculo.anio', 'Año', 't'], ['vehiculo.marcaMotor', 'Marca del motor', 't'], ['vehiculo.motor', 'N° de motor', 't'], ['vehiculo.marcaChasis', 'Marca del chasis', 't'], ['vehiculo.chasis', 'N° de chasis', 't']]],
+  ['Dónde están los bienes', [['ubicacion.provincia', 'Provincia', 't'], ['ubicacion.departamento', 'Departamento', 't'], ['ubicacion.cuartel', 'Cuartel, distrito o pedanía', 't'], ['ubicacion.ciudad', 'Ciudad o pueblo', 't'], ['ubicacion.calle', 'Calle', 't'], ['ubicacion.numero', 'Número', 't']]],
+  ['Seguro (se puede dejar en blanco)', [['seguro.suma', 'Suma asegurada', 't'], ['seguro.contra', 'Contra', 't'], ['seguro.compania', 'Compañía', 't'], ['seguro.calle', 'Calle', 't'], ['seguro.numero', 'Número', 't'], ['seguro.poliza', 'Póliza N°', 't'], ['seguro.venceDia', 'Vence (día y mes)', 't'], ['seguro.venceMes', 'Año', 't'], ['seguro.poder', 'Queda en poder de', 't']]],
+];
+const OPC_GEN = { clase: [['', '—'], ['fija', 'Fija'], ['flotante', 'Flotante']], pagares: [['', '—'], ['con', 'Con pagarés'], ['sin', 'Sin pagarés (el contrato)']] };
+
+/** Los dos botones de una solicitud aprobada, y debajo la pantalla de revisión del que se abrió. */
+function htmlGenerarBloque(x, est) {
+  const g = est.gen && est.gen.id === x.id ? est.gen : null;
+  return `<div class="ag-gen"><b class="ag-rotulo">Documentación para el Registro del Automotor</b>
+    <div class="actions"><button class="btn primary ag-gen-btn" data-a="gen-abrir" data-id="${esc(x.id)}" data-tipo="prenda">Generar PRENDA</button>
+      <button class="btn primary ag-gen-btn" data-a="gen-abrir" data-id="${esc(x.id)}" data-tipo="contratos">Generar CONTRATOS</button></div>
+    <p class="hint m0">PRENDA es el Formulario 03. CONTRATOS saca el contrato de prenda original y la copia no negociable. Se imprime solo lo escrito, sobre los formularios oficiales en blanco.</p>
+    ${g ? htmlGenerar(g) : ''}</div>`;
+}
+
+function campoGen(g, [ruta, rotulo, tipo]) {
+  const v = ruta.split('.').reduce((o, k) => (o == null ? undefined : o[k]), g.p) ?? '', k = `ag.gen.p.${ruta}`;
+  if (tipo === 's') return `<label class="f">${esc(rotulo)}<select data-k="${esc(k)}">${OPC_EC.map(([a, b]) => `<option value="${a}"${v === a ? ' selected' : ''}>${esc(b)}</option>`).join('')}</select></label>`;
+  if (tipo.startsWith('s:')) return `<label class="f">${esc(rotulo)}<select data-k="${esc(k)}">${OPC_GEN[tipo.slice(2)].map(([a, b]) => `<option value="${a}"${v === a ? ' selected' : ''}>${esc(b)}</option>`).join('')}</select></label>`;
+  return `<label class="f">${esc(rotulo)}<input data-k="${esc(k)}" value="${esc(v)}"${tipo === 'd' ? ' type="date"' : ''}${tipo === 'n' ? ' inputmode="decimal"' : ''} autocomplete="off"></label>`;
+}
+
+/** Pantalla de revisión: todo lo que va a salir impreso, editable, con la lista de lo que falta. */
+export function htmlGenerar(g) {
+  const grupos = g.tipo === 'prenda' ? GEN_PRENDA : GEN_CONTRATOS;
+  return `<div class="ag-gen-panel"><div class="card-cab"><h4>${g.tipo === 'prenda' ? 'Formulario 03 (PRENDA)' : 'Contrato de prenda y copia no negociable'}</h4><button class="btn small" data-a="gen-cerrar">Cerrar</button></div>
+    <p class="hint">Revisá los datos. Lo que dejes vacío sale en blanco, para completar a mano. Lo que no está en la solicitud (dominio, motor, chasis…) se lee del título del automotor.</p>
+    ${grupos.map(([t, cs]) => `<fieldset class="ag-gen-grupo"><legend>${esc(t)}</legend><div class="grid2">${cs.map((c) => campoGen(g, c)).join('')}</div></fieldset>`).join('')}
+    <div id="genFaltan">${htmlFaltanGen(g)}</div>
+    <fieldset class="ag-gen-grupo"><legend>Ajuste de la impresora</legend>
+      <div class="grid2"><label class="f">Correr a la derecha (mm)<input data-k="ag.gen.dx" value="${esc(g.dx ?? '')}" inputmode="decimal" autocomplete="off"></label>
+      <label class="f">Correr hacia abajo (mm)<input data-k="ag.gen.dy" value="${esc(g.dy ?? '')}" inputmode="decimal" autocomplete="off"></label></div>
+      <p class="hint m0">Se usa la «hoja de prueba» sobre un formulario oficial para ver cuánto corre tu impresora. Se recuerda en este dispositivo.</p></fieldset>
+    <div class="actions"><button class="btn primary" data-a="gen-pdf" data-id="${esc(g.id)}">Descargar PDF para imprimir</button>
+      ${g.tipo === 'contratos' ? `<label class="ag-check"><input type="checkbox" data-k="ag.gen.sinOriginal" ${g.sinOriginal ? 'checked' : ''}> Solo la copia no negociable</label><label class="ag-check"><input type="checkbox" data-k="ag.gen.sinCopia" ${g.sinCopia ? 'checked' : ''}> Solo el original</label>` : ''}
+      <button class="btn" data-a="gen-prueba">Hoja de prueba</button></div></div>`;
+}
+
+export function htmlFaltanGen(g) {
+  const f = faltanFormularios({ ...g.p, vencimientos: g.p.vencimientos || textoVencimientos(g.p) }, { soloF03: g.tipo === 'prenda' });
+  return f.length ? `<p class="aviso-chico" role="status"><b>Va a salir en blanco:</b> ${esc(f.join(', '))}.</p>` : '<p class="hint m0">No falta ningún dato.</p>';
 }
 
 /**

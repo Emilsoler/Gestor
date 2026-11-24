@@ -8,7 +8,7 @@ import {
   leerAgencias, contarSolicitudes, guardarAjustesAgencias, altaAgencia, crearAgencia, crearVendedor, activarVendedor, activarAgencia, resolverSolicitud, documentosSolicitud, eliminarSolicitud, eliminarCotizaciones, estadisticasAgencias,
   chatsAgencias, chatResumen, verChat, responderChat, cerrarChat, eliminarChat, claveAvisos, registrarAvisos, quitarAvisos, probarAvisos,
 } from './datos.js';
-import { htmlAgencias, avisoInicio, parametrosEnTexto, leerParametros, TABS_AGENCIAS } from './agencias.js';
+import { htmlAgencias, htmlFaltanGen, avisoInicio, parametrosEnTexto, leerParametros, TABS_AGENCIAS } from './agencias.js';
 import {
   avisoCuit, soloDigitos, fichaConsulta, filaConsulta, textoConsulta, deudoresDelCuit,
   avisoCheque, numeroCheque, bancosRecientes, opcionesBancos, bancoEnLista, fichaCheque, textoCheque, filaCheque, resumenBcraCheque,
@@ -27,6 +27,7 @@ import { xlsx } from '../excel.js';
 import { datosAcuerdo, avisosAcuerdo, armarAcuerdo, hojasRefinanciacion, CAMPOS_ACUERDO } from './acuerdo.js';
 import { nuevaDemanda, nuevoDemandado, demandaDesdeDeudor, estadoDemanda, datosDemanda, avisosDemanda, faltanDemanda, CAMPOS_DEMANDA } from './demanda.js';
 import { abrirChat } from './chat.js';
+import { datosDeSolicitud, textoVencimientos, armarFormularios, hojaDePrueba } from './prendaforms.js';
 import { nuevoDescuento, nuevoCheque, formDeFila, filaDeForm, liquidarDescuento, cartera, resumenCartera, cuandoVence, bancoDe, htmlLiquidacionDescuento, hojaDescuento, ESTADOS_CHEQUE } from './descuento.js';
 
 const VERSION = '1.11.2';
@@ -190,7 +191,7 @@ function mostrar(pantalla) {
   if (enApp) { $('#ingresoCuerpo').innerHTML = ''; render(); seguirEnlace(); return; }
   cerrarFicha(); S.menu = false; renderMenu();
   for (const k of ['#main', '#chips', '#franja', '#nPlanes', '#nDeudores', '#nAgencias']) $(k).innerHTML = '';
-  S.ag = { ...S.ag, est: { dias: 30, filas: null, error: '' }, datos: null, error: '', docs: new Map(), notas: {}, alta: {}, vend: {}, nueva: null, pend: 0 }; // al salir no queda nada de otra sesión
+  S.ag = { ...S.ag, gen: null, est: { dias: 30, filas: null, error: '' }, datos: null, error: '', docs: new Map(), notas: {}, alta: {}, vend: {}, nueva: null, pend: 0 }; // al salir no queda nada de otra sesión
   $('#sub').textContent = ''; $('#q').value = ''; S.q = '';
   renderIngreso();
 }
@@ -664,6 +665,48 @@ async function pdfDeSolicitud(id) {
   } catch (e) { console.error(e); toast(mensaje(e, 'no se pudo armar el PDF')); }
 }
 
+// ---- Documentación del Registro del Automotor: Formulario 03 y contratos de prenda (solo los datos, sobre papel oficial) ----
+const AJUSTE_PRENDA = 'cb.prendaAjuste';
+function abrirGenerar(id, tipo) {
+  const sol = S.ag.datos?.solicitudes.find((x) => x.id === id);
+  if (!sol) return;
+  if (S.ag.gen && S.ag.gen.id === id && S.ag.gen.tipo === tipo) { S.ag.gen = null; render(); return; }
+  let aj = {}; try { aj = JSON.parse(localStorage.getItem(AJUSTE_PRENDA) || '{}'); } catch { /* sin almacenamiento */ }
+  S.ag.gen = { id, tipo, p: datosDeSolicitud(sol, hoy()), dx: aj.dx ?? '', dy: aj.dy ?? '', sinOriginal: false, sinCopia: false };
+  render();
+  document.querySelector('.ag-gen-panel')?.scrollIntoView({ block: 'nearest' });
+}
+const mm = (v) => { const n = Number(String(v ?? '').replace(',', '.')); return Number.isFinite(n) ? n : 0; };
+function datosListos(g) {
+  const p = JSON.parse(JSON.stringify(g.p));
+  for (const k of ['monto', 'cuotas', 'cuota', 'tna']) p[k] = Number(String(p[k] ?? '').replace(',', '.')) || 0;
+  if (!p.vencimientos) p.vencimientos = textoVencimientos(p);
+  if (p.fecha) p.fecha = String(p.fecha);
+  return p;
+}
+async function generarFormularios() {
+  const g = S.ag.gen; if (!g) return;
+  const cuales = g.tipo === 'prenda' ? ['f03'] : g.sinOriginal && !g.sinCopia ? ['b'] : g.sinCopia && !g.sinOriginal ? ['a'] : ['a', 'b'];
+  try {
+    localStorage.setItem(AJUSTE_PRENDA, JSON.stringify({ dx: g.dx, dy: g.dy }));
+  } catch { /* sin almacenamiento */ }
+  try {
+    const { bytes } = await armarFormularios(datosListos(g), { dx: mm(g.dx), dy: mm(g.dy), hoy: hoy(), cuales });
+    const nombre = String(g.p.deudor?.nombre || 'deudor').replace(/[\\/:*?"<>|]+/g, ' ').trim();
+    const etiqueta = g.tipo === 'prenda' ? 'Formulario 03' : cuales.length === 2 ? 'Contratos de prenda' : cuales[0] === 'a' ? 'Contrato de prenda' : 'Contrato de prenda copia no negociable';
+    const archivo = `${hoy().slice(2).replace(/-/g, '')} - ${etiqueta} - ${nombre}.pdf`;
+    if (!(await entregar(new Blob([bytes], { type: 'application/pdf' }), archivo))) return;
+    toast(`PDF listo: ${archivo}. Imprimilo sobre los formularios oficiales en blanco.`);
+  } catch (e) { console.error(e); toast('No se pudo armar el PDF'); }
+}
+async function hojaPruebaFormularios() {
+  const g = S.ag.gen; if (!g) return;
+  try {
+    const bytes = await hojaDePrueba({ dx: mm(g.dx), dy: mm(g.dy) });
+    await entregar(new Blob([bytes], { type: 'application/pdf' }), 'Hoja de prueba - formularios de prenda.pdf');
+  } catch (e) { console.error(e); toast('No se pudo armar la hoja de prueba'); }
+}
+
 async function accionAgencias(act, b) {
   const G = S.ag, id = b.dataset.id;
   if (act === 'ag-recargar') { G.error = ''; await cargarAgencias(); return; }
@@ -712,6 +755,10 @@ async function accionAgencias(act, b) {
     render(); return;
   }
   if (act === 'ag-pdf') { await pdfDeSolicitud(id); return; }
+  if (act === 'gen-abrir') { await abrirGenerar(id, b.dataset.tipo); return; }
+  if (act === 'gen-cerrar') { G.gen = null; render(); return; }
+  if (act === 'gen-pdf') { await generarFormularios(); return; }
+  if (act === 'gen-prueba') { await hojaPruebaFormularios(); return; }
   if (act === 'ag-borrar-preguntar' || act === 'ag-borrar-no') { G.borrar = act === 'ag-borrar-preguntar' ? id : ''; render(); return; }
   if (act === 'ag-borrar') {
     try { await eliminarSolicitud(id); } catch (e) { toast(mensaje(e, 'no se pudo eliminar la solicitud')); return; }
@@ -2927,6 +2974,7 @@ document.addEventListener('input', (e) => {
     const q = k.match(/\.cheques\.(\d+)\.cuit$/); if (q) { pintarBcra(); consultarLibrador(+q[1]); }
     actualizarDescuento(); return;
   }
+  if (k.startsWith('ag.gen.')) { const f = $('#genFaltan'); if (f && S.ag.gen) f.innerHTML = htmlFaltanGen(S.ag.gen); return; }
   if (k === 'cred.cuit') { actualizarCuit(); return; }
   if (k === 'cred.numero' || k === 'cred.entidad') { actualizarCheque(); return; }
   if (k === 'cred.filtro' || k === 'cred.chFiltro' || k === 'cred.veh.fm' || k === 'cred.veh.fv') { render(); return; }
