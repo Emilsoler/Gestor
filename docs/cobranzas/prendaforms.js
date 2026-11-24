@@ -25,7 +25,7 @@ const MM = 72 / 25.4;
 // contratos) siguen con el supuesto anterior (hoja entera estirada), que se sabe equivocado: hasta medirlas sobre una foto
 // del formulario en blanco, no imprimir esas sobre el papel oficial sin probar antes en una hoja común.
 const SW = 1240, SH = 1755;
-const HOJAS = { f03: [202, 305], a: [214, 328], b: [213, 317] }; // Formulario 03, contrato original, copia no negociable
+const HOJAS = { f03: [202, 305], a: [214, 328], b: [214, 328] }; // Formulario 03, contrato original, copia no negociable (la copia mide igual que el original: aviso de la persona del 24/11/2026)
 const CAL = { f03: [{ k: 0.189, ox: -15.7, oy: -5.0 }, null], a: [null, null], b: [{ kx: 0.2, ky: 0.192, ox: -10.2, oy: 1.8, xmax: 205 }, null] }; // por hoja: frente y dorso
 const tam = (clave) => HOJAS[clave].map((m) => m * MM);
 const calDe = new WeakMap(); // página → su calibración (la pone `nuevaPagina`)
