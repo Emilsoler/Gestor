@@ -6,7 +6,7 @@ import { esc, plata, cuantos } from './textos.js';
 // Los casilleros de documentos y los nombres de las categorías son los del cotizador (un solo lugar).
 import { CATEGORIAS, DOCS, docsSinAdjuntar, dniDelCuit } from '../agencias/solicitud.js';
 
-export const TABS_AGENCIAS = [['solicitudes', 'Solicitudes'], ['chats', 'Chats'], ['parametros', 'Parámetros'], ['agencias', 'Agencias'], ['cotizaciones', 'Cotizaciones']];
+export const TABS_AGENCIAS = [['solicitudes', 'Solicitudes'], ['chats', 'Chats'], ['parametros', 'Parámetros'], ['agencias', 'Agencias'], ['cotizaciones', 'Cotizaciones'], ['estadisticas', 'Estadísticas']];
 
 /** El color del BCRA como un círculo (pedido de la persona, nov 2026: sin el texto de lo que vio la agencia).
  *  Sin antecedentes va en amarillo, como la agencia lo ve («Sujeto a revisión»); el nombre queda para lectores de pantalla. */
@@ -286,6 +286,22 @@ export function htmlAgencias(A, est) {
         <div class="actions"><button class="btn small" data-a="ag-cot-preguntar" data-id="todas">Eliminar todas</button></div>`
         : '<p class="hint m0">Todavía no hay cotizaciones.</p>'}
       <p class="hint m0">Se guarda el CUIT que la agencia consultó. No se guarda el valor del vehículo.</p></section>`;
+  } else if (est.tab === 'estadisticas') {
+    const E = est.est || {}, filas = E.filas || [];
+    const per = [[30, 'Últimos 30 días'], [90, 'Últimos 90 días'], [null, 'Desde siempre']];
+    const botones = per.map(([d, t]) => `<button class="btn small${E.dias === d ? ' primary' : ''}" data-a="ag-est-dias" data-dias="${d ?? ''}">${esc(t)}</button>`).join(' ');
+    const tot = filas.reduce((a, x) => ({ c: a.c + x.cotizaciones, s: a.s + x.solicitudes, ap: a.ap + x.aprobadas, m: a.m + Number(x.monto_aprobado || 0) }), { c: 0, s: 0, ap: 0, m: 0 });
+    const pct = (a, b) => (b ? `${Math.round((a / b) * 100)} %` : '—');
+    const tabla = filas.map((x) => `<tr><td><b>${esc(x.nombre)}</b>${x.activa ? '' : ' <span class="tag t-mal">Pausada</span>'}<br><span class="hint">${x.ultima_cotizacion ? `Última cotización: ${esc(fechaHora(x.ultima_cotizacion))}` : 'Nunca cotizó'}</span></td>
+      <td class="num">${x.cotizaciones}</td><td class="num">${x.solicitudes}</td><td class="num">${x.aprobadas}</td><td class="num">${x.rechazadas}</td><td class="num">${x.abiertas}</td>
+      <td class="num">${pct(x.solicitudes, x.cotizaciones)}</td><td class="num">${plata(x.monto_aprobado)}</td></tr>`).join('');
+    cuerpo = `<section class="card"><div class="card-cab"><h3>Estadísticas por agencia</h3></div>
+      <div class="actions">${botones}</div>
+      ${E.error ? `<p class="aviso-chico" role="alert">${esc(E.error)}</p>` : !E.filas ? '<p class="hint m0">Calculando…</p>'
+        : !filas.length ? '<p class="hint m0">Todavía no hay agencias.</p>'
+        : `<p class="m0"><b>${tot.c}</b> cotizaciones · <b>${tot.s}</b> solicitudes · <b>${tot.ap}</b> aprobadas · ${plata(tot.m)} aprobados</p>
+          <div class="ag-tabla"><table class="tabla"><thead><tr><th>Agencia</th><th class="num">Cotizaciones</th><th class="num">Solicitudes</th><th class="num">Aprobadas</th><th class="num">Rechazadas</th><th class="num">Abiertas</th><th class="num">Cotiz. → solicitud</th><th class="num">Monto aprobado</th></tr></thead><tbody>${tabla}</tbody></table></div>`}
+      <p class="hint m0">Las solicitudes se cuentan por la fecha en que la agencia las mandó. «Cotiz. → solicitud» es qué parte de las cotizaciones terminó en una solicitud: sirve para ver quién cotiza y quién avanza.</p></section>`;
   } else {
     const pend = pendientes(A.solicitudes), resto = A.solicitudes.filter((x) => !solicitudAbierta(x));
     cuerpo = `${msg}

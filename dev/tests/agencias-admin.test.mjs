@@ -289,4 +289,23 @@ test('Créditos y Cobros: la Mutual agrega un vendedor a una agencia, lo ve en l
   await p.context().close();
 });
 
+test('Créditos y Cobros: estadísticas por agencia, con período', async () => {
+  sql(`delete from public.cotizaciones_agencia;
+       insert into public.cotizaciones_agencia (agencia_id, agencia, vehiculo, anio, monto, cuotas, cuota, momento)
+       select id, nombre, 'AUTO', '2022', 1000000, 12, 100000, case when g <= 4 then now() else now() - interval '60 days' end
+         from public.agencias, generate_series(1, 5) g where email = '${AG}'`);
+  const p = await pagina('pc');
+  await ingresarCobranzas(p);
+  await p.click('#v_agencias');
+  await p.click('[data-a="ag-tab"][data-tab="estadisticas"]');
+  await p.waitForSelector('tbody tr td.num');
+  const nombre = sql(`select nombre from public.agencias where email = '${AG}'`);
+  const fila = async () => norm(await p.locator('tbody tr', { hasText: nombre }).first().locator('td.num').first().textContent());
+  // 30 días: 4 de las 5 cotizaciones; desde siempre: las 5.
+  assert.equal(await fila(), '4');
+  await p.click('[data-a="ag-est-dias"][data-dias=""]');
+  await p.waitForFunction((n) => [...document.querySelectorAll('tbody tr')].some((r) => r.textContent.includes(n) && r.querySelector('td.num')?.textContent.trim() === '5'), nombre);
+  await p.context().close();
+});
+
 test('sin errores en la consola', () => { assert.deepEqual(errores, []); });

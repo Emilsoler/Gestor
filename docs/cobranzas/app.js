@@ -5,7 +5,7 @@ import {
   crearDeudor, cambiarDeudor, borrarDeudor, crearModelo, guardarModelo, borrarModelo, guardarAjustes,
   consultarInfoAuto, consultarInfoAutoTodo, consultarBCRA, detalleConsulta, detalleGuardado, borrarConsulta, consultarCheque, entidadesCheques, borrarConsultaCheque, crearCasoRefi, actualizarCasoRefi, borrarCasoRefi, archivarCasoRefi,
   crearDescuento, guardarDescuento, borrarDescuento, estadoCheque,
-  leerAgencias, contarSolicitudes, guardarAjustesAgencias, altaAgencia, crearAgencia, crearVendedor, activarVendedor, activarAgencia, resolverSolicitud, documentosSolicitud, eliminarSolicitud, eliminarCotizaciones,
+  leerAgencias, contarSolicitudes, guardarAjustesAgencias, altaAgencia, crearAgencia, crearVendedor, activarVendedor, activarAgencia, resolverSolicitud, documentosSolicitud, eliminarSolicitud, eliminarCotizaciones, estadisticasAgencias,
   chatsAgencias, chatResumen, verChat, responderChat, cerrarChat, eliminarChat, claveAvisos, registrarAvisos, quitarAvisos, probarAvisos,
 } from './datos.js';
 import { htmlAgencias, avisoInicio, parametrosEnTexto, leerParametros, TABS_AGENCIAS } from './agencias.js';
@@ -74,6 +74,7 @@ const S = {
   // Agencias (el cotizador para agencias): lo leído, la pestaña, los enlaces a documentos ya pedidos, lo que se escribe
   // (notas para la agencia, parámetros y alta, atados con data-k) y cuántas solicitudes esperan respuesta.
   ag: {
+    est: { dias: 30, filas: null, error: '' },
     datos: null, cargando: false, error: '', tab: 'solicitudes', msg: '', docs: new Map(), notas: {}, p: {}, alta: {}, vend: {}, pend: 0, borrar: '', borrarCot: '',
     // Chats de las agencias: la lista, la conversación abierta (hilo + mensajes), lo que se escribe (texto) y el estado de los
     // avisos al celular (push: cargando | no | denegado | inactivo | activo). `atencion`: conversaciones que piden respuesta.
@@ -189,7 +190,7 @@ function mostrar(pantalla) {
   if (enApp) { $('#ingresoCuerpo').innerHTML = ''; render(); seguirEnlace(); return; }
   cerrarFicha(); S.menu = false; renderMenu();
   for (const k of ['#main', '#chips', '#franja', '#nPlanes', '#nDeudores', '#nAgencias']) $(k).innerHTML = '';
-  S.ag = { ...S.ag, datos: null, error: '', docs: new Map(), notas: {}, alta: {}, vend: {}, nueva: null, pend: 0 }; // al salir no queda nada de otra sesión
+  S.ag = { ...S.ag, est: { dias: 30, filas: null, error: '' }, datos: null, error: '', docs: new Map(), notas: {}, alta: {}, vend: {}, nueva: null, pend: 0 }; // al salir no queda nada de otra sesión
   $('#sub').textContent = ''; $('#q').value = ''; S.q = '';
   renderIngreso();
 }
@@ -543,6 +544,15 @@ async function cargarAgencias() {
   }
   G.cargando = false;
   render();
+  if (G.tab === 'estadisticas') cargarEstadisticas(); // la solapa se recuerda: si se abrió en esa, se calcula al entrar
+}
+
+async function cargarEstadisticas() {
+  const E = S.ag.est, dias = E.dias;
+  E.filas = null; E.error = ''; render();
+  try { const f = await estadisticasAgencias(dias); if (E.dias === dias) E.filas = f; }
+  catch (e) { E.error = /PGRST202|42883|does not exist/i.test(`${e.code} ${e.message}`) ? 'Falta activar las estadísticas en la base. Avisale a Claude.' : mensaje(e, 'no se pudieron calcular las estadísticas'); }
+  render();
 }
 
 /** Cuántas solicitudes esperan respuesta: el aviso de la solapa y de Inicio. Si cambió, se redibuja. */
@@ -693,8 +703,9 @@ async function accionAgencias(act, b) {
   if (act === 'ag-tab') {
     G.tab = b.dataset.tab; G.msg = ''; G.nueva = null; G.borrarCot = ''; G.chat.hilo = null; G.chat.error = '';
     try { localStorage.setItem('cb.agTab', G.tab); } catch { /* sin almacenamiento */ }
-    render(); return;
+    render(); if (G.tab === 'estadisticas') cargarEstadisticas(); return;
   }
+  if (act === 'ag-est-dias') { G.est.dias = b.dataset.dias === '' ? null : Number(b.dataset.dias); cargarEstadisticas(); return; }
   if (act === 'ag-docs') {
     G.docs.set(id, { cargando: true }); render();
     try { G.docs.set(id, { lista: await documentosSolicitud(id) }); } catch (e) { G.docs.set(id, { error: mensaje(e, 'no se pudieron buscar los documentos') }); }

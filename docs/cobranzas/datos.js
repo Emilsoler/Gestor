@@ -514,6 +514,9 @@ export async function leerAgencias() {
   return { ajustes, agencias, cotizaciones, solicitudes, vendedores, bcra: new Map(bcra.map((x) => [x.id, x])) };
 }
 
+/** Cotizaciones, solicitudes y aprobaciones de cada agencia en los últimos `dias` (null = desde siempre). Migración 0044. */
+export const estadisticasAgencias = (dias) => pedir(sb.rpc('estadisticas_agencias', { p_dias: dias }));
+
 /** Cuántas solicitudes esperan respuesta (para el aviso de la solapa). 0 si no se pudo saber. */
 export async function contarSolicitudes() {
   if (!sb) return 0;
