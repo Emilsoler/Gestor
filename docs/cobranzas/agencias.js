@@ -5,7 +5,7 @@
 import { esc, plata, cuantos } from './textos.js';
 // Los casilleros de documentos y los nombres de las categorías son los del cotizador (un solo lugar).
 import { CATEGORIAS, DOCS, docsSinAdjuntar, dniDelCuit } from '../agencias/solicitud.js';
-import { faltanFormularios, textoVencimientos } from './prendaforms.js';
+import { faltanFormularios, textoVencimientos, conDomicilioDelDeudor } from './prendaforms.js';
 
 export const TABS_AGENCIAS = [['solicitudes', 'Solicitudes'], ['chats', 'Chats'], ['parametros', 'Parámetros'], ['agencias', 'Agencias'], ['cotizaciones', 'Cotizaciones'], ['estadisticas', 'Estadísticas']];
 
@@ -203,16 +203,19 @@ const GEN_PRENDA = [
     ['deudor.calle', 'Calle', 't'], ['deudor.numero', 'Número', 't'], ['deudor.piso', 'Piso', 't'], ['deudor.dep', 'Depto.', 't'], ['deudor.cp', 'Código postal', 't'], ['deudor.localidad', 'Localidad', 't'], ['deudor.partido', 'Departamento', 't'], ['deudor.provincia', 'Provincia', 't']]],
   ['Vehículo (del título del automotor)', [['vehiculo.dominio', 'Dominio', 't'], ['vehiculo.marca', 'Marca', 't'], ['vehiculo.tipo', 'Tipo', 't'], ['vehiculo.modelo', 'Modelo', 't'], ['vehiculo.marcaMotor', 'Marca del motor', 't'], ['vehiculo.motor', 'N° de motor', 't'], ['vehiculo.marcaChasis', 'Marca del chasis', 't'], ['vehiculo.chasis', 'N° de chasis', 't']]],
 ];
+// El tercer elemento (true) deja el grupo plegado: son datos que casi siempre son los mismos y vienen ya cargados.
 const GEN_CONTRATOS = [
-  ['Datos del contrato', [['fecha', 'Fecha', 'd'], ['lugar', 'Lugar', 't'], ['monto', 'Monto del crédito ($)', 'n'], ['cuotas', 'Cantidad de cuotas', 'n'], ['cuota', 'Valor de la cuota ($)', 'n'], ['primerVto', 'Vencimiento de la primera cuota', 'd'], ['tna', 'Interés anual (TNA %)', 'n'],
+  ['Datos del contrato', [['fecha', 'Fecha', 'd'], ['lugar', 'Lugar', 't'], ['monto', 'Monto del crédito ($)', 'n'], ['cuotas', 'Cantidad de cuotas', 'n'], ['cuota', 'Valor de la cuota ($)', 'n'], ['tna', 'Interés anual (TNA %)', 'n']]],
+  ['Condiciones fijas (ya cargadas: tocá para cambiarlas)', [['primerVto', 'Vencimiento de la primera cuota (hoy + 37 días)', 'd'],
     ['clase', 'Prenda', 's:clase'], ['pagares', 'Pagarés', 's:pagares'], ['concepto', 'Concepto de la deuda', 't'], ['lugarPago', 'Lugar de pago', 't'], ['inspeccion', 'Derechos de inspección del acreedor', 't'], ['gravamenes', 'Gravámenes', 't'],
-    ['punitorioAnual', 'Interés punitorio anual (original)', 'n'], ['punitorioMensual', 'Interés punitorio mensual (copia)', 'n'], ['basePct', '% de la deuda como base (copia)', 'n']]],
+    ['punitorioAnual', 'Interés punitorio anual (original)', 'n'], ['punitorioMensual', 'Interés punitorio mensual (copia)', 'n'], ['basePct', '% de la deuda como base (copia)', 'n']], true],
   ['Deudor', [['deudor.nombre', 'Apellido y nombre', 't'], ['deudor.dni', 'DNI', 't'], ['deudor.nacionalidad', 'Nacionalidad', 't'], ['deudor.nacimiento', 'Fecha de nacimiento (para la edad)', 'd'], ['deudor.estadoCivil', 'Estado civil', 's'], ['deudor.profesion', 'Profesión', 't'],
-    ['deudor.calle', 'Calle', 't'], ['deudor.numero', 'Número', 't'], ['deudor.localidad', 'Localidad', 't'], ['domicilioLegal.calle', 'Domicilio constituido: calle', 't'], ['domicilioLegal.numero', 'Número', 't'], ['domicilioLegal.ciudad', 'Ciudad', 't']]],
-  ['Cónyuge (copia no negociable)', [['conyuge.nombre', 'Apellido y nombre', 't'], ['conyuge.estadoCivil', 'Estado civil', 't'], ['conyuge.profesion', 'Profesión', 't'], ['conyuge.nacionalidad', 'Nacionalidad', 't'], ['conyuge.edad', 'Edad', 't'], ['conyuge.domicilio', 'Domicilio', 't'], ['conyuge.dni', 'DNI', 't']]],
+    ['deudor.calle', 'Calle', 't'], ['deudor.numero', 'Número', 't'], ['deudor.localidad', 'Localidad (ciudad)', 't']]],
+  ['Domicilio constituido y dónde están los bienes (si queda vacío, se usa el domicilio del deudor)', [['domicilioLegal.calle', 'Domicilio constituido: calle', 't'], ['domicilioLegal.numero', 'Número', 't'],
+    ['ubicacion.provincia', 'Bienes: provincia', 't'], ['ubicacion.departamento', 'Departamento', 't'], ['ubicacion.cuartel', 'Cuartel, distrito o pedanía', 't'], ['ubicacion.calle', 'Calle', 't'], ['ubicacion.numero', 'Número', 't']], true],
+  ['Cónyuge (copia no negociable)', [['conyuge.nombre', 'Apellido y nombre', 't'], ['conyuge.estadoCivil', 'Estado civil', 't'], ['conyuge.profesion', 'Profesión', 't'], ['conyuge.nacionalidad', 'Nacionalidad', 't'], ['conyuge.edad', 'Edad', 't'], ['conyuge.domicilio', 'Domicilio', 't'], ['conyuge.dni', 'DNI', 't']], true],
   ['Vehículo (del título del automotor)', [['vehiculo.dominio', 'Dominio', 't'], ['vehiculo.marca', 'Marca', 't'], ['vehiculo.tipo', 'Tipo', 't'], ['vehiculo.modelo', 'Modelo', 't'], ['vehiculo.anio', 'Año', 't'], ['vehiculo.marcaMotor', 'Marca del motor', 't'], ['vehiculo.motor', 'N° de motor', 't'], ['vehiculo.marcaChasis', 'Marca del chasis', 't'], ['vehiculo.chasis', 'N° de chasis', 't']]],
-  ['Dónde están los bienes', [['ubicacion.provincia', 'Provincia', 't'], ['ubicacion.departamento', 'Departamento', 't'], ['ubicacion.cuartel', 'Cuartel, distrito o pedanía', 't'], ['ubicacion.ciudad', 'Ciudad o pueblo', 't'], ['ubicacion.calle', 'Calle', 't'], ['ubicacion.numero', 'Número', 't']]],
-  ['Seguro (se puede dejar en blanco)', [['seguro.suma', 'Suma asegurada', 't'], ['seguro.contra', 'Contra', 't'], ['seguro.compania', 'Compañía', 't'], ['seguro.calle', 'Calle', 't'], ['seguro.numero', 'Número', 't'], ['seguro.poliza', 'Póliza N°', 't'], ['seguro.venceDia', 'Vence (día y mes)', 't'], ['seguro.venceMes', 'Año', 't'], ['seguro.poder', 'Queda en poder de', 't']]],
+  ['Seguro (se puede dejar en blanco)', [['seguro.suma', 'Suma asegurada', 't'], ['seguro.contra', 'Contra', 't'], ['seguro.compania', 'Compañía', 't'], ['seguro.calle', 'Calle', 't'], ['seguro.numero', 'Número', 't'], ['seguro.poliza', 'Póliza N°', 't'], ['seguro.venceDia', 'Vence (día y mes)', 't'], ['seguro.venceMes', 'Año', 't'], ['seguro.poder', 'Queda en poder de', 't']], true],
 ];
 const OPC_GEN = { clase: [['', '—'], ['fija', 'Fija'], ['flotante', 'Flotante']], pagares: [['', '—'], ['con', 'Con pagarés'], ['sin', 'Sin pagarés (el contrato)']] };
 
@@ -238,7 +241,9 @@ export function htmlGenerar(g) {
   const grupos = g.tipo === 'prenda' ? GEN_PRENDA : GEN_CONTRATOS;
   return `<div class="ag-gen-panel"><div class="card-cab"><h4>${g.tipo === 'prenda' ? 'Formulario 03 (PRENDA)' : 'Contrato de prenda y copia no negociable'}</h4><button class="btn small" data-a="ag-gen-cerrar">Cerrar</button></div>
     <p class="hint">Revisá los datos. Lo que dejes vacío sale en blanco, para completar a mano. Lo que no está en la solicitud (dominio, motor, chasis…) se lee del título del automotor.</p>
-    ${grupos.map(([t, cs]) => `<fieldset class="ag-gen-grupo"><legend>${esc(t)}</legend><div class="grid2">${cs.map((c) => campoGen(g, c)).join('')}</div></fieldset>`).join('')}
+    ${grupos.map(([t, cs, plegado]) => plegado
+      ? `<details class="ag-gen-grupo ag-gen-plegado"><summary>${esc(t)}</summary><div class="grid2">${cs.map((c) => campoGen(g, c)).join('')}</div></details>`
+      : `<fieldset class="ag-gen-grupo"><legend>${esc(t)}</legend><div class="grid2">${cs.map((c) => campoGen(g, c)).join('')}</div></fieldset>`).join('')}
     <div id="genFaltan">${htmlFaltanGen(g)}</div>
     <fieldset class="ag-gen-grupo"><legend>Ajuste de la impresora</legend>
       <div class="grid2"><label class="f">Correr a la derecha (mm)<input data-k="ag.gen.dx" value="${esc(g.dx ?? '')}" inputmode="decimal" autocomplete="off"></label>
@@ -250,7 +255,7 @@ export function htmlGenerar(g) {
 }
 
 export function htmlFaltanGen(g) {
-  const f = faltanFormularios({ ...g.p, vencimientos: g.p.vencimientos || textoVencimientos(g.p) }, { soloF03: g.tipo === 'prenda' });
+  const f = faltanFormularios({ ...conDomicilioDelDeudor(g.p), vencimientos: g.p.vencimientos || textoVencimientos(g.p) }, { soloF03: g.tipo === 'prenda' });
   return f.length ? `<p class="aviso-chico" role="status"><b>Va a salir en blanco:</b> ${esc(f.join(', '))}.</p>` : '<p class="hint m0">No falta ningún dato.</p>';
 }
 

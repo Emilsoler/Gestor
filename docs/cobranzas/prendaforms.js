@@ -384,7 +384,40 @@ export function datosDeSolicitud(x, hoy = '') {
     profesion: String(d.actividad || ''), calle: dom.calle, numero: dom.numero, localidad: dom.localidad,
   });
   Object.assign(p.vehiculo, { marca: v.marca, modelo: v.modelo || String(x.vehiculo || ''), anio: x.anio && /^\d{4}$/.test(String(x.anio)) ? String(x.anio) : '', dominio: v.dominio, motor: v.motor, chasis: v.chasis });
+  Object.assign(p, DEFECTOS_CONTRATO, { primerVto: sumarDias(hoy, DIAS_PRIMERA_CUOTA) });
   return p;
+}
+
+/**
+ * Lo que es igual en casi todos los créditos (pedido de la persona, 24/11/2026): sale ya cargado y la pantalla lo
+ * muestra plegado. Interés punitorio y base del % van con guion: «no corresponde».
+ */
+export const DIAS_PRIMERA_CUOTA = 37;
+export const DEFECTOS_CONTRATO = {
+  clase: 'fija', pagares: 'sin', concepto: 'Préstamo de dinero', lugarPago: 'Bv. Colón 135 Bell Ville', inspeccion: 'Amplios',
+  gravamenes: 'Ninguno de ninguna índole', punitorioAnual: '-', punitorioMensual: '-', basePct: '-',
+};
+
+/** «2026-11-24» + n días, en ISO (vacío si la fecha no es válida). */
+export function sumarDias(iso, n) {
+  const f = partes(iso); if (!f) return '';
+  const d = new Date(Date.UTC(f.a, f.m - 1, f.d + n));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+}
+
+/**
+ * «Dónde están los bienes» y el domicilio constituido salen del domicilio del deudor cuando están vacíos (en el deudor,
+ * ciudad y localidad son lo mismo). Devuelve una copia: lo escrito a mano manda.
+ */
+export function conDomicilioDelDeudor(p) {
+  const q = JSON.parse(JSON.stringify(p)), d = q.deudor || {};
+  const dd = d.calle || d.numero || d.localidad ? d : { ...d, ...partirDomicilio(d.domicilio) };
+  q.ubicacion = q.ubicacion || {}; q.domicilioLegal = q.domicilioLegal || {};
+  const u = q.ubicacion, l = q.domicilioLegal;
+  u.provincia = u.provincia || d.provincia || ''; u.departamento = u.departamento || d.partido || '';
+  u.ciudad = u.ciudad || dd.localidad || ''; u.calle = u.calle || dd.calle || ''; u.numero = u.numero || dd.numero || '';
+  l.calle = l.calle || dd.calle || ''; l.numero = l.numero || dd.numero || ''; l.ciudad = l.ciudad || dd.localidad || '';
+  return q;
 }
 
 /** «24 cuotas mensuales y consecutivas de $ 301.500,50 cada una, venciendo la primera el 24/12/2026» (vacío si falta algo). */

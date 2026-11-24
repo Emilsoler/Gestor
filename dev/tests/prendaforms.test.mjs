@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PDFDocument } from '../../docs/vendor/pdf-lib.js';
-import { datosDeSolicitud, textoVencimientos, faltanFormularios, armarFormularios, hojaDePrueba, MUTUAL } from '../../docs/cobranzas/prendaforms.js';
+import { datosDeSolicitud, textoVencimientos, faltanFormularios, armarFormularios, hojaDePrueba, conDomicilioDelDeudor, sumarDias, MUTUAL } from '../../docs/cobranzas/prendaforms.js';
 
 const sol = { denominacion: 'PEREZ JUAN CARLOS', cuit: '20123456786', monto: 4200000, cuotas: 24, cuota: 301500.5, tasa: 5, vehiculo: 'FIAT CRONOS 1.3 DRIVE', anio: 2021,
   datos: { dni: '12345678', domicilio: 'San Martín 450, Bell Ville', estado_civil: 'casado', actividad: 'Comerciante' } };
@@ -14,11 +14,31 @@ test('los datos de la solicitud se pasan sin inventar nada', () => {
   assert.equal(p.deudor.estadoCivil, 'casado');
   assert.equal(p.vehiculo.dominio, ''); assert.equal(p.vehiculo.motor, '');
   assert.equal(p.acreedor.nombre, MUTUAL.nombre);
-  assert.equal(p.punitorioAnual, ''); assert.equal(p.autorizado.nombre, '');
+  assert.equal(p.autorizado.nombre, '');
+});
+
+test('condiciones fijas ya cargadas (pedido del 24/11/2026)', () => {
+  const p = datosDeSolicitud(sol, '2026-11-24');
+  assert.equal(p.primerVto, '2026-12-31');
+  assert.equal(p.clase, 'fija'); assert.equal(p.pagares, 'sin'); assert.equal(p.concepto, 'Préstamo de dinero');
+  assert.equal(p.lugarPago, 'Bv. Colón 135 Bell Ville'); assert.equal(p.inspeccion, 'Amplios'); assert.equal(p.gravamenes, 'Ninguno de ninguna índole');
+  assert.equal(p.punitorioAnual, '-'); assert.equal(p.punitorioMensual, '-'); assert.equal(p.basePct, '-');
+  assert.equal(sumarDias('2026-12-01', 37), '2027-01-07');
+});
+
+test('los bienes y el domicilio constituido salen del domicilio del deudor, y lo escrito manda', () => {
+  const p = datosDeSolicitud(sol, '2026-11-24');
+  const q = conDomicilioDelDeudor(p);
+  assert.equal(q.ubicacion.calle, 'San Martín'); assert.equal(q.ubicacion.numero, '450'); assert.equal(q.ubicacion.ciudad, 'Bell Ville');
+  assert.equal(q.domicilioLegal.ciudad, 'Bell Ville');
+  p.ubicacion.calle = 'Otra';
+  assert.equal(conDomicilioDelDeudor(p).ubicacion.calle, 'Otra');
+  assert.equal(p.domicilioLegal.ciudad, '', 'no cambia el original');
 });
 
 test('vencimientos: solo si se sabe la primera cuota', () => {
   const p = datosDeSolicitud(sol, '2026-11-24');
+  p.primerVto = '';
   assert.equal(textoVencimientos(p), '');
   p.primerVto = '2026-12-24';
   assert.match(textoVencimientos(p), /^24 cuotas mensuales y consecutivas de \$ 301\.500,50 cada una, venciendo la primera el 24\/12\/2026$/);
@@ -27,6 +47,7 @@ test('vencimientos: solo si se sabe la primera cuota', () => {
 test('el Formulario 03 no pide lo de los contratos', () => {
   const p = datosDeSolicitud(sol, '2026-11-24');
   assert.ok(!faltanFormularios(p, { soloF03: true }).includes('Lugar de pago'));
+  p.lugarPago = '';
   assert.ok(faltanFormularios(p).includes('Lugar de pago'));
   assert.ok(!faltanFormularios(p).includes('Interés punitorio (contrato A)'));
 });

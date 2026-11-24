@@ -27,7 +27,7 @@ import { xlsx } from '../excel.js';
 import { datosAcuerdo, avisosAcuerdo, armarAcuerdo, hojasRefinanciacion, CAMPOS_ACUERDO } from './acuerdo.js';
 import { nuevaDemanda, nuevoDemandado, demandaDesdeDeudor, estadoDemanda, datosDemanda, avisosDemanda, faltanDemanda, CAMPOS_DEMANDA } from './demanda.js';
 import { abrirChat } from './chat.js';
-import { datosDeSolicitud, textoVencimientos, armarFormularios, hojaDePrueba } from './prendaforms.js';
+import { datosDeSolicitud, textoVencimientos, armarFormularios, hojaDePrueba, conDomicilioDelDeudor } from './prendaforms.js';
 import { nuevoDescuento, nuevoCheque, formDeFila, filaDeForm, liquidarDescuento, cartera, resumenCartera, cuandoVence, bancoDe, htmlLiquidacionDescuento, hojaDescuento, ESTADOS_CHEQUE } from './descuento.js';
 
 const VERSION = '1.11.2';
@@ -678,7 +678,7 @@ function abrirGenerar(id, tipo) {
 }
 const mm = (v) => { const n = Number(String(v ?? '').replace(',', '.')); return Number.isFinite(n) ? n : 0; };
 function datosListos(g) {
-  const p = JSON.parse(JSON.stringify(g.p));
+  const p = conDomicilioDelDeudor(g.p);
   for (const k of ['monto', 'cuotas', 'cuota', 'tna']) p[k] = Number(String(p[k] ?? '').replace(',', '.')) || 0;
   if (!p.vencimientos) p.vencimientos = textoVencimientos(p);
   if (p.fecha) p.fecha = String(p.fecha);

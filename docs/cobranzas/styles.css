@@ -877,3 +877,5 @@ body:has(#drawer:not([hidden])) #btnClaudeWeb,body:has(#menu:not([hidden])) #btn
 .ag-gen-panel{display:grid;gap:10px;padding-top:10px;border-top:1px solid var(--line-soft)}
 .ag-gen-grupo{border:1px solid var(--line-soft);border-radius:12px;padding:8px 12px}
 .ag-gen-grupo legend{font-weight:600;padding:0 6px}
+.ag-gen-plegado>summary{cursor:pointer;font-weight:600;padding:2px 0}
+.ag-gen-plegado[open]>summary{margin-bottom:8px}
