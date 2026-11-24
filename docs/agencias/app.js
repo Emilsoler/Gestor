@@ -958,13 +958,58 @@ async function eliminarTodasCotizaciones() {
   render();
 }
 
+// ───────────────────────── «Ver mi solicitud» ─────────────────────────
+// El detalle de lo que la agencia mandó: lo pide a la función (`solicitud`), que no devuelve el % del valor del vehículo
+// ni enlaces a los archivos; de estos solo se ven el nombre y el tamaño.
+const CATEGORIAS = { dependencia: 'Relación de dependencia', monotributo: 'Monotributo', inscripto: 'Responsable inscripto' };
+const ESTADO_CIVIL = { soltero: 'Soltero/a', casado: 'Casado/a', divorciado: 'Divorciado/a', viudo: 'Viudo/a', separado: 'Separado/a', conviviente: 'Conviviente' };
+const fechaLinda = (f) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(f || '')); return m ? `${m[3]}/${m[2]}/${m[1]}` : String(f || ''); };
+const tamanoLindo = (b) => { const n = Number(b) || 0; return n >= 1048576 ? `${(n / 1048576).toLocaleString('es-AR', { maximumFractionDigits: 1 })} MB` : `${Math.max(1, Math.round(n / 1024))} KB`; };
+
+async function verSolicitud(id) {
+  S.det = { id, cargando: true }; render();
+  try { S.det = { id, sol: (await fn({ accion: 'solicitud', id })).solicitud }; } catch (e) { S.det = null; falla(e); render(); return; }
+  render();
+  window.scrollTo({ top: 0 });
+}
+
+function vistaDetalle() {
+  const D = S.det;
+  const volver = '<button class="btn chico no-imprimir" type="button" id="btnVolverSol">← Volver a mis solicitudes</button>';
+  if (D.cargando) return `<section class="card">${volver}<p class="hint m0">Cargando…</p></section>`;
+  const x = D.sol, d = x.datos || {};
+  const fila = (r, v) => (v === undefined || v === null || String(v).trim() === '' ? '' : `<div class="dato"><span class="hint">${esc(r)}</span><span>${esc(String(v))}</span></div>`);
+  const bloque = (t, filas) => (filas.join('') ? `<div class="sol-bloque"><h3>${esc(t)}</h3>${filas.join('')}</div>` : '');
+  const archivos = Array.isArray(x.archivos) ? x.archivos : [];
+  const cuenta = d.cuenta === 'terceros' ? 'De un tercero' : d.cuenta === 'propia' ? 'Propia' : '';
+  return `<section class="card">${volver}
+    <div class="card-cab"><h2 class="m0">Mi solicitud</h2>${etqEstado(x.estado)}</div>
+    ${DICE_ESTADO[x.estado] ? `<div class="hint">${esc(DICE_ESTADO[x.estado])}</div>` : ''}
+    ${x.nota ? `<p class="m0">Respuesta de la Mutual: ${esc(x.nota)}</p>` : ''}
+    <div class="hint">Enviada el ${esc(fechaHora(x.momento))}</div>
+    ${bloque('Cliente', [fila('Nombre', x.denominacion), fila('CUIT', cuitLindo(x.cuit)), fila('DNI', d.dni), fila('Celular', d.celular), fila('Empleo o actividad', d.actividad),
+      fila('Nacionalidad', d.nacionalidad), fila('Fecha de nacimiento', fechaLinda(d.nacimiento)), fila('Domicilio', d.domicilio), fila('Estado civil', ESTADO_CIVIL[d.estado_civil] || d.estado_civil)])}
+    ${d.estado_civil === 'casado' ? bloque('Matrimonio y cónyuge', [fila('Lugar del matrimonio', d.matrimonio_lugar), fila('Fecha del matrimonio', fechaLinda(d.matrimonio_fecha)), fila('Cónyuge', d.conyuge_nombre),
+      fila('DNI del cónyuge', d.conyuge_dni), fila('Nacionalidad del cónyuge', d.conyuge_nacionalidad), fila('Nacimiento del cónyuge', fechaLinda(d.conyuge_nacimiento)), fila('Domicilio del cónyuge', d.conyuge_domicilio)]) : ''}
+    ${bloque('Crédito', [fila('Vehículo', x.vehiculo ? `${x.vehiculo} (${etiquetaAnio(x.anio)})` : ''), fila('Monto', plata(x.monto)), fila('Cuotas', `${x.cuotas} × ${plata(x.cuota)}`),
+      fila('Total a pagar', plata(x.total)), fila('Tasa mensual', pct(x.tasa)), fila('CFT', pct(x.cft))])}
+    ${bloque('Ingresos', [fila('Cómo los obtiene', CATEGORIAS[x.categoria] || x.categoria), fila('Ingreso mensual declarado', x.ingreso ? plata(x.ingreso) : ''), fila('La cuota es el', x.relacion ? pct(x.relacion) + ' del ingreso' : '')])}
+    ${bloque('Cuenta para el desembolso', [fila('CBU o CVU', d.cbu), fila('Alias', d.alias), fila('La cuenta es', cuenta), fila('Titular', d.cuenta_titular), fila('CUIT o CUIL del titular', d.cuenta_cuit ? cuitLindo(String(d.cuenta_cuit)) : ''), fila('Relación con el cliente', d.cuenta_relacion)])}
+    <div class="sol-bloque"><h3>Documentación enviada</h3>${archivos.length
+    ? `<ul class="m0">${archivos.map((a) => `<li>${esc(a.nombre || 'Archivo')} <span class="hint">${esc(tamanoLindo(a.tamano))}</span></li>`).join('')}</ul>`
+    : '<p class="hint m0">No se adjuntaron archivos con esta solicitud.</p>'}</div>
+  </section>`;
+}
+
 /** «Mis solicitudes», para la agencia. */
 function vistaSolicitudes() {
+  if (S.det) return vistaDetalle();
   if (!S.sols) return '<section class="card"><p class="hint m0">Cargando…</p></section>';
   if (!S.sols.length) return '<section class="card"><h2>Mis solicitudes</h2><p class="hint m0">Todavía no mandaste solicitudes. Se envían desde «Cotizar», después de ver el crédito.</p></section>';
   return `<section class="card"><h2>Mis solicitudes</h2>${S.sols.map((x) => `<div class="sol">
       <div class="card-cab"><b>${esc(x.denominacion || cuitLindo(x.cuit))}</b>${etqEstado(x.estado)}</div>
       ${DICE_ESTADO[x.estado] ? `<div class="hint">${esc(DICE_ESTADO[x.estado])}${S.novedades?.has(x.id) ? ' <b>Novedad</b>' : ''}</div>` : S.novedades?.has(x.id) ? '<div class="hint"><b>Novedad</b></div>' : ''}
+      <div class="acciones no-imprimir"><button class="btn chico" type="button" data-versol="${esc(x.id)}">Ver mi solicitud</button></div>
       <div class="hint">${esc(fechaHora(x.momento))} · <span class="mono">${esc(cuitLindo(x.cuit))}</span>${['amarillo', 'sin_datos'].includes(x.semaforo) ? ' · sujeta a revisión' : ''}</div>
       <div>${esc(x.vehiculo)} <span class="hint">${esc(etiquetaAnio(x.anio))}</span></div>
       <div class="mono">${plata(x.monto)} · ${x.cuotas} × ${plata(x.cuota)}</div>
@@ -1115,7 +1160,9 @@ document.addEventListener('click', (e) => {
   else if (t.id === 'btnRapidaReset') { S.rap = { ...nuevaRapida(), capital: S.rap?.capital || '', cuotas: S.rap?.cuotas || nuevaRapida().cuotas }; render(); }
   else if (t.id === 'btnWhatsappRapida' && S.rap?.res) window.open(`https://wa.me/?text=${encodeURIComponent(textoRapida(S.rap.res))}`, '_blank', 'noopener');
 
-  else if (t.dataset.vista) { S.vista = t.dataset.vista; if (S.vista === 'solicitudes') cargarSolicitudes(); else if (S.vista === 'historial') cargarCotizaciones(); else render(); }
+  else if (t.dataset.versol) verSolicitud(t.dataset.versol);
+  else if (t.id === 'btnVolverSol') { S.det = null; render(); }
+  else if (t.dataset.vista) { S.vista = t.dataset.vista; S.det = null; if (S.vista === 'solicitudes') cargarSolicitudes(); else if (S.vista === 'historial') cargarCotizaciones(); else render(); }
 });
 
 sb?.auth.onAuthStateChange((ev) => { if (ev === 'SIGNED_OUT' && S.fase === 'app') { S.fase = 'ingreso'; render(); } });
