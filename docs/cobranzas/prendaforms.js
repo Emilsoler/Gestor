@@ -16,9 +16,13 @@ import { enLetras, cifra, dniOficio, partirDomicilio, partirVehiculo } from '../
 let lib = null;
 const cargarLib = async () => (lib ||= await import('../vendor/pdf-lib.js'));
 
-const A4 = [595.28, 841.89];
-const PX = 72 / 150; // del escaneo (150 ppp) a puntos
 const MM = 72 / 25.4;
+// El escaneo (A4, 1240 × 1755 px) es la hoja entera estirada a A4: cada hoja oficial tiene su tamaño real (ancho × alto, en mm,
+// medidos por la persona el 24/11/2026) y las posiciones se llevan de los píxeles del escaneo a ese tamaño, en cada eje.
+const SW = 1240, SH = 1755;
+const HOJAS = { f03: [202, 305], a: [214, 328], b: [213, 317] }; // Formulario 03, contrato original, copia no negociable
+const tam = (clave) => HOJAS[clave].map((m) => m * MM);
+const escala = (pg) => { const { width, height } = pg.getSize(); return { sx: width / SW, sy: height / SH, H: height }; };
 
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 const partes = (iso) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || ''); return m ? { a: +m[1], m: +m[2], d: +m[3] } : null; };
@@ -195,9 +199,9 @@ export async function armarFormularios(p, { dx = 0, dy = 0, hoy = '', fondos = n
 
   const seguro = (t) => { let o = ''; for (const c of String(t ?? '')) { try { fn.encodeText(c); o += c; } catch { o += '?'; } } return o; };
   const pagina = async (clave, i) => {
-    const pg = doc.addPage(A4);
+    const pg = doc.addPage(tam(clave));
     const img = fondos?.[clave]?.[i];
-    if (img) { const im = await doc.embedJpg(img); pg.drawImage(im, { x: 0, y: 0, width: A4[0], height: A4[1] }); }
+    if (img) { const im = await doc.embedJpg(img); const { width, height } = pg.getSize(); pg.drawImage(im, { x: 0, y: 0, width, height }); }
     return pg;
   };
   // texto en una posición del escaneo, achicando la letra si no entra
@@ -205,17 +209,19 @@ export async function armarFormularios(p, { dx = 0, dy = 0, hoy = '', fondos = n
     const t = seguro(texto).replace(/\s+/g, ' ').trim();
     if (!t || !c) return;
     let tam = c.tam || 9.5;
-    const w = (c.w || 9999) * PX;
+    const { sx, sy, H } = escala(pg);
+    const w = (c.w || 9999) * sx;
     while (tam > 6 && fn.widthOfTextAtSize(t, tam) > w) tam -= 0.25;
-    pg.drawText(t, { x: (c.x + (extra.dx || 0)) * PX + dx * MM, y: A4[1] - c.y * PX - dy * MM, size: tam, font: fn, color: tinta });
+    pg.drawText(t, { x: (c.x + (extra.dx || 0)) * sx + dx * MM, y: H - c.y * sy - dy * MM, size: tam, font: fn, color: tinta });
   };
   const X = (pg, [cx, cy]) => {
-    const tam = 13, w = fb.widthOfTextAtSize('X', tam);
-    pg.drawText('X', { x: cx * PX - w / 2 + dx * MM, y: A4[1] - cy * PX - tam * 0.35 - dy * MM, size: tam, font: fb, color: tinta });
+    const { sx, sy, H } = escala(pg), tam = 13, w = fb.widthOfTextAtSize('X', tam);
+    pg.drawText('X', { x: cx * sx - w / 2 + dx * MM, y: H - cy * sy - tam * 0.35 - dy * MM, size: tam, font: fb, color: tinta });
   };
   const raya = (pg, [x1, y1, x2, y2]) => {
     if (!x2) return;
-    pg.drawLine({ start: { x: x1 * PX + dx * MM, y: A4[1] - y1 * PX - dy * MM }, end: { x: x2 * PX + dx * MM, y: A4[1] - y2 * PX - dy * MM }, thickness: 1.2, color: tinta });
+    const { sx, sy, H } = escala(pg);
+    pg.drawLine({ start: { x: x1 * sx + dx * MM, y: H - y1 * sy - dy * MM }, end: { x: x2 * sx + dx * MM, y: H - y2 * sy - dy * MM }, thickness: 1.2, color: tinta });
   };
   // un texto largo repartido en varios renglones (el vehículo, los vencimientos…)
   const renglones = (pg, lineas, texto) => {
@@ -224,7 +230,7 @@ export async function armarFormularios(p, { dx = 0, dy = 0, hoy = '', fondos = n
     for (const pal of palabras) {
       const c = lineas[k];
       const prueba = actual ? `${actual} ${pal}` : pal;
-      if (!c || fn.widthOfTextAtSize(prueba, c.tam || 9.5) <= c.w * PX || !actual) actual = prueba;
+      if (!c || fn.widthOfTextAtSize(prueba, c.tam || 9.5) <= c.w * escala(pg).sx || !actual) actual = prueba;
       else { T(pg, c, actual); k++; actual = pal; }
     }
     if (actual && lineas[k]) T(pg, lineas[k], actual);
@@ -340,15 +346,18 @@ export async function hojaDePrueba({ dx = 0, dy = 0 } = {}) {
   const { PDFDocument, StandardFonts, rgb } = await cargarLib();
   const doc = await PDFDocument.create();
   const f = await doc.embedFont(StandardFonts.Helvetica);
-  const pg = doc.addPage(A4);
   const cruces = [[30, 30], [1210, 30], [30, 1725], [1210, 1725], [620, 862], [317, 421], [1096, 1194]]; // px del escaneo
-  for (const [px, py] of cruces) {
-    const x = px * PX + dx * MM, y = A4[1] - py * PX - dy * MM;
-    pg.drawLine({ start: { x: x - 10, y }, end: { x: x + 10, y }, thickness: 0.6, color: rgb(0, 0, 0) });
-    pg.drawLine({ start: { x, y: y - 10 }, end: { x, y: y + 10 }, thickness: 0.6, color: rgb(0, 0, 0) });
+  const nombres = { f03: 'Formulario 03', a: 'Contrato de prenda (original)', b: 'Contrato de prenda (copia no negociable)' };
+  for (const clave of Object.keys(HOJAS)) { // una hoja de cada tamaño, para probar con cada formulario oficial
+    const pg = doc.addPage(tam(clave)), { sx, sy, H } = escala(pg), [w, h] = HOJAS[clave];
+    for (const [px, py] of cruces) {
+      const x = px * sx + dx * MM, y = H - py * sy - dy * MM;
+      pg.drawLine({ start: { x: x - 10, y }, end: { x: x + 10, y }, thickness: 0.6, color: rgb(0, 0, 0) });
+      pg.drawLine({ start: { x, y: y - 10 }, end: { x, y: y + 10 }, thickness: 0.6, color: rgb(0, 0, 0) });
+    }
+    pg.drawText(`Hoja de prueba: ${nombres[clave]} (${w / 10} x ${h / 10} cm). Imprimir al 100 % (sin "ajustar a la página").`, { x: 60, y: H - 60, size: 8, font: f });
+    pg.drawText('Las cruces tienen que caer sobre las esquinas del formulario. Medir cuánto se corren (mm) y cargarlo en el ajuste.', { x: 60, y: H - 72, size: 8, font: f });
   }
-  pg.drawText('Hoja de prueba de impresión. Imprimir al 100 % (sin "ajustar a la página"). Las cruces tienen que caer', { x: 60, y: A4[1] - 60, size: 8, font: f });
-  pg.drawText('sobre las esquinas del formulario. Medir cuánto se corren (mm) y cargarlo en el ajuste.', { x: 60, y: A4[1] - 72, size: 8, font: f });
   return doc.save();
 }
 

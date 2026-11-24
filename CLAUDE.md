@@ -923,6 +923,7 @@ En Créditos y Cobros → Agencias → Solicitudes, cada solicitud **aprobada** 
 la Mutual** (es parte de la administración): las agencias no ven nada de esto. Se abre una pantalla de revisión con los datos
 de la solicitud, editables, y la lista de lo que va a salir en blanco.
 
+- **Tamaño de cada hoja** (medido por la persona el 24/11/2026, ancho × alto): Formulario 03 20,2 × 30,5 cm, contrato original 21,4 × 32,8 cm, copia no negociable 21,3 × 31,7 cm (`HOJAS` en `prendaforms.js`). Cada hoja del PDF sale con su tamaño real; las posiciones, medidas sobre escaneos A4 que son la hoja entera estirada, se escalan en cada eje. Imprimir al 100 %, sin «ajustar a la página». La «hoja de prueba» trae una hoja de cada tamaño.
 - **Se imprime solo lo escrito**, sobre los formularios oficiales en blanco (tienen su propia numeración): el PDF no lleva ningún
   dibujo del formulario. Una hoja por hoja oficial: 03 frente y dorso, contrato original frente y dorso, copia no negociable
   frente y dorso. «Hoja de prueba» (cruces) y ajuste `dx`/`dy` en mm, que se recuerda en el dispositivo (`cb.prendaAjuste`).
