@@ -26,14 +26,18 @@ const MM = 72 / 25.4;
 // del formulario en blanco, no imprimir esas sobre el papel oficial sin probar antes en una hoja común.
 const SW = 1240, SH = 1755;
 const HOJAS = { f03: [202, 305], a: [214, 328], b: [213, 317] }; // Formulario 03, contrato original, copia no negociable
-const CAL = { f03: [{ k: 0.189, ox: -15.7, oy: -5.0 }, null], a: [null, null], b: [null, null] }; // por hoja: frente y dorso
+const CAL = { f03: [{ k: 0.189, ox: -15.7, oy: -5.0 }, null], a: [null, null], b: [{ kx: 0.205, ky: 0.192, ox: -12.6, oy: 1.8, xmax: 207.5 }, null] }; // por hoja: frente y dorso
 const tam = (clave) => HOJAS[clave].map((m) => m * MM);
 const calDe = new WeakMap(); // página → su calibración (la pone `nuevaPagina`)
+const anchoDe = (pg, c) => {
+  const { sx, ox, xmax } = escala(pg), w = (c.w || 9999) * sx;
+  return xmax ? Math.min(w, xmax - (c.x * sx + ox)) : w;
+};
 const nuevaPagina = (doc, clave, i) => { const pg = doc.addPage(tam(clave)); calDe.set(pg, CAL[clave]?.[i] || null); return pg; };
 /** De píxeles del escaneo a puntos del PDF: x = px × sx + ox; y (desde arriba) = py × sy + oy. */
 const escala = (pg) => {
   const { width, height } = pg.getSize(), c = calDe.get(pg);
-  if (c) return { sx: c.k * MM, sy: c.k * MM, ox: c.ox * MM, oy: c.oy * MM, H: height };
+  if (c) return { sx: (c.kx || c.k) * MM, sy: (c.ky || c.k) * MM, ox: c.ox * MM, oy: c.oy * MM, H: height, xmax: c.xmax ? c.xmax * MM : null };
   return { sx: width / SW, sy: height / SH, ox: 0, oy: 0, H: height };
 };
 
@@ -223,7 +227,7 @@ export async function armarFormularios(p, { dx = 0, dy = 0, hoy = '', fondos = n
     if (!t || !c) return;
     let tam = c.tam || 9.5;
     const { sx, sy, ox, oy, H } = escala(pg);
-    const w = (c.w || 9999) * sx;
+    const w = anchoDe(pg, c);
     while (tam > 6 && fn.widthOfTextAtSize(t, tam) > w) tam -= 0.25;
     pg.drawText(t, { x: (c.x + (extra.dx || 0)) * sx + ox + dx * MM, y: H - (c.y * sy + oy) - dy * MM, size: tam, font: fn, color: tinta });
   };
@@ -243,7 +247,7 @@ export async function armarFormularios(p, { dx = 0, dy = 0, hoy = '', fondos = n
     for (const pal of palabras) {
       const c = lineas[k];
       const prueba = actual ? `${actual} ${pal}` : pal;
-      if (!c || fn.widthOfTextAtSize(prueba, c.tam || 9.5) <= c.w * escala(pg).sx || !actual) actual = prueba;
+      if (!c || fn.widthOfTextAtSize(prueba, c.tam || 9.5) <= anchoDe(pg, c) || !actual) actual = prueba;
       else { T(pg, c, actual); k++; actual = pal; }
     }
     if (actual && lineas[k]) T(pg, lineas[k], actual);
