@@ -26,7 +26,10 @@ const MM = 72 / 25.4;
 // del formulario en blanco, no imprimir esas sobre el papel oficial sin probar antes en una hoja común.
 const SW = 1240, SH = 1755;
 const HOJAS = { f03: [202, 305], a: [214, 328], b: [214, 328] }; // Formulario 03, contrato original, copia no negociable (la copia mide igual que el original: aviso de la persona del 24/11/2026)
-const CAL = { f03: [{ k: 0.189, ox: -15.7, oy: -5.0 }, null], a: [null, null], b: [{ kx: 0.2, ky: 0.192, ox: -10.2, oy: 1.8, xmax: 205 }, null] }; // por hoja: frente y dorso
+const CAL = { f03: [{ k: 0.189, ox: -15.7, oy: -5.0 }, null],
+  // contratos (edición «Ministerio de Educación y Justicia», medidos el 24/11/2026 sobre fotos enderezadas de las hojas en blanco)
+  a: [{ kx: 0.2002, ky: 0.1966, ox: -16.7, oy: 1.8, xmax: 205 }, null],
+  b: [{ kx: 0.2002, ky: 0.1966, ox: -16.7, oy: 0.9, xmax: 205 }, null] }; // por hoja: frente y dorso
 const tam = (clave) => HOJAS[clave].map((m) => m * MM);
 const calDe = new WeakMap(); // página → su calibración (la pone `nuevaPagina`)
 const anchoDe = (pg, c) => {
@@ -113,7 +116,7 @@ const CAJA_GRADO = { x: 783, y: 1450, w: 18 };
 // Contrato A (modelo «Ministerio de Educación y Justicia»), hoja 1 y 2. Las `y` son la línea de base de cada renglón
 // impreso (donde están los puntitos), medida con OCR sobre el escaneo.
 const CA = {
-  lugar: { x: 794, y: 322, w: 232 }, lugar2: { x: 1066, y: 322, w: 100 },
+  lugar: { x: 794, y: 322, w: 232 }, lugar2: { x: 1066, y: 322, w: 160 },
   suma: { x: 690, y: 404, w: 420 }, sumaLetras: { x: 228, y: 440, w: 452, tam: 8 },
   senor: { x: 812, y: 439, w: 310 }, senor2: { x: 224, y: 464, w: 750 },
   concepto: { x: 310, y: 487, w: 810 }, acreedor: { x: 266, y: 510, w: 510 },
@@ -135,31 +138,18 @@ const CA = {
   p2: { punit: { x: 658, y: 266, w: 40 }, juris: { x: 782, y: 395, w: 178 }, domLegal: { x: 290, y: 433, w: 640 } },
 };
 
-// Contrato B (modelo «Ministerio de Justicia»), hoja 1 y 2.
+// Contrato B (copia no negociable): desde que el Registro entrega la copia en la misma edición que el original, el frente tiene
+// exactamente el mismo diseño (medido el 24/11/2026: los renglones coinciden salvo ~1 mm), así que usa las posiciones del frente de A.
+// El dorso es propio.
 const CB = {
-  lugar: { x: 700, y: 303, w: 255 }, lugar2: { x: 980, y: 303, w: 34 },
-  suma: { x: 576, y: 398, w: 550 }, senor: { x: 684, y: 424, w: 440 }, senor2: { x: 276, y: 443, w: 735 },
-  concepto: { x: 384, y: 468, w: 740 }, acreedor: { x: 312, y: 491, w: 486 },
-  bienes: [{ x: 320, y: 536, w: 806 }, { x: 270, y: 560, w: 856 }, { x: 270, y: 584, w: 856 }, { x: 270, y: 608, w: 856 }, { x: 270, y: 632, w: 856 }, { x: 270, y: 655, w: 730 }],
-  provincia: { x: 552, y: 676, w: 205 }, depto: { x: 762, y: 676, w: 195 },
-  cuartel: { x: 752, y: 703, w: 374 }, campo: { x: 648, y: 725, w: 478 },
-  ciudad: { x: 396, y: 748, w: 305 }, calle: { x: 753, y: 746, w: 285 }, nro: { x: 1064, y: 745, w: 62 },
-  gravamenes: [{ x: 270, y: 794, w: 856 }],
-  documentada: { x: 760, y: 856, w: 366 }, vencim: [{ x: 756, y: 888, w: 370 }, { x: 270, y: 912, w: 856 }, { x: 270, y: 935, w: 856 }],
-  interes: { x: 626, y: 956, w: 55 }, lugarPago: { x: 400, y: 978, w: 230 }, inspeccion: { x: 952, y: 976, w: 176 },
-  segSuma: { x: 838, y: 1000, w: 288 }, segContra: { x: 630, y: 1026, w: 190 }, segCompania: { x: 936, y: 1022, w: 190 },
-  segCalle: { x: 442, y: 1047, w: 262 }, segNro: { x: 733, y: 1045, w: 80 }, segPoliza: { x: 1000, y: 1048, w: 126 },
-  segVence: { x: 436, y: 1070, w: 262 }, segVenceMes: { x: 722, y: 1068, w: 45 }, segPoder: { x: 984, y: 1070, w: 142 },
-  acr: { insc: { x: 470, y: 1092, w: 228 }, nombre: { x: 416, y: 1115, w: 282 }, ec: { x: 360, y: 1137, w: 112 }, prof: { x: 550, y: 1135, w: 124 }, nac: { x: 374, y: 1158, w: 175 }, edad: { x: 590, y: 1157, w: 48 }, dom: { x: 340, y: 1182, w: 358 }, doc: { x: 454, y: 1207, w: 244 } },
-  deu: { nombre: { x: 868, y: 1114, w: 258 }, ec: { x: 812, y: 1136, w: 120 }, prof: { x: 1006, y: 1136, w: 120 }, nac: { x: 822, y: 1158, w: 155 }, edad: { x: 1022, y: 1158, w: 70 }, dom: { x: 788, y: 1181, w: 338 }, doc: { x: 904, y: 1203, w: 222 } },
-  tachaPagares: { con: [493, 340, 531, 340], sin: [543, 340, 571, 340] },
-  tachaClase: { fija: [990, 243, 1027, 243], flotante: [1052, 243, 1136, 243] },
+  ...CA,
   p2: {
     punit: { x: 378, y: 166, w: 60 }, base: { x: 934, y: 184, w: 38 },
     domCalle: { x: 280, y: 236, w: 445 }, domNro: { x: 752, y: 235, w: 236 }, domCiudad: { x: 138, y: 258, w: 315 },
     cony: { nombre: { x: 280, y: 379, w: 700 }, ec: { x: 225, y: 401, w: 118 }, prof: { x: 420, y: 399, w: 400 }, nac: { x: 236, y: 424, w: 155 }, edad: { x: 436, y: 421, w: 70 }, dom: { x: 202, y: 446, w: 770 }, doc: { x: 316, y: 468, w: 650 } },
   },
 };
+
 
 // Leyenda de sumisión a los tribunales (texto del estudio), para el espacio libre del contrato B.
 const LEYENDA_JURISDICCION = (ciudad) => `A todos los efectos del presente contrato y en especial a los fines de la ejecución de la prenda, las partes se someten voluntariamente a la jurisdicción de los Tribunales Ordinarios de la ciudad de ${ciudad || '[ciudad]'}, renunciando expresamente a cualquier otro que les pudiere corresponder, inclusive el Federal. DISTINTO TIPO DE TINTA Y LETRA "VALE".`;
@@ -307,9 +297,7 @@ export async function armarFormularios(p, { dx = 0, dy = 0, hoy = '', fondos = n
   // ---- Contratos de prenda (A y B) ----------------------------------------------------------------------------
   const contrato = async (clave, C) => {
     const pg = await pagina(clave, 0);
-    // en la copia, como lo escribe el Registro: «Bell Ville, 24 de noviembre» en el renglón largo y el año antes del «de» impreso
-    if (clave === 'b' && fp) { T(pg, C.lugar, `${lugarDia} de ${MESES[fp.m - 1]}`); T(pg, C.lugar2, String(fp.a)); }
-    else { T(pg, C.lugar, lugarDia); T(pg, C.lugar2, mesAnio); }
+    T(pg, C.lugar, lugarDia); T(pg, C.lugar2, mesAnio);
     if (p.pagares === 'con') raya(pg, C.tachaPagares.sin); else if (p.pagares === 'sin') raya(pg, C.tachaPagares.con);
     if (p.clase === 'fija') raya(pg, C.tachaClase.flotante); else if (p.clase === 'flotante') raya(pg, C.tachaClase.fija);
     T(pg, C.suma, montoTxt); if (C.sumaLetras) T(pg, C.sumaLetras, letras);
