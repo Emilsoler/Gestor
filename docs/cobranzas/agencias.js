@@ -316,10 +316,11 @@ export function htmlAgencias(A, est) {
       ${E.error ? `<p class="aviso-chico" role="alert">${esc(E.error)}</p>` : !E.filas ? '<p class="hint m0">Calculando…</p>'
         : !filas.length ? '<p class="hint m0">Todavía no hay agencias.</p>'
         : `<p class="m0"><b>${tot.c}</b> cotizaciones · <b>${tot.s}</b> solicitudes · <b>${tot.ap}</b> aprobadas · ${plata(tot.m)} aprobados</p>
+          <details class="ag-est-det" data-est${E.abierto ? ' open' : ''}><summary>Ver gráficos y detalle por agencia</summary>
           <h4 class="gr-tit">Cotizaciones, solicitudes y aprobadas</h4>${graficoBarras(filas, [['cotizaciones', 'Cotizaciones', 'a'], ['solicitudes', 'Solicitudes', 'b'], ['aprobadas', 'Aprobadas', 'c']])}
           ${filas.some((x) => Number(x.monto_aprobado)) ? `<h4 class="gr-tit">Monto aprobado</h4>${graficoBarras(filas.filter((x) => Number(x.monto_aprobado)), [['monto_aprobado', 'Monto aprobado', 'c']], plata)}` : ''}
           <h4 class="gr-tit">Detalle</h4>
-          <div class="ag-tabla"><table class="tabla"><thead><tr><th>Agencia</th><th class="num">Cotizaciones</th><th class="num">Solicitudes</th><th class="num">Aprobadas</th><th class="num">Rechazadas</th><th class="num">Abiertas</th><th class="num">Cotiz. → solicitud</th><th class="num">Monto aprobado</th></tr></thead><tbody>${tabla}</tbody></table></div>`}
+          <div class="ag-tabla"><table class="tabla"><thead><tr><th>Agencia</th><th class="num">Cotizaciones</th><th class="num">Solicitudes</th><th class="num">Aprobadas</th><th class="num">Rechazadas</th><th class="num">Abiertas</th><th class="num">Cotiz. → solicitud</th><th class="num">Monto aprobado</th></tr></thead><tbody>${tabla}</tbody></table></div></details>`}
       <p class="hint m0">Las solicitudes se cuentan por la fecha en que la agencia las mandó. «Cotiz. → solicitud» es qué parte de las cotizaciones terminó en una solicitud: sirve para ver quién cotiza y quién avanza.</p></section>`;
   } else {
     const pend = pendientes(A.solicitudes), resto = A.solicitudes.filter((x) => !solicitudAbierta(x));

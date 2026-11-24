@@ -865,3 +865,5 @@ body:has(#drawer:not([hidden])) #btnClaudeWeb,body:has(#menu:not([hidden])) #btn
 .gr-ley{display:inline-flex;align-items:center;gap:6px}
 .gr-ley i{width:12px;height:12px;border-radius:3px;display:inline-block}
 .gr-tit{margin:14px 0 0;font-size:.95rem}
+.ag-est-det>summary{cursor:pointer;font-size:14px;font-weight:500;color:var(--accent-txt);padding:8px 0}
+.ag-est-det[open]>summary{margin-bottom:6px}

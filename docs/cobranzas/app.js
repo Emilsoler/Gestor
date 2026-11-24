@@ -1084,7 +1084,7 @@ function vistaRefi() {
     <div class="actions" id="refiAcciones">${accionesRefi(d)}</div>
   </section>`;
 }
-document.addEventListener('toggle', (e) => { if (e.target.matches?.('details[data-gastos]')) S.cred.gastosAbierto = e.target.open; if (e.target.matches?.('details[data-convenio]')) S.cred.convenioAbierto = e.target.open; }, true);
+document.addEventListener('toggle', (e) => { if (e.target.matches?.('details[data-est]')) S.ag.est.abierto = e.target.open; if (e.target.matches?.('details[data-gastos]')) S.cred.gastosAbierto = e.target.open; if (e.target.matches?.('details[data-convenio]')) S.cred.convenioAbierto = e.target.open; }, true);
 /** Casos guardados: nombre y botones para guardar el que está en pantalla, y la lista para abrir otro. */
 function bloqueCasos(guardar) {
   if (!D.casos) return `<p class="hint m0">Falta activar el guardado de casos: la base todavía no tiene dónde guardarlos. Pedile a Claude que lo active.</p>`;
