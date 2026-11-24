@@ -111,6 +111,7 @@ tr.elegido td{background:#e9e9e9;color:#000;font-weight:600}
 @media (max-width:720px){.cliente-cols{grid-template-columns:1fr}.bcra-res{border-left:0;padding-left:0;border-top:1px solid var(--line);padding-top:14px}}
 .s-verde{border-left-color:#22a447} .s-verde .sem-luz{background:#22c55e}
 .s-amarillo{border-left-color:#e0a800} .s-amarillo .sem-luz{background:#facc15}
+.s-sin_consulta{border-left-color:#9ca3af} .s-sin_consulta .sem-luz{background:#9ca3af}
 .s-rojo{border-left-color:#d32f2f} .s-rojo .sem-luz{background:#ef4444}
 .solicitar{display:grid;gap:10px;border-top:1px solid var(--line);padding-top:14px}
 .sol{display:grid;gap:6px;border-top:1px solid var(--line);padding-top:12px}

@@ -148,6 +148,7 @@ const SEMAFORO = {
   verde: { color: 'Verde', accion: 'Continuar', texto: 'sin atrasos informados en el sistema financiero.', sigue: true },
   amarillo: { color: 'Amarillo', accion: 'Continuar – Sujeto a revisión', texto: 'tiene alguna observación en el sistema financiero. La Mutual la va a revisar.', sigue: true },
   sin_datos: { color: 'Sin antecedentes', accion: 'Continuar – Sujeto a revisión', texto: 'no figura con deudas en el sistema financiero. La Mutual lo va a revisar.', sigue: true },
+  sin_consulta: { color: 'Sin consulta', accion: 'Continuar sin consulta BCRA', texto: 'el BCRA no respondió. Es solo para probar: sin consulta no se puede enviar una solicitud.', sigue: true },
   rojo: { color: 'Rojo', accion: 'No apto', texto: 'tiene atrasos o cheques rechazados informados. No se puede solicitar el crédito.', sigue: false },
 };
 
@@ -609,7 +610,7 @@ const SITUACION = { 0: 'Sin dato', 1: '1 · Normal', 2: '2 · Riesgo bajo', 3: '
 /** El resumen de la Central de Deudores: con qué entidades opera, su situación y la deuda informada (último período). */
 function resumenBCRA(B) {
   const bancos = Array.isArray(B.bancos) ? B.bancos : null;
-  if (!bancos) return ''; // respuesta de una versión anterior de la función
+  if (!bancos || B.sin_consulta) return ''; // respuesta de una versión anterior de la función
   const per = /^\d{6}$/.test(B.periodo || '') ? `${B.periodo.slice(4, 6)}/${B.periodo.slice(0, 4)}` : '';
   if (!bancos.length) {
     return `<aside class="bcra-res"><h3>Situación en el BCRA</h3><p class="hint m0">No tiene deudas informadas en el sistema financiero${per ? ` (${esc(per)})` : ''}.</p></aside>`;
@@ -678,7 +679,7 @@ function vistaAvanzar() {
   return `<div class="solicitar no-imprimir">
     <h3>¿El cliente quiere avanzar?</h3>
     <p class="hint m0">Seguí con la solicitud: ingresos, documentación y datos del cliente. La Mutual la revisa y tiene la última palabra.</p>
-    <div class="acciones"><button class="btn primario" type="button" id="btnAvanzar">Continuar con la solicitud</button></div>
+    ${S.bcra?.sin_consulta ? '<p class="hint m0 no-imprimir">Sin consulta al BCRA no se puede continuar con la solicitud.</p>' : '<div class="acciones"><button class="btn primario" type="button" id="btnAvanzar">Continuar con la solicitud</button></div>'}
   </div>`;
 }
 

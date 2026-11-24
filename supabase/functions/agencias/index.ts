@@ -797,6 +797,11 @@ export async function manejar(req: Request): Promise<Response> {
       try { r = await consultar(cuit, { url: URL_BCRA }); } catch (e) {
         const err = e instanceof ErrorBCRA ? e : new ErrorBCRA('red', 0, sinCuit(String(e)));
         console.error(JSON.stringify({ agencias: 'bcra', tipo: err.tipo, status: err.status }));
+        // Solo la agencia de prueba (PROPIO): si el BCRA está caído, deja ver la cotización sin consulta (no guarda nada,
+        // no hay `consulta` y por eso tampoco se puede enviar una solicitud). Las agencias reales siguen viendo el error.
+        if (ag.nombre === 'PROPIO' && err.tipo !== 'limite') {
+          return responder({ consulta: null, cuit, denominacion: '', semaforo: 'sin_consulta', periodo: '', deuda_total: 0, bancos: [], sin_consulta: true }, 200, cors);
+        }
         throw new Falla(err.message, err.tipo === 'limite' ? 429 : err.tipo === 'tiempo' ? 504 : 502, `bcra_${err.tipo}`);
       }
       const resumen = resumir(r.deudas, r.cheques, r.historicas);
