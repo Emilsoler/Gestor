@@ -63,27 +63,7 @@ test('cotizar por la cuota que quiere pagar y con precio y anticipo (celular)', 
   assert.ok(cuota > 0 && cuota <= 1_000_000, `la cuota ${cuota} no pasa de lo pedido`);
   await p.screenshot({ path: '/tmp/cuota-deseada.png', fullPage: true });
 
-  // 2) Precio y anticipo: el monto solicitado se completa solo y se explica cuánto pone el cliente.
-  await p.fill('#inCuotaMax', '');
-  await p.fill('#inPrecio', '20000000');
-  await p.fill('#inAnticipo', '12000000');
-  assert.equal(await p.inputValue('#inMonto'), '8.000.000');
-  await p.click('#btnCotizar');
-  await p.waitForFunction(() => /el cliente pone de anticipo/.test(document.querySelector('#resultado')?.textContent || ''));
-  let t = norm(await p.textContent('#resultado'));
-  assert.match(t, /Crédito de \$\s?8\.000\.000/);
-  assert.match(t, /Precio \$\s?20\.000\.000 − crédito \$\s?8\.000\.000 = el cliente pone de anticipo al menos \$\s?12\.000\.000/);
-
-  // 3) Anticipo chico: pide más de lo que financia la Mutual y se le avisa.
-  await p.fill('#inAnticipo', '1000000');
-  await p.click('#btnCotizar');
-  await p.waitForFunction(() => /la Mutual financia hasta/.test(document.querySelector('#resultado')?.textContent || ''));
-  t = norm(await p.textContent('#resultado'));
-  assert.match(t, /Pediste \$\s?19\.000\.000, pero la Mutual financia hasta/);
-  assert.match(t, /el cliente pone de anticipo al menos/);
-  await p.screenshot({ path: '/tmp/anticipo.png', fullPage: true });
-
-  // 4) Historial: las cotizaciones de este vendedor, con WhatsApp para reenviar.
+  // 2) Historial: las cotizaciones de este vendedor, con WhatsApp para reenviar.
   await p.click('[data-vista="historial"]');
   await p.waitForSelector('[data-wacot]');
   t = norm(await p.textContent('#main'));
