@@ -958,6 +958,9 @@ export async function manejar(req: Request): Promise<Response> {
       }
       return responder({ ok: true, email, clave }, 200, cors);
     }
+    if (accion === 'cotizaciones') {
+      return responder({ cotizaciones: ag.miembro ? [] : await rpc('agencia_cotizaciones', { p_user: uid }) }, 200, cors);
+    }
     if (accion === 'solicitudes') {
       return responder({ solicitudes: ag.miembro ? [] : await rpc('agencia_solicitudes', { p_user: uid }) }, 200, cors);
     }

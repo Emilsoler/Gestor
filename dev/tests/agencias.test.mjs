@@ -451,6 +451,23 @@ test('cuota deseada: en cada plazo, el monto más alto cuya cuota no pasa de lo 
   assert.ok(!('cuota_max' in r2.datos) && r2.datos.opciones.every((o) => !('monto' in o)));
 });
 
+test('historial: cada vendedor ve sus cotizaciones, la más nueva primero, sin valor ni CODIA', async () => {
+  sql("update public.ajustes_agencias set habilitado = true, tope_diario = 500;");
+  sql('delete from public.cotizaciones_agencia;');
+  const ref = (await pedir(agencia, { accion: 'versiones', marca: 1, grupo: 10 })).datos.versiones[0].ref;
+  assert.equal((await pedir(agencia, { accion: 'cotizar', ref, anio: '0km', cuotas: 12, vehiculo: 'MARCA UNO PRIMERA' })).status, 200);
+  assert.equal((await pedir(agencia, { accion: 'cotizar', ref, anio: '0km', cuotas: 24, vehiculo: 'MARCA UNO SEGUNDA' })).status, 200);
+  const r = await pedir(agencia, { accion: 'cotizaciones' });
+  assert.equal(r.status, 200, r.texto);
+  const c = r.datos.cotizaciones;
+  assert.deepEqual(c.map((x) => x.vehiculo), ['MARCA UNO SEGUNDA', 'MARCA UNO PRIMERA']);
+  assert.ok(c.every((x) => x.monto > 0 && x.cuotas > 0 && x.cuota > 0));
+  assert.ok(!/codia|valuaci|precio|price|infoauto|agencia_id|vendedor/i.test(r.texto), r.texto.slice(0, 300));
+  // Lo de otra agencia no aparece, y la vista previa de la Mutual no tiene historial.
+  sql("update public.cotizaciones_agencia set vendedor_id = null where vehiculo = 'MARCA UNO PRIMERA';");
+  assert.deepEqual((await pedir(agencia, { accion: 'cotizaciones' })).datos.cotizaciones.map((x) => x.vehiculo), ['MARCA UNO SEGUNDA']);
+});
+
 test('semáforo: rojo no apto; amarillo y sin antecedentes siguen, sujetos a revisión', async () => {
   sql(PARAMS_MUTUAL + "; delete from public.solicitudes_credito");
   await cargarCasosBCRA();

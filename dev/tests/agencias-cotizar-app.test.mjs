@@ -82,6 +82,20 @@ test('cotizar por la cuota que quiere pagar y con precio y anticipo (celular)', 
   assert.match(t, /Pediste \$\s?19\.000\.000, pero la Mutual financia hasta/);
   assert.match(t, /el cliente pone de anticipo al menos/);
   await p.screenshot({ path: '/tmp/anticipo.png', fullPage: true });
+
+  // 4) Historial: las cotizaciones de este vendedor, con WhatsApp para reenviar.
+  await p.click('[data-vista="historial"]');
+  await p.waitForSelector('[data-wacot]');
+  t = norm(await p.textContent('#main'));
+  assert.match(t, /Mis cotizaciones/);
+  assert.match(t, /MARCA UNO/);
+  assert.ok((await p.locator('[data-wacot]').count()) >= 3);
+  await p.evaluate(() => { window.__abierto = ''; window.open = (u) => { window.__abierto = u; return null; }; });
+  await p.locator('[data-wacot]').first().click();
+  const abierto = decodeURIComponent(await p.evaluate(() => window.__abierto));
+  assert.match(abierto, /wa\.me\/\?text=.*condiciones del crédito prendario/s);
+  assert.match(abierto, /cuotas de/);
+  await p.screenshot({ path: '/tmp/historial.png', fullPage: true });
   assert.deepEqual(errores, []);
   await c.close();
 });

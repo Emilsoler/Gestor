@@ -908,6 +908,12 @@ Mutual y no nombra a InfoAuto.
   monto solicitado = precio − anticipo, y el resultado explica cuánto pone el cliente (`avisosDeMonto`). El precio es el de la agencia,
   nunca el de InfoAuto: no se guarda ni viaja a la función. Prueba: el test «cuota deseada» de `agencias.test.mjs` y `agencias-cotizar-app.test.mjs`.
 
+- **Historial de cotizaciones** (migración 0043, pedido de la persona del 23/11/2026): pestaña «Mis cotizaciones» del cotizador. Acción `cotizaciones` de la
+  función (`public.agencia_cotizaciones`, solo service_role): las últimas 50 del vendedor (cada uno ve solo las suyas; la vista previa de la Mutual no tiene),
+  con vehículo, año, monto, cuotas, cuota, CUIT y fecha; sin valor ni CODIA. Es lo que se calculó ese día, no se recalcula; cada una tiene «Mandar por WhatsApp»
+  (mismo texto que el resultado). No se puede «repetir» una cotización sin volver a elegir el auto: la tabla no guarda la referencia al vehículo, a propósito.
+  Pruebas: el test «historial» de `agencias.test.mjs` y el paso 4 de `agencias-cotizar-app.test.mjs`. Publicar: migración 0043, `deploy_edge_function` de `agencias` y subir la app.
+
 ### Chat «M» con la Mutual (migración 0038, pedido de la persona del 22/11/2026)
 
 Botón flotante «M» en el cotizador (`docs/agencias/chat.js`): abre un chat con un asistente que responde dudas básicas y, si la

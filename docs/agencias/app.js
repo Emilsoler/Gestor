@@ -37,7 +37,7 @@ const S = {
   marcas: null, marca: '', modelos: null, modelo: '', versiones: null, version: '', anios: null, anio: '', buscaVer: '',
   plazo: 0, monto: '', cuotaMax: '', precio: '', anticipo: '', cargando: '', res: null,
   foto: null, // { ref, src }: la foto de la versión elegida (src null si no hay); la pide `cargarFoto`
-  cuit: '', bcra: null, bcraError: '', continuo: false, confirmarOtro: false, sols: null, novedades: null,
+  cuit: '', bcra: null, bcraError: '', continuo: false, confirmarOtro: false, sols: null, cots: null, novedades: null,
   sol: null, // la solicitud que se está armando (nuevaSol)
   rap: null, // simulación rápida (solo la agencia marcada; `nuevaRapida`)
 };
@@ -128,7 +128,7 @@ async function cambiarClave(a, b) {
 async function salir() {
   apagarChat();
   try { await sb?.auth.signOut(); } catch { /* igual se limpia */ }
-  Object.assign(S, { fase: 'ingreso', yo: null, error: '', marcas: null, marca: '', modelos: null, modelo: '', versiones: null, version: '', anios: null, anio: '', buscaVer: '', res: null, vista: 'cotizar', cuit: '', bcra: null, bcraError: '', continuo: false, confirmarOtro: false, sols: null, sol: nuevaSol(), rap: null });
+  Object.assign(S, { fase: 'ingreso', yo: null, error: '', marcas: null, marca: '', modelos: null, modelo: '', versiones: null, version: '', anios: null, anio: '', buscaVer: '', res: null, vista: 'cotizar', cuit: '', bcra: null, bcraError: '', continuo: false, confirmarOtro: false, sols: null, cots: null, sol: nuevaSol(), rap: null });
   render();
 }
 
@@ -291,6 +291,12 @@ async function cargarSolicitudes() {
   try { S.sols = (await fn({ accion: 'solicitudes' })).solicitudes || []; } catch (e) { S.sols = []; falla(e); return; }
   S.novedades = new Set(conNovedad(S.sols).map((x) => x.id)); // se marcan en la lista; después ya se dan por vistas
   marcarVistas();
+  render();
+}
+
+async function cargarCotizaciones() {
+  S.cots = null; render();
+  try { S.cots = (await fn({ accion: 'cotizaciones' })).cotizaciones || []; } catch (e) { S.cots = []; falla(e); return; }
   render();
 }
 
@@ -878,6 +884,18 @@ setInterval(mirarNovedades, 60000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') mirarNovedades(); });
 const etqEstado = (e) => { const [t, c] = ESTADOS[e] || [e, '']; return `<span class="etq ${c}">${esc(t)}</span>`; };
 
+/** «Mis cotizaciones»: las últimas 50 del vendedor, para reenviarlas. Es lo que se calculó ese día: no se recalcula. */
+function vistaHistorial() {
+  if (!S.cots) return '<section class="card"><p class="hint m0">Cargando…</p></section>';
+  if (!S.cots.length) return '<section class="card"><h2>Mis cotizaciones</h2><p class="hint m0">Todavía no hiciste cotizaciones. Aparecen acá apenas cotices un vehículo.</p></section>';
+  return `<section class="card"><h2>Mis cotizaciones</h2><p class="hint">Las últimas 50. Son las condiciones de ese día: si querés una actual, cotizá de nuevo.</p>${S.cots.map((x) => `<div class="sol">
+      <div class="card-cab"><b>${esc(x.vehiculo || 'Vehículo')}</b> <span class="hint">${esc(etiquetaAnio(x.anio))}</span></div>
+      <div class="hint">${esc(fechaHora(x.momento))}${x.cuit ? ` · <span class="mono">${esc(cuitLindo(x.cuit))}</span>` : ''}</div>
+      <div class="mono">${plata(x.monto)} · ${x.cuotas} × ${plata(x.cuota)}</div>
+      <button class="btn chico" type="button" data-wacot="${esc(String(x.id))}">Mandar por WhatsApp</button>
+    </div>`).join('')}</section>`;
+}
+
 /** «Mis solicitudes», para la agencia. */
 function vistaSolicitudes() {
   if (!S.sols) return '<section class="card"><p class="hint m0">Cargando…</p></section>';
@@ -904,8 +922,8 @@ function render() {
   else if (S.fase === 'sinacceso') m.innerHTML = '<section class="card ingreso"><h2>Esta cuenta no está habilitada</h2><p class="hint m0">Consultá con la Asociación Mutual Bell.</p></section>';
   else {
     const rapida = S.yo.rapida && !S.yo.miembro;
-    const tabs = S.yo.habilitado && !S.yo.miembro ? `<nav class="tabs no-imprimir" role="tablist"><button role="tab" data-vista="cotizar" aria-selected="${S.vista === 'cotizar'}">Cotizar</button>${rapida ? `<button role="tab" data-vista="rapida" aria-selected="${S.vista === 'rapida'}">Simulación rápida</button>` : ''}<button role="tab" data-vista="solicitudes" aria-selected="${S.vista === 'solicitudes'}">${esc(rotuloSolicitudes())}</button></nav>` : '';
-    m.innerHTML = tabs + (S.vista === 'solicitudes' && !S.yo.miembro ? vistaSolicitudes() : S.vista === 'rapida' && rapida ? vistaRapida() : vistaCotizar());
+    const tabs = S.yo.habilitado && !S.yo.miembro ? `<nav class="tabs no-imprimir" role="tablist"><button role="tab" data-vista="cotizar" aria-selected="${S.vista === 'cotizar'}">Cotizar</button>${rapida ? `<button role="tab" data-vista="rapida" aria-selected="${S.vista === 'rapida'}">Simulación rápida</button>` : ''}<button role="tab" data-vista="historial" aria-selected="${S.vista === 'historial'}">Mis cotizaciones</button><button role="tab" data-vista="solicitudes" aria-selected="${S.vista === 'solicitudes'}">${esc(rotuloSolicitudes())}</button></nav>` : '';
+    m.innerHTML = tabs + (S.vista === 'solicitudes' && !S.yo.miembro ? vistaSolicitudes() : S.vista === 'historial' && !S.yo.miembro ? vistaHistorial() : S.vista === 'rapida' && rapida ? vistaRapida() : vistaCotizar());
   }
   $('#pie').textContent = S.fase === 'app' ? 'Simulación de referencia sujeta a aprobación crediticia de la Asociación Mutual Bell.' : '';
 }
@@ -1032,11 +1050,12 @@ document.addEventListener('click', (e) => {
   else if (t.dataset.cuenta) { S.sol.cuenta = t.dataset.cuenta; render(); }
   else if (t.dataset.quitar) quitarArchivo(t.dataset.quitar, Number(t.dataset.i));
   else if (t.id === 'btnEnviarSol') enviarSolicitud();
+  else if (t.dataset.wacot) { const x = S.cots?.find((c) => String(c.id) === t.dataset.wacot); if (x) window.open(`https://wa.me/?text=${encodeURIComponent(textoParaComprador(x))}`, '_blank', 'noopener'); }
   else if (t.id === 'btnRapida') simularRapida();
   else if (t.id === 'btnRapidaReset') { S.rap = { ...nuevaRapida(), capital: S.rap?.capital || '', cuotas: S.rap?.cuotas || nuevaRapida().cuotas }; render(); }
   else if (t.id === 'btnWhatsappRapida' && S.rap?.res) window.open(`https://wa.me/?text=${encodeURIComponent(textoRapida(S.rap.res))}`, '_blank', 'noopener');
 
-  else if (t.dataset.vista) { S.vista = t.dataset.vista; if (S.vista === 'solicitudes') cargarSolicitudes(); else render(); }
+  else if (t.dataset.vista) { S.vista = t.dataset.vista; if (S.vista === 'solicitudes') cargarSolicitudes(); else if (S.vista === 'historial') cargarCotizaciones(); else render(); }
 });
 
 sb?.auth.onAuthStateChange((ev) => { if (ev === 'SIGNED_OUT' && S.fase === 'app') { S.fase = 'ingreso'; render(); } });
