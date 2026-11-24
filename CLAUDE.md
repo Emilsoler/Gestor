@@ -812,6 +812,11 @@ Mutual y no nombra a InfoAuto.
   ofrece modelos y años de cualquier antigüedad. Las demás agencias siguen con los parámetros de la Mutual. Sigue sin llegar ningún precio ni CODIA
   (las reglas de InfoAuto no cambian). La tasa de un año sin tramo en `tasas` es `tasa_mensual`. Para dársela o quitársela a otra cuenta:
   `update public.agencias set todos_los_anios = … where email = '…'` (con `set_config('gestor.autor', 'Claude', true)`), solo si la persona lo pide.
+- **Ver precios** (migración 0048, pedido de la persona del 24/11/2026): `agencias.ver_precios = true` (hoy solo la cuenta «Emiliano Soler») hace que
+  `cotizar` devuelva además `valor_vehiculo` (el valor de InfoAuto del año elegido) y el cotizador lo muestre aparte, fuera de lo que se imprime
+  (`no-imprimir`) y fuera del mensaje de WhatsApp. No se guarda en ninguna tabla. **Es la única excepción a «a las agencias no llegan precios»**: vale
+  solo para la cuenta de la persona; a ninguna agencia real se le activa. Sigue sin llegar el CODIA a nadie. Para otra cuenta:
+  `update public.agencias set ver_precios = … where email = '…'`, solo si la persona lo pide (y aclarando el riesgo con la licencia).
 - **Simulación rápida** (migración 0036, pedido de la persona del 19/11/2026): solapa «Simulación rápida» del cotizador, **solo para
   la agencia con `agencias.simulacion_rapida = true`** (la cuenta «Emiliano Soler» y las agencias que la persona pidió; la lista está en la base: `select nombre from public.agencias where simulacion_rapida`). Capital, cuotas, tasa mensual y los gastos de
   `GASTOS_DEFECTO` escritos a mano (arrancan en la tasa del 0 km y los gastos de los parámetros), sin CUIT, sin BCRA y sin vehículo.

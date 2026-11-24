@@ -845,6 +845,7 @@ function vistaResultado(r) {
       <div class="card-cab"><h2>${esc(r.vehiculo)}</h2><span class="etq">${esc(etiquetaAnio(r.anio))}</span></div>
     </div>
     <div class="destacado"><span class="titulo">Monto máximo que financia la Mutual</span><span class="cifra">${plata(r.maximo)}</span></div>
+    ${r.valor_vehiculo ? `<p class="no-imprimir m0"><b>Valor del vehículo (solo lo ves vos):</b> ${plata(r.valor_vehiculo)}</p>` : ''}
     <div class="cuota-grande">Crédito de <b>${plata(r.monto)}</b> en ${r.cuotas} ${r.cuotas === 1 ? 'cuota' : 'cuotas'} de <b>${plata(r.cuota)}</b></div>
     ${avisosDeMonto(r)}
     <table><tbody>

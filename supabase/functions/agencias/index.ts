@@ -360,7 +360,7 @@ async function calcular(pedido: any, a: any) {
   }).filter(Boolean);
   // Qué parte del valor del vehículo se presta: solo para la Mutual (va en los datos de la solicitud, que la agencia no ve).
   const pct = Math.round((monto / valor) * 1000) / 10;
-  return { financiable: true as const, anio, maximo, monto, cuotas, tasa, sim, opciones, pct, cuotaMax };
+  return { financiable: true as const, anio, maximo, monto, cuotas, tasa, sim, opciones, pct, cuotaMax, valor };
 }
 
 // ───────────────────────── Foto del vehículo (ver foto.js) ─────────────────────────
@@ -761,11 +761,13 @@ export async function manejar(req: Request): Promise<Response> {
         });
         if (ok !== true) throw new Falla('Llegaste al tope de cotizaciones de hoy. Probá mañana o consultá con la Mutual.', 429, 'tope');
       }
-      // Solo condiciones del préstamo: ni el valor del vehículo ni el CODIA.
+      // Solo condiciones del préstamo: ni el valor del vehículo ni el CODIA (salvo `valor_vehiculo` para `ver_precios`).
       return responder({
         financiable: true, anio: c.anio, maximo: c.maximo, monto: c.monto, cuotas: c.cuotas, cuota: c.sim.cuota, total: c.sim.totalCredito,
         gastos_otorgamiento: c.sim.gastos, ...tasasDelCredito(c.sim), opciones: c.opciones,
         ...(c.cuotaMax > 0 ? { cuota_max: c.cuotaMax } : {}),
+        // Solo la agencia marcada con `ver_precios` (la cuenta de la persona, migración 0048): el valor del vehículo.
+        ...(ag.ver_precios === true ? { valor_vehiculo: c.valor } : {}),
         leyenda: String(a.leyenda || ''), contacto: String(a.contacto || ''),
       }, 200, cors);
     }
