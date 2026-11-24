@@ -547,8 +547,11 @@ export async function documentosSolicitud(id) {
   return (await invocarBCRA({ accion: 'archivos', id }, 'agencias')).archivos || [];
 }
 
-/** Elimina una cotización del registro (id) o todas (sin id). Es solo un registro: no hay nada más que borrar. */
-export const eliminarCotizaciones = (id) => pedir(id ? sb.from('cotizaciones_agencia').delete().eq('id', id) : sb.from('cotizaciones_agencia').delete().gte('id', 0));
+/** Elimina una cotización del registro (id), varias (una lista de ids) o todas (sin id). Es solo un registro: no hay nada más que borrar. */
+export const eliminarCotizaciones = (id) => {
+  if (Array.isArray(id)) return id.length ? pedir(sb.from('cotizaciones_agencia').delete().in('id', id)) : Promise.resolve();
+  return pedir(id ? sb.from('cotizaciones_agencia').delete().eq('id', id) : sb.from('cotizaciones_agencia').delete().gte('id', 0));
+};
 
 /** Elimina una solicitud de agencia y sus documentos (lo hace la función `agencias`: los archivos solo los toca ella). */
 export async function eliminarSolicitud(id) {

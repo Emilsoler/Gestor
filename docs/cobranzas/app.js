@@ -75,7 +75,7 @@ const S = {
   // (notas para la agencia, parámetros y alta, atados con data-k) y cuántas solicitudes esperan respuesta.
   ag: {
     est: { dias: 30, filas: null, error: '' },
-    datos: null, cargando: false, error: '', tab: 'solicitudes', msg: '', docs: new Map(), notas: {}, p: {}, alta: {}, vend: {}, pend: 0, borrar: '', borrarCot: '',
+    datos: null, cargando: false, error: '', tab: 'solicitudes', msg: '', docs: new Map(), notas: {}, p: {}, alta: {}, vend: {}, pend: 0, borrar: '', borrarCot: '', selCot: new Set(),
     // Chats de las agencias: la lista, la conversación abierta (hilo + mensajes), lo que se escribe (texto) y el estado de los
     // avisos al celular (push: cargando | no | denegado | inactivo | activo). `atencion`: conversaciones que piden respuesta.
     chat: { lista: [], atencion: 0, espera: 0, error: '', hilo: null, mensajes: [], texto: '', enviando: false, push: 'cargando', pushMsg: '' },
@@ -701,7 +701,7 @@ async function accionAgencias(act, b) {
   if (act === 'ag-push-quitar') { await quitarAvisosAca(); return; }
   if (act === 'ag-push-probar') { await probarAvisosAca(); return; }
   if (act === 'ag-tab') {
-    G.tab = b.dataset.tab; G.msg = ''; G.nueva = null; G.borrarCot = ''; G.chat.hilo = null; G.chat.error = '';
+    G.tab = b.dataset.tab; G.msg = ''; G.nueva = null; G.borrarCot = ''; G.selCot.clear(); G.chat.hilo = null; G.chat.error = '';
     try { localStorage.setItem('cb.agTab', G.tab); } catch { /* sin almacenamiento */ }
     render(); if (G.tab === 'estadisticas') cargarEstadisticas(); return;
   }
@@ -720,10 +720,21 @@ async function accionAgencias(act, b) {
     await cargarAgencias(); return;
   }
   if (act === 'ag-cot-preguntar' || act === 'ag-cot-no') { G.borrarCot = act === 'ag-cot-preguntar' ? id : ''; render(); return; }
+  // Casilleros de la lista: uno por fila y uno arriba que tilda o destilda todas (las 200 que se ven).
+  if (act === 'ag-cot-sel') { if (G.selCot.has(id)) G.selCot.delete(id); else G.selCot.add(id); G.borrarCot = ''; render(); return; }
+  if (act === 'ag-cot-sel-todas') {
+    const ids = (G.datos?.cotizaciones || []).map((x) => String(x.id));
+    if (ids.length && ids.every((i) => G.selCot.has(i))) G.selCot.clear(); else ids.forEach((i) => G.selCot.add(i));
+    G.borrarCot = ''; render(); return;
+  }
   if (act === 'ag-cot-borrar') {
-    try { await eliminarCotizaciones(id === 'todas' ? null : id); } catch (e) { toast(mensaje(e, 'no se pudieron eliminar las cotizaciones')); return; }
-    G.borrarCot = '';
-    toast(id === 'todas' ? 'Cotizaciones eliminadas' : 'Cotización eliminada');
+    // «sel»: solo las tildadas (y que sigan en la lista).
+    const existentes = new Set((G.datos?.cotizaciones || []).map((x) => String(x.id)));
+    const elegidas = [...G.selCot].filter((i) => existentes.has(i));
+    if (id === 'sel' && !elegidas.length) { G.borrarCot = ''; render(); return; }
+    try { await eliminarCotizaciones(id === 'todas' ? null : id === 'sel' ? elegidas : id); } catch (e) { toast(mensaje(e, 'no se pudieron eliminar las cotizaciones')); return; }
+    G.borrarCot = ''; G.selCot.clear();
+    toast(id === 'todas' ? 'Cotizaciones eliminadas' : id === 'sel' ? (elegidas.length === 1 ? 'Cotización eliminada' : `${elegidas.length} cotizaciones eliminadas`) : 'Cotización eliminada');
     await cargarAgencias(); return;
   }
   if (act === 'ag-resolver') {

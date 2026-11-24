@@ -181,6 +181,14 @@ test('Créditos y Cobros: la Mutual elimina cotizaciones, una por una o todas', 
   await toast(p, 'Cotización eliminada');
   assert.equal(sql('select count(*) from public.cotizaciones_agencia'), '2');
   assert.equal(await p.locator('tbody tr').count(), 2);
+  // Las tildadas: sin tildar no hay botón activo; con una tildada se borra solo esa.
+  assert.ok(await p.locator('[data-a="ag-cot-preguntar"][data-id="sel"]').isDisabled());
+  await p.locator('tbody tr input[data-a="ag-cot-sel"]').first().check();
+  await p.click('[data-a="ag-cot-preguntar"][data-id="sel"]');
+  await p.click('[data-a="ag-cot-borrar"]');
+  await toast(p, 'Cotización eliminada');
+  assert.equal(sql('select count(*) from public.cotizaciones_agencia'), '1');
+  assert.equal(await p.locator('tbody tr').count(), 1);
   // Todas.
   await p.click('[data-a="ag-cot-preguntar"][data-id="todas"]');
   await p.click('[data-a="ag-cot-borrar"]');

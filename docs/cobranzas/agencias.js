@@ -291,15 +291,22 @@ export function htmlAgencias(A, est) {
       </section>`;
   } else if (est.tab === 'cotizaciones') {
     const pide = (est.borrarCot || '') !== '';
-    const filas = A.cotizaciones.map((x) => `<tr><td>${esc(fechaHora(x.momento))}</td><td>${esc(x.agencia)}${quienEs(A, x) ? `<br><span class="hint">${esc(quienEs(A, x))}</span>` : ''}</td><td class="mono">${x.cuit ? esc(cuitLindo(x.cuit)) : '<span class="hint">—</span>'}</td><td>${esc(x.vehiculo)} <span class="hint">${esc(anioTxt(x.anio))}</span></td>
+    // Los tildados que ya no están en la lista (por ejemplo, borrados desde otro lado) no cuentan.
+    const sel = est.selCot || new Set(), vistos = new Set(A.cotizaciones.map((x) => String(x.id)));
+    const nSel = [...sel].filter((i) => vistos.has(i)).length, todas = vistos.size > 0 && nSel === vistos.size;
+    const filas = A.cotizaciones.map((x) => `<tr${sel.has(String(x.id)) ? ' class="ag-sel"' : ''}><td class="ag-chk"><input type="checkbox" data-a="ag-cot-sel" data-id="${esc(x.id)}" aria-label="Elegir esta cotización"${sel.has(String(x.id)) ? ' checked' : ''}></td><td>${esc(fechaHora(x.momento))}</td><td>${esc(x.agencia)}${quienEs(A, x) ? `<br><span class="hint">${esc(quienEs(A, x))}</span>` : ''}</td><td class="mono">${x.cuit ? esc(cuitLindo(x.cuit)) : '<span class="hint">—</span>'}</td><td>${esc(x.vehiculo)} <span class="hint">${esc(anioTxt(x.anio))}</span></td>
       <td class="num">${plata(x.monto)}</td><td class="num">${x.cuotas} × ${plata(x.cuota)}</td>
       <td class="num"><button class="btn small" data-a="ag-cot-preguntar" data-id="${esc(x.id)}">Eliminar</button></td></tr>`).join('');
-    const aviso = !pide ? '' : `<div class="aviso-chico ag-borrar" role="alert"><span>${est.borrarCot === 'todas' ? '¿Eliminar todas las cotizaciones de la lista?' : '¿Eliminar esta cotización?'} Es solo un registro y no se puede deshacer. Si es de hoy, la agencia recupera ese lugar en su tope diario.</span>
+    const pregunta = est.borrarCot === 'todas' ? '¿Eliminar todas las cotizaciones de la lista?'
+      : est.borrarCot === 'sel' ? (nSel === 1 ? '¿Eliminar la cotización tildada?' : `¿Eliminar las ${nSel} cotizaciones tildadas?`)
+      : '¿Eliminar esta cotización?';
+    const aviso = !pide ? '' : `<div class="aviso-chico ag-borrar" role="alert"><span>${pregunta} Es solo un registro y no se puede deshacer. Si es de hoy, la agencia recupera ese lugar en su tope diario.</span>
       <div class="actions"><button class="btn danger small" data-a="ag-cot-borrar" data-id="${esc(est.borrarCot)}">Sí, eliminar</button><button class="btn small" data-a="ag-cot-no">No</button></div></div>`;
     cuerpo = `<section class="card"><div class="card-cab"><h3>Cotizaciones de las agencias</h3><span class="hint">Las últimas 200</span></div>
       ${aviso}
-      ${A.cotizaciones.length ? `<div class="ag-tabla"><table class="tabla"><thead><tr><th>Fecha</th><th>Agencia</th><th>CUIT</th><th>Vehículo</th><th class="num">Monto</th><th class="num">Cuotas</th><th></th></tr></thead><tbody>${filas}</tbody></table></div>
-        <div class="actions"><button class="btn small" data-a="ag-cot-preguntar" data-id="todas">Eliminar todas</button></div>`
+      ${A.cotizaciones.length ? `<div class="ag-tabla"><table class="tabla"><thead><tr><th class="ag-chk"><input type="checkbox" data-a="ag-cot-sel-todas" aria-label="Elegir todas las cotizaciones"${todas ? ' checked' : ''}></th><th>Fecha</th><th>Agencia</th><th>CUIT</th><th>Vehículo</th><th class="num">Monto</th><th class="num">Cuotas</th><th></th></tr></thead><tbody>${filas}</tbody></table></div>
+        <div class="actions"><button class="btn small danger" data-a="ag-cot-preguntar" data-id="sel"${nSel ? '' : ' disabled'}>Eliminar seleccionadas${nSel ? ` (${nSel})` : ''}</button><button class="btn small" data-a="ag-cot-preguntar" data-id="todas">Eliminar todas</button></div>
+        ${nSel ? '' : '<p class="hint m0">Tildá los casilleros de la izquierda para elegir cuáles eliminar.</p>'}`
         : '<p class="hint m0">Todavía no hay cotizaciones.</p>'}
       <p class="hint m0">Se guarda el CUIT que la agencia consultó. No se guarda el valor del vehículo.</p></section>`;
   } else if (est.tab === 'estadisticas') {

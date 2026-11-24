@@ -979,7 +979,7 @@ Desde SQL no se abren los documentos: los enlaces los da la función (botón «V
   registros): la persona se la manda a la agencia ella misma («Copiar los datos para enviar» arma el mensaje con usuario y contraseña, sin el enlace: la persona manda el QR aparte) y la
   agencia elige la suya al entrar (`clave_definida`). «Ya tiene cuenta: solo habilitar» sigue disponible. Prueba 18 de `agencias.test.mjs`.
 - **Eliminar cotizaciones** (migración 0033, pedido de la persona del 17/11/2026): en la pestaña Cotizaciones, «Eliminar» en cada
-  fila y «Eliminar todas», con confirmación. Se borra por la API con la sesión de la persona (política `miembros_eliminan`, con
+  fila, un casillero por fila (y uno arriba que tilda todas) con «Eliminar seleccionadas (n)», y «Eliminar todas», con confirmación (pedido de la persona del 24/11/2026). Se borra por la API con la sesión de la persona (política `miembros_eliminan`, con
   `es_miembro()`; las agencias no tienen acceso). Es solo un registro de simulaciones: **no queda historial** (`cotizaciones_agencia` no
   tiene el disparador `auditar`) y no se puede deshacer. Ojo: el tope diario de cada agencia cuenta estas filas, así que borrar las de
   hoy le devuelve cotizaciones del día.
