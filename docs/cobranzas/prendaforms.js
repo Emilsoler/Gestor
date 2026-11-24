@@ -84,7 +84,7 @@ export const nuevosDatos = () => ({
 // Formulario 03, hoja 1. Columna del acreedor (izquierda) y del deudor (derecha, a +404 px).
 const COL = { A: 317, D: 721 };
 const F03 = {
-  dia: { x: 334, y: 253, w: 24, tam: 8 }, mes: { x: 384, y: 253, w: 24, tam: 8 }, anio: { x: 418, y: 253, w: 24, tam: 8 },
+  dia: { x: 360, y: 253, w: 24, tam: 8 }, mes: { x: 410, y: 253, w: 24, tam: 8 }, anio: { x: 444, y: 253, w: 24, tam: 8 }, // fecha: 5 mm a la derecha (pedido del 24/11/2026)
   monto: { x: 322, y: 288, w: 185 }, dominio: { x: 548, y: 288, w: 228 },
   inscripcion: { x: 460, y: 379, w: 230 },
   nombre: [{ y: 421 }, { y: 462 }, { y: 491 }],
