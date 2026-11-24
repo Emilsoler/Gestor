@@ -804,11 +804,11 @@ Mutual y no nombra a InfoAuto.
   abajo; nov 2026, la persona no quería entrar y salir del cotizador con dos cuentas para revisar las solicitudes).
   **Sesión propia** (`storageKey: 'agencias.sesion'`, no la `gestor.sesion` de las otras tres apps): entrar al cotizador con una
   cuenta de agencia no cierra la sesión del gestor en ese navegador, ni al revés; la persona entra al cotizador aparte.
-- **Agencia de prueba**: «PROPIO» (emiliano_soler@hotmail.com), cuenta de la persona para probar el recorrido de una agencia;
+- **Agencia de prueba**: «Emiliano Soler» (emiliano_soler@hotmail.com; se llamaba «PROPIO» hasta el 19/11/2026, el nombre está en la base, no en el código), cuenta de la persona para probar el recorrido de una agencia;
   su `informada_infoauto` es la fecha del alta (17/11/2026), no un aviso real (lo dice su nota). Ocupa uno de los 20 lugares:
   pausarla (`gestor.pausar_agencia`) cuando no se use.
 - **Simulación rápida** (migración 0036, pedido de la persona del 19/11/2026): solapa «Simulación rápida» del cotizador, **solo para
-  la agencia con `agencias.simulacion_rapida = true`** (PROPIO y las agencias que la persona pidió; la lista está en la base: `select nombre from public.agencias where simulacion_rapida`). Capital, cuotas, tasa mensual y los gastos de
+  la agencia con `agencias.simulacion_rapida = true`** (la cuenta «Emiliano Soler» y las agencias que la persona pidió; la lista está en la base: `select nombre from public.agencias where simulacion_rapida`). Capital, cuotas, tasa mensual y los gastos de
   `GASTOS_DEFECTO` escritos a mano (arrancan en la tasa del 0 km y los gastos de los parámetros), sin CUIT, sin BCRA y sin vehículo.
   Acción `rapida` de la función (a cualquier otra agencia o a la vista previa le contesta «Pedido desconocido»); no usa InfoAuto, no
   se registra en `cotizaciones_agencia` ni cuenta para el tope. `vistaRapida` y `simularRapida` en `docs/agencias/app.js`. Al lado del sellado y del arancel se ve el monto que dio la última simulación (la función devuelve `sellado` y `arancel`), y seguro, administrativos, cuota social e IGR van plegados en «Gastos que se reparten en las cuotas» (pedido del 19/11/2026). Para dársela
