@@ -45,6 +45,7 @@ const API = (Deno.env.get('INFOAUTO_API') || 'https://api.infoauto.com.ar').repl
 const URL_BCRA = Deno.env.get('BCRA_URL') || 'https://api.bcra.gob.ar'; // otra solo en las pruebas locales
 const URL_CLAUDE = (Deno.env.get('ANTHROPIC_URL') || 'https://api.anthropic.com').replace(/\/+$/, ''); // otra solo en las pruebas locales
 const MODELO_CHAT = Deno.env.get('AGENCIAS_CHAT_MODELO') || 'claude-haiku-5-5';
+const CUENTA_PRUEBA = '22c74a82-fae6-4f50-8254-a61d1374ce69'; // agencia de prueba de la Mutual (emiliano_soler@hotmail.com)
 const TOPE_AGENCIA_DIA = 200; // mensajes de una agencia por día (con o sin asistente)
 const TOPE_ASISTENTE_DIA = 60; // respuestas del asistente por agencia y por día: acota el gasto de la API de Claude
 const PUSH_LOCAL = Deno.env.get('PUSH_PERMITIR_LOCAL') === '1'; // solo en las pruebas locales: deja registrar un celular falso en 127.0.0.1
@@ -797,9 +798,9 @@ export async function manejar(req: Request): Promise<Response> {
       try { r = await consultar(cuit, { url: URL_BCRA }); } catch (e) {
         const err = e instanceof ErrorBCRA ? e : new ErrorBCRA('red', 0, sinCuit(String(e)));
         console.error(JSON.stringify({ agencias: 'bcra', tipo: err.tipo, status: err.status }));
-        // Solo la agencia de prueba (PROPIO): si el BCRA está caído, deja ver la cotización sin consulta (no guarda nada,
+        // Solo la cuenta de prueba de la Mutual (por id, así un cambio de nombre no la rompe): si el BCRA está caído, deja ver la cotización sin consulta (no guarda nada,
         // no hay `consulta` y por eso tampoco se puede enviar una solicitud). Las agencias reales siguen viendo el error.
-        if (ag.nombre === 'PROPIO' && err.tipo !== 'limite') {
+        if (ag.id === CUENTA_PRUEBA && err.tipo !== 'limite') {
           return responder({ consulta: null, cuit, denominacion: '', semaforo: 'sin_consulta', periodo: '', deuda_total: 0, bancos: [], sin_consulta: true }, 200, cors);
         }
         throw new Falla(err.message, err.tipo === 'limite' ? 429 : err.tipo === 'tiempo' ? 504 : 502, `bcra_${err.tipo}`);
