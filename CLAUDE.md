@@ -876,6 +876,26 @@ Mutual y no nombra a InfoAuto.
   nueva: se ve en Créditos y Cobros (la insignia de la solapa y el aviso de Inicio). Son datos personales y documentos de identidad e ingresos: no salen de ahí y no se
   copian al repositorio. El almacenamiento del plan gratuito es de 1 GB (una solicitud con fotos ocupa unos pocos MB).
 
+### Logo de cada agencia (migración 0039, pedido de la persona del 23/11/2026)
+
+Cada agencia ve su logo en el cotizador: en una banda blanca arriba de las solapas (no en el encabezado, que en el celular ya está
+lleno) y en la hoja que se imprime, al lado del escudo de la Mutual (`logoAgencia`, `.banda-ag` y `.hoja-logo-ag`).
+- **Dónde está**: `public.logos_agencia` (una fila por agencia, `imagen` = `data:image/webp;base64,…`, hasta 60.000 caracteres; la base
+  rechaza lo que no sea png, jpeg o webp). Tabla aparte porque la administración lee `agencias` entera y un logo pesa varios KB. Sin
+  políticas ni permisos para la API: la función `agencias` lo pide con `public.agencia_logo` (solo clave de servicio) y lo devuelve en
+  la acción `yo` (`logo`; '' sin logo, con la agencia pausada o desde la vista previa de la Mutual). Si esa consulta falla, el
+  cotizador sigue andando sin logo.
+- **Los logos NO se suben al repositorio** (es público y mostraría qué agencias trabajan con la Mutual): se cargan con el conector.
+  Hay que achicarlos antes (unos 256 px de lado, WebP, de 5 a 10 KB; los apaisados, hasta ~480 px de ancho) y, si vienen de una captura
+  de pantalla, recortarlos y tapar lo que no es del logo. Para Claude, por el conector (firma: la base no guarda historial de logos):
+
+  ```sql
+  select gestor.poner_logo('ventas@agencia.com', 'data:image/webp;base64,UklGR…');   -- pone o cambia el logo
+  select gestor.poner_logo('ventas@agencia.com', '');                                -- lo quita
+  select a.nombre, length(l.imagen) from public.logos_agencia l join public.agencias a on a.id = l.agencia_id order by a.nombre;
+  ```
+- Pruebas: `agencias-logo.test.mjs` (incluida en `npm run test:agencias`). No hay pantalla para cargarlos desde Créditos y Cobros.
+
 ### Chat «M» con la Mutual (migración 0038, pedido de la persona del 22/11/2026)
 
 Botón flotante «M» en el cotizador (`docs/agencias/chat.js`): abre un chat con un asistente que responde dudas básicas y, si la

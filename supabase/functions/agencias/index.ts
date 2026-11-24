@@ -619,6 +619,8 @@ export async function manejar(req: Request): Promise<Response> {
         habilitado: !!a.habilitado, plazos: plazosValidos(a), leyenda: String(a.leyenda || ''), contacto: String(a.contacto || ''),
         relacion_max: Number(a.relacion_max) || 45,
         chat: !!a.chat_habilitado && !ag.miembro,
+        // El logo de la agencia (solo el suyo; '' si no tiene). Si falla, el cotizador sigue andando sin logo.
+        logo: ag.miembro ? '' : await rpc('agencia_logo', { p_user: uid }).then((x) => (typeof x === 'string' ? x : ''), () => ''),
         // Solo la agencia marcada (la de prueba de la persona): los valores con que arranca la simulación rápida.
         ...(ag.simulacion_rapida ? { rapida: { tasa: tasaPara('0km', a, new Date().getFullYear()), gastos: a.gastos || {} } } : {}),
       }, 200, cors);

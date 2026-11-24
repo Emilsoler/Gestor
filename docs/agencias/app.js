@@ -767,7 +767,7 @@ function hojaImprimir(r, vehiculo) {
   const foto = vehiculo ? `<figure class="hoja-foto" id="hojaFoto">${S.foto?.ref === S.version && S.foto.src ? `<img src="${S.foto.src}" alt="">` : ''}</figure>` : '';
   return `<div class="hoja-imprimir">
     <div class="hoja-cuerpo">
-      <div class="hoja-cabeza"><img class="hoja-escudo" src="logo.svg" alt="" width="84" height="84">${foto}</div>
+      <div class="hoja-cabeza"><img class="hoja-escudo" src="logo.svg" alt="" width="84" height="84">${logoAgencia() ? `<img class="hoja-logo-ag" src="${logoAgencia()}" alt="">` : ''}${foto}</div>
       <p class="hoja-titulo">Simulación de crédito prendario</p>
       <div class="hoja-adorno" aria-hidden="true"><i></i><b></b><i></i></div>
       ${vehiculo ? `<p class="hoja-vehiculo">${esc(vehiculo)}</p>` : ''}
@@ -837,6 +837,13 @@ function vistaSolicitudes() {
     </div>`).join('')}</section>`;
 }
 
+// El logo de la agencia que entró (lo trae la función, ver migración 0039). Solo se acepta una imagen en base64: es lo único
+// que se pone en el src, así que nada de lo que venga de la base puede meter otra cosa en la página.
+function logoAgencia() {
+  const l = S.yo?.logo;
+  return typeof l === 'string' && /^data:image\/(webp|png|jpeg);base64,[A-Za-z0-9+/]+=*$/.test(l) ? l : '';
+}
+
 function render() {
   const der = $('#cabDer');
   if (S.fase === 'app' || S.fase === 'clave' || S.fase === 'sinacceso') {
@@ -850,7 +857,9 @@ function render() {
   else {
     const rapida = S.yo.rapida && !S.yo.miembro;
     const tabs = S.yo.habilitado && !S.yo.miembro ? `<nav class="tabs no-imprimir" role="tablist"><button role="tab" data-vista="cotizar" aria-selected="${S.vista === 'cotizar'}">Cotizar</button>${rapida ? `<button role="tab" data-vista="rapida" aria-selected="${S.vista === 'rapida'}">Simulación rápida</button>` : ''}<button role="tab" data-vista="solicitudes" aria-selected="${S.vista === 'solicitudes'}">Mis solicitudes</button></nav>` : '';
-    m.innerHTML = tabs + (S.vista === 'solicitudes' && !S.yo.miembro ? vistaSolicitudes() : S.vista === 'rapida' && rapida ? vistaRapida() : vistaCotizar());
+    // El logo de la agencia, en una banda arriba (no en el encabezado, que en el celular ya está lleno).
+    const banda = logoAgencia() ? `<div class="banda-ag no-imprimir"><img class="logo-ag" src="${logoAgencia()}" alt=""><span>${esc(S.yo.agencia)}</span></div>` : '';
+    m.innerHTML = banda + tabs + (S.vista === 'solicitudes' && !S.yo.miembro ? vistaSolicitudes() : S.vista === 'rapida' && rapida ? vistaRapida() : vistaCotizar());
   }
   $('#pie').textContent = S.fase === 'app' ? 'Simulación de referencia sujeta a aprobación crediticia de la Asociación Mutual Bell.' : '';
 }
