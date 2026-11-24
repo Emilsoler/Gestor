@@ -28,8 +28,8 @@ const SW = 1240, SH = 1755;
 const HOJAS = { f03: [202, 305], a: [214, 328], b: [214, 328] }; // Formulario 03, contrato original, copia no negociable (la copia mide igual que el original: aviso de la persona del 24/11/2026)
 const CAL = { f03: [{ k: 0.189, ox: -15.7, oy: -5.0 }, null],
   // contratos (edición «Ministerio de Educación y Justicia», medidos el 24/11/2026 sobre fotos enderezadas de las hojas en blanco)
-  a: [{ kx: 0.2002, ky: 0.1966, ox: -16.7, oy: 1.8, xmax: 205 }, null],
-  b: [{ kx: 0.2002, ky: 0.1966, ox: -16.7, oy: 0.9, xmax: 205 }, null] }; // por hoja: frente y dorso
+  a: [{ kx: 0.2002, ky: 0.1966, ox: -16.7, oy: 1.8, xmax: 205 }, { k: 0.2, ox: 0, oy: 0, xmax: 205 }],
+  b: [{ kx: 0.2002, ky: 0.1966, ox: -16.7, oy: 0.9, xmax: 205 }, { k: 0.2, ox: 0, oy: 0, xmax: 205 }] }; // por hoja: frente y dorso
 const tam = (clave) => HOJAS[clave].map((m) => m * MM);
 const calDe = new WeakMap(); // página → su calibración (la pone `nuevaPagina`)
 const anchoDe = (pg, c) => {
@@ -115,13 +115,22 @@ const CAJA_GRADO = { x: 783, y: 1450, w: 18 };
 
 // Contrato A (modelo «Ministerio de Educación y Justicia»), hoja 1 y 2. Las `y` son la línea de base de cada renglón
 // impreso (donde están los puntitos), medida con OCR sobre el escaneo.
+// Dorso (igual en el original y en la copia de esta edición). Medido sobre una foto del dorso en blanco: mm × 5 = unidades de
+// posición (la hoja del dorso usa k 0,2 sin corrimiento). Los renglones de puntos que hay que completar, de arriba abajo.
+const mm5 = (x, y, w) => ({ x: x * 5, y: y * 5, w: w * 5 });
+const DORSO = {
+  punit: mm5(113.5, 61.1, 10),
+  juris: [mm5(140.5, 85.8, 35), mm5(11.5, 90.6, 49)],
+  domicilio: [mm5(43.5, 92.8, 125), mm5(11.3, 97.8, 57)],
+  leyenda: [121.1, 125.3, 129.5, 133.8].map((y) => mm5(11, y, 165)),
+};
 const CA = {
-  lugar: { x: 794, y: 322, w: 232 }, lugar2: { x: 1066, y: 322, w: 160 },
+  lugar: { x: 794, y: 322, w: 232 }, lugar2: { x: 1050, y: 322, w: 60 },
   suma: { x: 690, y: 404, w: 420 }, sumaLetras: { x: 228, y: 440, w: 452, tam: 8 },
   senor: { x: 812, y: 439, w: 310 }, senor2: { x: 224, y: 464, w: 750 },
   concepto: { x: 310, y: 487, w: 810 }, acreedor: { x: 266, y: 510, w: 510 },
   bienes: [{ x: 282, y: 556, w: 840 }, { x: 224, y: 580, w: 898 }, { x: 224, y: 604, w: 898 }, { x: 224, y: 628, w: 898 }, { x: 224, y: 652, w: 898 }, { x: 224, y: 676, w: 898 }],
-  provincia: { x: 500, y: 718, w: 395 }, depto: { x: 902, y: 718, w: 62 },
+  provincia: { x: 500, y: 718, w: 395 }, depto: { x: 500, y: 740, w: 175 },
   cuartel: { x: 868, y: 740, w: 254 }, campo: { x: 545, y: 762, w: 575 },
   ciudad: { x: 338, y: 783, w: 335 }, calle: { x: 714, y: 783, w: 270 }, nro: { x: 1010, y: 783, w: 110 },
   gravamenes: [{ x: 916, y: 805, w: 205 }, { x: 224, y: 828, w: 898 }],
@@ -135,20 +144,13 @@ const CA = {
   // rayas sobre «CON»/«SIN» y «FIJA»/«FLOTANTE»: se tacha lo que no corresponde
   tachaPagares: { con: [516, 366, 550, 366], sin: [561, 366, 588, 366] }, // 2 mm más abajo: justo en el medio de la palabra (24/11/2026)
   tachaClase: { fija: [953, 266, 987, 266], flotante: [1000, 266, 1074, 266] },
-  p2: { punit: { x: 658, y: 266, w: 40 }, juris: { x: 782, y: 395, w: 178 }, domLegal: { x: 290, y: 433, w: 640 } },
+  p2: DORSO,
 };
 
 // Contrato B (copia no negociable): desde que el Registro entrega la copia en la misma edición que el original, el frente tiene
 // exactamente el mismo diseño (medido el 24/11/2026: los renglones coinciden salvo ~1 mm), así que usa las posiciones del frente de A.
 // El dorso es propio.
-const CB = {
-  ...CA,
-  p2: {
-    punit: { x: 378, y: 166, w: 60 }, base: { x: 934, y: 184, w: 38 },
-    domCalle: { x: 280, y: 236, w: 445 }, domNro: { x: 752, y: 235, w: 236 }, domCiudad: { x: 138, y: 258, w: 315 },
-    cony: { nombre: { x: 280, y: 379, w: 700 }, ec: { x: 225, y: 401, w: 118 }, prof: { x: 420, y: 399, w: 400 }, nac: { x: 236, y: 424, w: 155 }, edad: { x: 436, y: 421, w: 70 }, dom: { x: 202, y: 446, w: 770 }, doc: { x: 316, y: 468, w: 650 } },
-  },
-};
+const CB = { ...CA };
 
 
 // Leyenda de sumisión a los tribunales (texto del estudio), para el espacio libre del contrato B.
@@ -271,8 +273,8 @@ export async function armarFormularios(p, { dx = 0, dy = 0, hoy = '', fondos = n
   const montoTxt = p.monto > 0 ? `$ ${cifra(p.monto)}` : '';
   const letras = p.monto > 0 ? `Pesos ${enLetras(p.monto)}` : '';
   const interes = p.tna > 0 ? pct(+(+p.tna).toFixed(2)) : '';
-  const lugarDia = p.lugar && fp ? `${p.lugar}, ${fp.d}` : p.lugar || '';
-  const mesAnio = fp ? `${MESES[fp.m - 1]} de ${fp.a}` : '';
+  const lugarDia = p.lugar && fp ? `${p.lugar}, ${fp.d} de ${MESES[fp.m - 1]}` : p.lugar || '';
+  const mesAnio = fp ? String(fp.a) : '';
   const venceSeguro = sg.venceDia ? `${sg.venceDia}` : '';
 
   // ---- Formulario 03 ----------------------------------------------------------------------------------------
@@ -322,7 +324,7 @@ export async function armarFormularios(p, { dx = 0, dy = 0, hoy = '', fondos = n
     { const r = renglones(pg, C.bienes, descripcionBien); tachar(pg, r.c, r.fin); }
     T(pg, C.provincia, ub.provincia); if (C.depto?.w) T(pg, C.depto, ub.departamento);
     llena(pg, C.cuartel, ub.cuartel); T(pg, C.ciudad, ub.ciudad); T(pg, C.calle, ub.calle); T(pg, C.nro, ub.numero);
-    renglones(pg, C.gravamenes, p.gravamenes);
+    { const r = renglones(pg, C.gravamenes, p.gravamenes); tachar(pg, r.c, r.fin); }
     llena(pg, C.documentada, p.pagares === 'con' ? 'pagarés' : p.pagares === 'sin' ? 'el presente contrato' : '');
     { const r = renglones(pg, C.vencim, p.vencimientos); tachar(pg, r.c, r.fin); }
     T(pg, C.interes, interes); T(pg, C.lugarPago, p.lugarPago); llena(pg, C.inspeccion, p.inspeccion);
@@ -339,22 +341,16 @@ export async function armarFormularios(p, { dx = 0, dy = 0, hoy = '', fondos = n
     T(pg, C.deu.dom, dom(dDe) + (dDe.localidad ? `, ${dDe.localidad}` : '')); T(pg, C.deu.doc, de.dni ? `DNI ${dniOficio(de.dni)}` : '');
     return pagina(clave, 1);
   };
+  const domLegal = [p.domicilioLegal?.calle, p.domicilioLegal?.numero, p.domicilioLegal?.ciudad].filter(Boolean).join(' ');
   if (cuales.includes('a')) {
     const pg2 = await contrato('a', CA);
-    T(pg2, CA.p2.punit, pct(p.punitorioAnual)); T(pg2, CA.p2.juris, p.jurisdiccion);
-    T(pg2, CA.p2.domLegal, [p.domicilioLegal?.calle, p.domicilioLegal?.numero, p.domicilioLegal?.ciudad].filter(Boolean).join(' '));
+    T(pg2, DORSO.punit, pct(p.punitorioAnual)); renglones(pg2, DORSO.juris, p.jurisdiccion); renglones(pg2, DORSO.domicilio, domLegal);
   }
   if (cuales.includes('b')) {
     const pg2 = await contrato('b', CB);
-    const q = CB.p2;
-    T(pg2, q.punit, pct(p.punitorioMensual)); T(pg2, q.base, num(p.basePct));
-    T(pg2, q.domCalle, p.domicilioLegal?.calle); T(pg2, q.domNro, p.domicilioLegal?.numero); T(pg2, q.domCiudad, p.domicilioLegal?.ciudad);
-    // salvedad que el estudio agrega en el espacio en blanco que queda después de los datos del cónyuge
-    renglones(pg2, [0, 1, 2, 3].map((k) => ({ x: 128, y: 520 + k * 27, w: 880 })), LEYENDA_JURISDICCION(p.jurisdiccion));
-    if (de.estadoCivil === 'casado') {
-      T(pg2, q.cony.nombre, cy.nombre); T(pg2, q.cony.ec, cy.estadoCivil); T(pg2, q.cony.prof, cy.profesion); T(pg2, q.cony.nac, cy.nacionalidad); T(pg2, q.cony.edad, cy.edad);
-      T(pg2, q.cony.dom, cy.domicilio); T(pg2, q.cony.doc, cy.dni === '-' ? '-' : cy.dni ? `DNI ${dniOficio(cy.dni)}` : '');
-    }
+    T(pg2, DORSO.punit, pct(p.punitorioMensual)); renglones(pg2, DORSO.juris, p.jurisdiccion); renglones(pg2, DORSO.domicilio, domLegal);
+    // salvedad que el estudio agrega en los renglones libres del final (el dorso de esta edición no tiene lugar para el cónyuge)
+    renglones(pg2, DORSO.leyenda, LEYENDA_JURISDICCION(p.jurisdiccion));
   }
   return { bytes: await doc.save(), faltan: faltanFormularios(p) };
 }
