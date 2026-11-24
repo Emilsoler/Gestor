@@ -144,7 +144,7 @@ function documentos(x, docs) {
 /**
  * Una solicitud, resumida para decidir (pedido de la persona, nov 2026): arriba y en grande la agencia; después el cliente
  * con su CUIT y el BCRA; el crédito con qué parte del valor del vehículo se presta; y el trabajo y los ingresos. Lo que
- * hace falta recién después de aprobar (DNI, domicilio, estado civil, celular, CBU, total, tasa y CFT) queda plegado.
+ * hace falta recién después de aprobar (DNI, domicilio, estado civil, celular, CBU, total y tasa) queda plegado.
  */
 function solicitud(x, A, est, notas) {
   const b = A.bcra.get(x.consulta), motivos = Array.isArray(b?.motivos) ? b.motivos : [], d = x.datos || {};
@@ -168,7 +168,7 @@ function solicitud(x, A, est, notas) {
     <details class="ag-mas"><summary>Más datos del cliente y del crédito</summary>
       <div class="ag-tabla"><table class="tabla"><tbody>
         ${b ? fila('Deuda informada · entidades', `${plata(b.deuda_total)} · ${esc(b.entidades)}`) : ''}
-        ${fila('Total · tasa mensual · CFT', `${plata(x.total)} · ${pct(x.tasa)} · ${pct(x.cft)}`)}
+        ${fila('Total · tasa mensual', `${plata(x.total)} · ${pct(x.tasa)}`)}
         ${d.dni ? fila('DNI', `${esc(Number(d.dni).toLocaleString('es-AR'))}${dniCuit && dniCuit !== d.dni ? ' <span class="tag t-mal">no coincide con el CUIL</span>' : ''}`) : ''}
         ${d.domicilio ? fila('Domicilio real', esc(d.domicilio)) : ''}
         ${d.nacionalidad || d.nacimiento ? fila('Nacionalidad · nacimiento', `${esc(d.nacionalidad || '')} · ${esc(String(d.nacimiento || '').split('-').reverse().join('/'))}`) : ''}

@@ -519,7 +519,7 @@ function vistaRapida() {
       <tr><td>Gastos de otorgamiento (incluidos en las cuotas)</td><td class="num">${plata(r.gastos_otorgamiento)}</td></tr>
     </tbody></table>
     ${opciones ? `<div class="scroll"><table><thead><tr><th>Otros plazos con este monto</th><th class="num">Cuota</th></tr></thead><tbody>${opciones}</tbody></table></div>` : ''}
-    <p class="leyenda tasas m0">Tasa mensual ${pct(r.tasa)} · TNA ${pct(r.tna)} · TEA ${pct(r.tea)} · CFT ${pct(r.cft)}. No incluye IVA.</p>
+    <p class="leyenda tasas m0">Tasa mensual ${pct(r.tasa)}. No incluye IVA.</p>
     ${hojaImprimir(r, '')}
     <div class="acciones no-imprimir">
       <button class="btn" type="button" id="btnWhatsappRapida">Enviar por WhatsApp</button>
@@ -874,7 +874,7 @@ function vistaResultado(r) {
     ${r.cuota_max
       ? `<div class="scroll"><table><thead><tr><th>Con una cuota de hasta ${plata(r.cuota_max)}</th><th class="num">Monto</th><th class="num">Cuota</th></tr></thead><tbody>${opcionesPorCuota(r)}</tbody></table></div>`
       : `<div class="scroll"><table><thead><tr><th>Otros plazos con este monto</th><th class="num">Cuota</th></tr></thead><tbody>${opciones}</tbody></table></div>`}
-    <p class="leyenda tasas m0">TNA ${pct(r.tna)} · TEA ${pct(r.tea)} · CFT ${pct(r.cft)}. El CFT incluye los gastos de otorgamiento de prenda, contratos, tasa y arancel de inscripción de prenda en R.P.A. No incluye IVA. ${esc(r.leyenda || '')}</p>
+    <p class="leyenda tasas m0">No incluye IVA. ${esc(r.leyenda || '')}</p>
     ${r.contacto ? `<p class="leyenda m0">${esc(r.contacto)}</p>` : ''}
     ${hojaImprimir(r, `${r.vehiculo} · ${etiquetaAnio(r.anio)}`)}
     <div class="acciones no-imprimir">
@@ -991,7 +991,7 @@ function vistaDetalle() {
     ${d.estado_civil === 'casado' ? bloque('Matrimonio y cónyuge', [fila('Lugar del matrimonio', d.matrimonio_lugar), fila('Fecha del matrimonio', fechaLinda(d.matrimonio_fecha)), fila('Cónyuge', d.conyuge_nombre),
       fila('DNI del cónyuge', d.conyuge_dni), fila('Nacionalidad del cónyuge', d.conyuge_nacionalidad), fila('Nacimiento del cónyuge', fechaLinda(d.conyuge_nacimiento)), fila('Domicilio del cónyuge', d.conyuge_domicilio)]) : ''}
     ${bloque('Crédito', [fila('Vehículo', x.vehiculo ? `${x.vehiculo} (${etiquetaAnio(x.anio)})` : ''), fila('Monto', plata(x.monto)), fila('Cuotas', `${x.cuotas} × ${plata(x.cuota)}`),
-      fila('Total a pagar', plata(x.total)), fila('Tasa mensual', pct(x.tasa)), fila('CFT', pct(x.cft))])}
+      fila('Total a pagar', plata(x.total)), fila('Tasa mensual', pct(x.tasa))])}
     ${bloque('Ingresos', [fila('Cómo los obtiene', CATEGORIAS[x.categoria] || x.categoria), fila('Ingreso mensual declarado', x.ingreso ? plata(x.ingreso) : ''), fila('La cuota es el', x.relacion ? pct(x.relacion) + ' del ingreso' : '')])}
     ${bloque('Cuenta para el desembolso', [fila('CBU o CVU', d.cbu), fila('Alias', d.alias), fila('La cuenta es', cuenta), fila('Titular', d.cuenta_titular), fila('CUIT o CUIL del titular', d.cuenta_cuit ? cuitLindo(String(d.cuenta_cuit)) : ''), fila('Relación con el cliente', d.cuenta_relacion)])}
     <div class="sol-bloque"><h3>Documentación enviada</h3>${archivos.length

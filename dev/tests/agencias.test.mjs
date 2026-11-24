@@ -161,8 +161,7 @@ test('cotizar: solo las condiciones del préstamo, y queda registrado sin el val
   assert.equal(d.cuota, esperado.cuota);
   assert.equal(d.total, esperado.totalCredito);
   assert.deepEqual(d.opciones.map((o) => o.cuotas), [12, 18, 24, 36]);
-  assert.equal(d.tna, 84);
-  assert.deepEqual(Object.keys(d).sort(), ['anio', 'cft', 'contacto', 'cuota', 'cuotas', 'financiable', 'gastos_otorgamiento', 'leyenda', 'maximo', 'monto', 'opciones', 'tea', 'tna', 'total'].sort());
+  assert.deepEqual(Object.keys(d).sort(), ['anio', 'contacto', 'cuota', 'cuotas', 'financiable', 'gastos_otorgamiento', 'leyenda', 'maximo', 'monto', 'opciones', 'total'].sort(), 'sin TNA, TEA ni CFT');
 
   // Un monto menor se respeta; uno mayor se lleva al máximo.
   r = await pedir(agencia, { accion: 'cotizar', ref, anio: '2024', cuotas: 12, monto: 5_000_000 });
@@ -311,7 +310,6 @@ test('con los parámetros de la Mutual: 40 %, 1 a 24 cuotas, desde 2014 y tasa p
     assert.equal(r.datos.maximo, maximo, anio);
     const esperado = simInterno({ capital: maximo, cuotas: 24, g, tasa });
     assert.equal(r.datos.cuota, esperado.cuota, `cuota ${anio}`);
-    assert.equal(r.datos.tna, tasa * 12, `TNA ${anio}`);
     assert.equal(r.datos.opciones.length, 24);
   }
   assert.equal((await pedir(agencia, { accion: 'cotizar', ref: v1.ref, anio: '2020', cuotas: 25 })).status, 400);
@@ -737,7 +735,7 @@ test('simulación rápida: solo la agencia marcada, con capital, cuotas, tasa y 
   assert.equal(r.datos.gastos_otorgamiento, esperado.gastos);
   assert.equal(r.datos.sellado, esperado.sellado);
   assert.equal(r.datos.arancel, esperado.arancel);
-  assert.equal(r.datos.tna, 72);
+  for (const k of ['tna', 'tea', 'cft']) assert.equal(r.datos[k], undefined, `la simulación rápida no informa ${k}`);
   assert.equal(sql('select count(*) from public.cotizaciones_agencia'), '0', 'no cuenta para el tope ni queda registrada');
 
   assert.equal((await pedir(agencia, { ...pedido, capital: 0 })).status, 400);

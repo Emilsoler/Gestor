@@ -765,8 +765,8 @@ Probar con `npm run test:prenda` (y las del gestor). Su service worker es `docs/
 
 App web para las agencias y concesionarias que ofrecen los créditos prendarios de la Asociación Mutual Bell.
 Publicada en https://emilsoler.github.io/Gestor/agencias/. El vendedor entra con su usuario, elige marca,
-modelo, versión y año, y ve **solo las condiciones del crédito**: monto máximo, cuota por plazo, total, y TNA,
-TEA y CFT en letra chica al pie (pedido de la persona, nov 2026); lo puede mandar por WhatsApp (lo envía él, con `wa.me`; el
+modelo, versión y año, y ve **solo las condiciones del crédito**: monto máximo, cuota por plazo, total y tasa mensual
+(**sin TNA, TEA ni CFT en ningún lado**: pedido de la persona del 24/11/2026; la función ya no los devuelve y no se muestran ni en la Mutual; no volver a sumarlos sin que los pida); lo puede mandar por WhatsApp (lo envía él, con `wa.me`; el
 mensaje lleva solo vehículo, monto y cuotas: sin total ni tasas, pedido de la persona; el de la simulación rápida es el mismo, sin la línea del vehículo y con la lista de lo que el cliente tiene que mandar, `DOCS_RAPIDA`) o imprimir. La marca de la app es la de la
 Mutual y no nombra a InfoAuto.
 

@@ -764,7 +764,7 @@ export async function manejar(req: Request): Promise<Response> {
       // Solo condiciones del préstamo: ni el valor del vehículo ni el CODIA (salvo `valor_vehiculo` para `ver_precios`).
       return responder({
         financiable: true, anio: c.anio, maximo: c.maximo, monto: c.monto, cuotas: c.cuotas, cuota: c.sim.cuota, total: c.sim.totalCredito,
-        gastos_otorgamiento: c.sim.gastos, ...tasasDelCredito(c.sim), opciones: c.opciones,
+        gastos_otorgamiento: c.sim.gastos, opciones: c.opciones,
         ...(c.cuotaMax > 0 ? { cuota_max: c.cuotaMax } : {}),
         // Solo la agencia marcada con `ver_precios` (la cuenta de la persona, migración 0048): el valor del vehículo.
         ...(ag.ver_precios === true ? { valor_vehiculo: c.valor } : {}),
@@ -790,7 +790,7 @@ export async function manejar(req: Request): Promise<Response> {
       const opciones = plazosValidos(a).map((n) => { const s = simularCredito({ capital, cuotas: n, g, tasa }); return s ? { cuotas: n, cuota: s.cuota } : null; }).filter(Boolean);
       return responder({
         financiable: true, rapida: true, monto: capital, cuotas, cuota: sim.cuota, total: sim.totalCredito, tasa,
-        gastos_otorgamiento: sim.gastos, sellado: sim.sellado, arancel: sim.arancel, ...tasasDelCredito(sim), opciones,
+        gastos_otorgamiento: sim.gastos, sellado: sim.sellado, arancel: sim.arancel, opciones,
       }, 200, cors);
     }
     if (accion === 'bcra') {
