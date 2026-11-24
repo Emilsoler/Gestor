@@ -24,6 +24,7 @@ test('condiciones fijas ya cargadas (pedido del 24/11/2026)', () => {
   assert.equal(p.lugarPago, 'Bv. Colón 135 Bell Ville'); assert.equal(p.inspeccion, 'Amplios'); assert.equal(p.gravamenes, 'Ninguno de ninguna índole');
   assert.equal(p.punitorioAnual, '-'); assert.equal(p.punitorioMensual, '-'); assert.equal(p.basePct, '-');
   assert.equal(sumarDias('2026-12-01', 37), '2027-01-07');
+  assert.ok(Object.values(p.seguro).every((v) => v === '-'));
 });
 
 test('los bienes y el domicilio constituido salen del domicilio del deudor, y lo escrito manda', () => {

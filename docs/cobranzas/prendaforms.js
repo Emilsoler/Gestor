@@ -396,6 +396,8 @@ export const DIAS_PRIMERA_CUOTA = 37;
 export const DEFECTOS_CONTRATO = {
   clase: 'fija', pagares: 'sin', concepto: 'Préstamo de dinero', lugarPago: 'Bv. Colón 135 Bell Ville', inspeccion: 'Amplios',
   gravamenes: 'Ninguno de ninguna índole', punitorioAnual: '-', punitorioMensual: '-', basePct: '-',
+  // Seguro: todo con guion (pedido de la persona, 24/11/2026); se completa a mano si algún día se contrata.
+  seguro: { suma: '-', contra: '-', compania: '-', calle: '-', numero: '-', poliza: '-', venceDia: '-', venceMes: '-', poder: '-' },
 };
 
 /** «2026-11-24» + n días, en ISO (vacío si la fecha no es válida). */
