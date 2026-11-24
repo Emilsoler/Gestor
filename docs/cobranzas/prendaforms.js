@@ -21,7 +21,7 @@ const MM = 72 / 25.4;
 // están en píxeles de los escaneos (1240 × 1755), pero el escaneo NO es la hoja entera estirada: tiene márgenes y su propia
 // escala. El 24/11/2026 una impresión salió corrida (arriba casi bien, abajo hasta 2 cm más arriba) y se midió sobre una foto
 // enderezada del formulario completo: en el 03 (hoja 1) un píxel son 0,189 mm, igual en los dos ejes, y la esquina de la hoja
-// está en el píxel (83; 26). Esa relación es la de CAL: mm = px × k + o. Las hojas sin medir (dorso del 03 y los dos
+// está en el píxel (83; 26). Esa relación es la de CAL: mm = px × k + o. Las hojas sin medir (los dos
 // contratos) siguen con el supuesto anterior (hoja entera estirada), que se sabe equivocado: hasta medirlas sobre una foto
 // del formulario en blanco, no imprimir esas sobre el papel oficial sin probar antes en una hoja común.
 const SW = 1240, SH = 1755;
@@ -161,7 +161,6 @@ const CB = {
 const LEYENDA_JURISDICCION = (ciudad) => `A todos los efectos del presente contrato y en especial a los fines de la ejecución de la prenda, las partes se someten voluntariamente a la jurisdicción de los Tribunales Ordinarios de la ciudad de ${ciudad || '[ciudad]'}, renunciando expresamente a cualquier otro que les pudiere corresponder, inclusive el Federal. DISTINTO TIPO DE TINTA Y LETRA "VALE".`;
 
 // Formulario 03, hoja 2.
-const F03B = { registro: { x: 120, y: 118, w: 478 }, autorizado: { x: 224, y: 659, w: 280 }, tipoDoc: { x: 262, y: 692, w: 240 } };
 
 // ---------------------------------------------------------------------------------------------------------------
 
@@ -298,10 +297,7 @@ export async function armarFormularios(p, { dx = 0, dy = 0, hoy = '', fondos = n
     if (CAJA_CONCEPTO[p.modalidad]) X(pg, CAJA_CONCEPTO[p.modalidad]);
     if (CAJA_CLAUSULA[p.clausula]) X(pg, CAJA_CLAUSULA[p.clausula]);
     T(pg, CAJA_GRADO, p.grado);
-
-    const pg2 = await pagina('f03', 1);
-    T(pg2, F03B.registro, p.registroSeccional);
-    T(pg2, F03B.autorizado, p.autorizado?.nombre); T(pg2, F03B.tipoDoc, [p.autorizado?.tipoDoc, p.autorizado?.numero].filter(Boolean).join(' '));
+    // El dorso del 03 (Registro Seccional y autorizado a diligenciar) no se imprime: sale en blanco a propósito (pedido de la persona, 24/11/2026).
   }
 
   // ---- Contratos de prenda (A y B) ----------------------------------------------------------------------------

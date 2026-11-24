@@ -197,11 +197,10 @@ function solicitud(x, A, est, notas) {
 const OPC_EC = [['', '—'], ['soltero', 'Soltero/a'], ['casado', 'Casado/a'], ['viudo', 'Viudo/a'], ['divorciado', 'Divorciado/a']];
 // [ruta dentro de los datos, rótulo, tipo (t texto, d fecha, n número, s lista, c casilla)]
 const GEN_PRENDA = [
-  ['Datos del contrato', [['fecha', 'Fecha', 'd'], ['lugar', 'Lugar', 't'], ['monto', 'Monto del crédito ($)', 'n'], ['registroSeccional', 'Registro Seccional (dorso)', 't']]],
+  ['Datos del contrato', [['fecha', 'Fecha', 'd'], ['lugar', 'Lugar', 't'], ['monto', 'Monto del crédito ($)', 'n']]],
   ['Deudor', [['deudor.nombre', 'Apellido y nombre', 't'], ['deudor.dni', 'DNI', 't'], ['deudor.nacionalidad', 'Nacionalidad', 't'], ['deudor.nacimiento', 'Fecha de nacimiento', 'd'], ['deudor.estadoCivil', 'Estado civil', 's'], ['conyuge.nombre', 'Cónyuge (si es casado/a)', 't'],
     ['deudor.calle', 'Calle', 't'], ['deudor.numero', 'Número', 't'], ['deudor.piso', 'Piso', 't'], ['deudor.dep', 'Depto.', 't'], ['deudor.cp', 'Código postal', 't'], ['deudor.localidad', 'Localidad', 't'], ['deudor.partido', 'Departamento', 't'], ['deudor.provincia', 'Provincia', 't']]],
   ['Vehículo (del título del automotor)', [['vehiculo.dominio', 'Dominio', 't'], ['vehiculo.marca', 'Marca', 't'], ['vehiculo.tipo', 'Tipo', 't'], ['vehiculo.modelo', 'Modelo', 't'], ['vehiculo.marcaMotor', 'Marca del motor', 't'], ['vehiculo.motor', 'N° de motor', 't'], ['vehiculo.marcaChasis', 'Marca del chasis', 't'], ['vehiculo.chasis', 'N° de chasis', 't']]],
-  ['Autorizado a diligenciar (dorso)', [['autorizado.nombre', 'Nombre', 't'], ['autorizado.tipoDoc', 'Tipo de documento', 't'], ['autorizado.numero', 'Número', 't']]],
 ];
 const GEN_CONTRATOS = [
   ['Datos del contrato', [['fecha', 'Fecha', 'd'], ['lugar', 'Lugar', 't'], ['monto', 'Monto del crédito ($)', 'n'], ['cuotas', 'Cantidad de cuotas', 'n'], ['cuota', 'Valor de la cuota ($)', 'n'], ['primerVto', 'Vencimiento de la primera cuota', 'd'], ['tna', 'Interés anual (TNA %)', 'n'],

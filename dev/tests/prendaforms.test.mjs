@@ -37,7 +37,7 @@ test('el PDF tiene una hoja por cada hoja oficial y sin escaneo de fondo', async
   const solo03 = await armarFormularios(p, { cuales: ['f03'] });
   const copia = await armarFormularios(p, { cuales: ['b'] });
   const hojas = async (b) => (await PDFDocument.load(b)).getPageCount();
-  assert.equal(await hojas(todo.bytes), 6); assert.equal(await hojas(solo03.bytes), 2); assert.equal(await hojas(copia.bytes), 2);
+  assert.equal(await hojas(todo.bytes), 5); assert.equal(await hojas(solo03.bytes), 1); assert.equal(await hojas(copia.bytes), 2);
   assert.ok(!/\/Subtype\s*\/Image/.test(Buffer.from(todo.bytes).toString('latin1')), 'no lleva imágenes');
   assert.ok((await hojaDePrueba({})).length > 500);
 });
