@@ -692,7 +692,7 @@ function htmlRelacion() {
 }
 
 /** Lo que la Mutual necesita para aprobar el crédito (texto pedido por la persona, 20/11/2026). */
-const REQUISITOS = `<p class="m0"><b>Recordá que para aprobar el crédito necesitamos los archivos PDF:</b></p>
+const REQUISITOS = `<p class="m0"><b>Recordá que para aprobar el crédito necesitamos estos archivos (PDF o fotos):</b></p>
   <ol class="requisitos">
     <li>Foto de DNI (ambos lados)</li>
     <li>Foto de un impuesto o servicio para constatar el domicilio</li>
@@ -700,11 +700,8 @@ const REQUISITOS = `<p class="m0"><b>Recordá que para aprobar el crédito neces
       B) En caso de ser monotributista: constancia de inscripción y últimos 3 pagos.<br>
       C) En caso de ser responsable inscripto: constancia de inscripción, últimas 3 DDJJ de IVA y Ganancias.</li>
     <li>Título del automotor</li>
-    <li>Estado civil; en caso de ser casado/a: mencioná el lugar y la fecha del matrimonio</li>
-    <li>Nro. de celular</li>
-    <li>CBU donde se va a depositar el crédito</li>
   </ol>
-  <p class="hint m0">Los puntos 5, 6 y 7 se completan en los campos de más abajo. Los archivos pueden ser PDF o fotos, de hasta 10 MB cada uno (las fotos se achican solas).</p>`;
+  <p class="hint m0">Cada archivo puede pesar hasta 10 MB (las fotos se achican solas).</p>`;
 
 /** El recuadro donde la agencia suelta o elige todos los archivos juntos. */
 function casillero(slot) {
