@@ -133,7 +133,7 @@ const CA = {
   acr: { insc: { x: 410, y: 1083, w: 240 }, nombre: { x: 348, y: 1106, w: 302 }, ec: { x: 304, y: 1129, w: 135 }, prof: { x: 506, y: 1129, w: 144 }, nac: { x: 308, y: 1152, w: 195 }, edad: { x: 546, y: 1152, w: 75 }, dom: { x: 284, y: 1176, w: 366 }, doc: { x: 342, y: 1198, w: 308 } },
   deu: { nombre: { x: 822, y: 1106, w: 306 }, ec: { x: 780, y: 1129, w: 130 }, prof: { x: 980, y: 1129, w: 148 }, nac: { x: 784, y: 1152, w: 185 }, edad: { x: 1018, y: 1152, w: 75 }, dom: { x: 760, y: 1176, w: 368 }, doc: { x: 818, y: 1198, w: 310 } },
   // rayas sobre «CON»/«SIN» y «FIJA»/«FLOTANTE»: se tacha lo que no corresponde
-  tachaPagares: { con: [516, 356, 550, 356], sin: [561, 356, 588, 356] },
+  tachaPagares: { con: [516, 366, 550, 366], sin: [561, 366, 588, 366] }, // 2 mm más abajo: justo en el medio de la palabra (24/11/2026)
   tachaClase: { fija: [953, 266, 987, 266], flotante: [1000, 266, 1074, 266] },
   p2: { punit: { x: 658, y: 266, w: 40 }, juris: { x: 782, y: 395, w: 178 }, domLegal: { x: 290, y: 433, w: 640 } },
 };
@@ -216,12 +216,14 @@ export async function armarFormularios(p, { dx = 0, dy = 0, hoy = '', fondos = n
   // texto en una posición del escaneo, achicando la letra si no entra
   const T = (pg, c, texto, extra = {}) => {
     const t = seguro(texto).replace(/\s+/g, ' ').trim();
-    if (!t || !c) return;
+    if (!c) return;
+    if (!t) return c.x;
     let tam = c.tam || 9.5;
     const { sx, sy, ox, oy, H } = escala(pg);
     const w = anchoDe(pg, c);
     while (tam > 6 && fn.widthOfTextAtSize(t, tam) > w) tam -= 0.25;
     pg.drawText(t, { x: (c.x + (extra.dx || 0)) * sx + ox + dx * MM, y: H - (c.y * sy + oy) - dy * MM, size: tam, font: fn, color: tinta });
+    return c.x + (extra.dx || 0) + fn.widthOfTextAtSize(t, tam) / sx;
   };
   const X = (pg, [cx, cy]) => {
     const { sx, sy, ox, oy, H } = escala(pg), tam = 13, w = fb.widthOfTextAtSize('X', tam);
@@ -232,6 +234,15 @@ export async function armarFormularios(p, { dx = 0, dy = 0, hoy = '', fondos = n
     const { sx, sy, ox, oy, H } = escala(pg);
     pg.drawLine({ start: { x: x1 * sx + ox + dx * MM, y: H - (y1 * sy + oy) - dy * MM }, end: { x: x2 * sx + ox + dx * MM, y: H - (y2 * sy + oy) - dy * MM }, thickness: 1.2, color: tinta });
   };
+  // Lo que no se usa de un renglón se tacha con una raya, de donde termina el texto hasta el final del renglón (pedido del 24/11/2026)
+  const tachar = (pg, c, fin) => {
+    if (!c || fin == null) return;
+    const { sx, sy, ox, oy, H } = escala(pg), x1 = (fin + 4) * sx + ox, x2 = c.x * sx + ox + anchoDe(pg, c);
+    if (x2 - x1 < 8) return;
+    const y = H - (c.y * sy + oy) - dy * MM;
+    pg.drawLine({ start: { x: x1 + dx * MM, y }, end: { x: x2 + dx * MM, y }, thickness: 0.8, color: tinta });
+  };
+  const llena = (pg, c, texto) => tachar(pg, c, T(pg, c, texto));
   // un texto largo repartido en varios renglones (el vehículo, los vencimientos…)
   const renglones = (pg, lineas, texto) => {
     const palabras = seguro(texto).split(/\s+/).filter(Boolean);
@@ -242,7 +253,9 @@ export async function armarFormularios(p, { dx = 0, dy = 0, hoy = '', fondos = n
       if (!c || fn.widthOfTextAtSize(prueba, c.tam || 9.5) <= anchoDe(pg, c) || !actual) actual = prueba;
       else { T(pg, c, actual); k++; actual = pal; }
     }
-    if (actual && lineas[k]) T(pg, lineas[k], actual);
+    let fin = null;
+    if (actual && lineas[k]) fin = T(pg, lineas[k], actual);
+    return { c: lineas[k], fin };
   };
 
   const ac = p.acreedor || {}, de = p.deudor || {}, v = p.vehiculo || {}, ub = p.ubicacion || {}, sg = p.seguro || {}, cy = p.conyuge || {};
@@ -305,18 +318,21 @@ export async function armarFormularios(p, { dx = 0, dy = 0, hoy = '', fondos = n
     T(pg, C.suma, montoTxt); if (C.sumaLetras) T(pg, C.sumaLetras, letras);
     T(pg, C.senor, de.nombre);
     T(pg, C.senor2, [de.dni && `DNI ${dniOficio(de.dni)}`, dom(dDe) && `con domicilio en ${dom(dDe)}`, dDe.localidad].filter(Boolean).join(', '));
-    T(pg, C.concepto, p.concepto); T(pg, C.acreedor, ac.nombre);
-    renglones(pg, C.bienes, descripcionBien);
+    llena(pg, C.concepto, p.concepto); llena(pg, C.acreedor, ac.nombre);
+    { const r = renglones(pg, C.bienes, descripcionBien); tachar(pg, r.c, r.fin); }
     T(pg, C.provincia, ub.provincia); if (C.depto?.w) T(pg, C.depto, ub.departamento);
-    T(pg, C.cuartel, ub.cuartel); T(pg, C.ciudad, ub.ciudad); T(pg, C.calle, ub.calle); T(pg, C.nro, ub.numero);
+    llena(pg, C.cuartel, ub.cuartel); T(pg, C.ciudad, ub.ciudad); T(pg, C.calle, ub.calle); T(pg, C.nro, ub.numero);
     renglones(pg, C.gravamenes, p.gravamenes);
-    T(pg, C.documentada, p.pagares === 'con' ? 'pagarés' : p.pagares === 'sin' ? 'el presente contrato' : '');
-    renglones(pg, C.vencim, p.vencimientos);
-    T(pg, C.interes, interes); T(pg, C.lugarPago, p.lugarPago); T(pg, C.inspeccion, p.inspeccion);
-    T(pg, C.segSuma, sg.suma); T(pg, C.segContra, sg.contra); T(pg, C.segCompania, sg.compania);
-    T(pg, C.segCalle, sg.calle); T(pg, C.segNro, sg.numero); T(pg, C.segPoliza, sg.poliza);
-    T(pg, C.segVence, venceSeguro); T(pg, C.segVenceMes, sg.venceMes); T(pg, C.segPoder, sg.poder);
+    llena(pg, C.documentada, p.pagares === 'con' ? 'pagarés' : p.pagares === 'sin' ? 'el presente contrato' : '');
+    { const r = renglones(pg, C.vencim, p.vencimientos); tachar(pg, r.c, r.fin); }
+    T(pg, C.interes, interes); T(pg, C.lugarPago, p.lugarPago); llena(pg, C.inspeccion, p.inspeccion);
+    llena(pg, C.segSuma, sg.suma); llena(pg, C.segContra, sg.contra); llena(pg, C.segCompania, sg.compania);
+    llena(pg, C.segCalle, sg.calle); llena(pg, C.segNro, sg.numero); llena(pg, C.segPoliza, sg.poliza);
+    llena(pg, C.segVence, venceSeguro); llena(pg, C.segVenceMes, sg.venceMes); llena(pg, C.segPoder, sg.poder);
+    // el renglón del seguro donde sigue «la suma de», antes de «contra»: no se usa
+    tachar(pg, { x: 224, y: C.segContra.y, w: 290 }, 224 - 4);
     T(pg, C.acr.insc, ac.inscripcion); T(pg, C.acr.nombre, ac.nombre); T(pg, C.acr.prof, ac.nombre2); T(pg, C.acr.dom, dom(dAc) + (dAc.localidad ? `, ${dAc.localidad}` : '')); T(pg, C.acr.doc, ac.cuit ? `CUIT ${ac.cuit}` : '');
+    llena(pg, C.acr.ec, ''); llena(pg, C.acr.nac, ''); llena(pg, C.acr.edad, '');
     T(pg, C.deu.nombre, de.nombre);
     const ecTxt = de.estadoCivil ? de.estadoCivil.charAt(0).toUpperCase() + de.estadoCivil.slice(1) : '';
     T(pg, C.deu.ec, ecTxt); T(pg, C.deu.prof, de.profesion); T(pg, C.deu.nac, de.nacionalidad); T(pg, C.deu.edad, edad);
@@ -431,7 +447,7 @@ export function conDomicilioDelDeudor(p) {
   const dd = d.calle || d.numero || d.localidad ? d : { ...d, ...partirDomicilio(d.domicilio) };
   q.ubicacion = q.ubicacion || {}; q.domicilioLegal = q.domicilioLegal || {};
   const u = q.ubicacion, l = q.domicilioLegal;
-  u.provincia = u.provincia || d.provincia || ''; u.departamento = u.departamento || d.partido || '';
+  u.provincia = u.provincia || d.provincia || 'Córdoba'; u.departamento = u.departamento || d.partido || '';
   u.ciudad = u.ciudad || dd.localidad || ''; u.calle = u.calle || dd.calle || ''; u.numero = u.numero || dd.numero || '';
   l.calle = l.calle || dd.calle || ''; l.numero = l.numero || dd.numero || ''; l.ciudad = l.ciudad || dd.localidad || '';
   // Cónyuge: sin cónyuge todo va con guion; si el deudor es casado/a, queda lo que se escriba (y se avisa si falta).
