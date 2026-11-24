@@ -16,7 +16,7 @@
 // Pedido: { accion, ... }. Acciones: yo, clave_definida, marcas, modelos {marca}, versiones {marca, grupo},
 // anios {ref}, cotizar {ref, anio, cuotas, monto?, vehiculo?}, bcra {cuit}, solicitar {consulta, ref, anio,
 // cuotas, monto?, vehiculo?, ingresos, ingreso, categoria, datos, consentimiento}, archivo (multipart: id, slot,
-// archivo), enviar {id}, solicitudes, rapida {capital, cuotas, tasa, gastos} (solo la agencia con simulacion_rapida); y para la Mutual, archivos {id}, eliminar {id} y crear_agencia {nombre, email, notas}.
+// archivo), enviar {id}, solicitudes, solicitud {id}, rapida {capital, cuotas, tasa, gastos} (solo la agencia con simulacion_rapida); y para la Mutual, archivos {id}, eliminar {id} y crear_agencia {nombre, email, notas}.
 // Chat «M» (migración 0038): de la agencia, chat_leer {desde, leido}, chat_enviar {texto}, chat_audio (multipart: audio, seg; 0040),
 // chat_audio_ver {mensaje}, chat_representante y chat_cerrar;
 // de la Mutual, chats, chat_resumen, chat_ver, chat_responder, chat_audio_ver, chat_cerrar {chat}, chat_eliminar {chat}, push_clave, push_suscribir, push_quitar y push_probar.
@@ -981,6 +981,14 @@ export async function manejar(req: Request): Promise<Response> {
     }
     if (accion === 'solicitudes') {
       return responder({ solicitudes: ag.miembro ? [] : await rpc('agencia_solicitudes', { p_user: uid }) }, 200, cors);
+    }
+    if (accion === 'solicitud') {
+      // «Ver mi solicitud»: el detalle de una solicitud propia (sin el % del valor del vehículo ni enlaces a los archivos).
+      if (ag.miembro) throw new Falla('Pedido desconocido.', 400, 'accion');
+      if (!esUuid(pedido.id)) throw new Falla('Falta la solicitud.', 400, 'pedido');
+      const s = await rpc('agencia_solicitud', { p_user: uid, p_id: pedido.id });
+      if (!s) throw new Falla('No encontramos esa solicitud.', 404, 'solicitud');
+      return responder({ solicitud: s }, 200, cors);
     }
     throw new Falla('Pedido desconocido.', 400, 'accion');
   } catch (e) {

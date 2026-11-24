@@ -473,6 +473,31 @@ test('historial: cada vendedor ve sus cotizaciones, la más nueva primero, sin v
   assert.deepEqual((await pedir(agencia, { accion: 'cotizaciones' })).datos.cotizaciones.map((x) => x.vehiculo), ['MARCA UNO SEGUNDA']);
 });
 
+test('ver mi solicitud: la agencia ve lo que envió, sin el % del valor del vehículo ni rutas de archivos, y solo lo suyo', async () => {
+  const ag = sql(`select id from public.agencias where email = 'salon@test.local'`);
+  const vt = sql(`select id from public.agencia_vendedores where email = 'salon@test.local'`);
+  const id = '00000000-0000-4000-8000-0000000000a1';
+  sql(`delete from public.solicitudes_credito;
+       insert into public.solicitudes_credito (id, agencia_id, vendedor_id, agencia, cuit, denominacion, semaforo, vehiculo, anio, monto, cuotas, cuota, total, tasa, cft, estado, ingreso, relacion, categoria, datos, archivos)
+       values ('${id}', '${ag}', '${vt}', 'Salón Uno', '20111111112', 'CLIENTE UNO', 'verde', 'X', 2024, 1000000, 12, 100000, 1200000, 5, 90, 'pendiente', 400000, 25, 'dependencia',
+         '{"dni":"11111111","celular":"3534000000","pct_valor":48}',
+         '[{"slot":"documentacion","nombre":"dni.pdf","tipo":"application/pdf","tamano":2048,"path":"secreto/ruta.pdf"}]');`);
+  const r = await pedir(agencia, { accion: 'solicitud', id });
+  assert.equal(r.status, 200, r.texto);
+  const s = r.datos.solicitud;
+  assert.equal(s.denominacion, 'CLIENTE UNO');
+  assert.equal(s.datos.dni, '11111111');
+  assert.equal(s.categoria, 'dependencia');
+  assert.deepEqual(s.archivos.map((a) => a.nombre), ['dni.pdf']);
+  assert.ok(!/pct_valor|secreto|ruta\.pdf|path|codia|valuaci|precio|price|infoauto/i.test(r.texto), r.texto.slice(0, 400));
+  // Una que no existe o que no es suya no se ve; la Mutual (vista previa) usa su propia administración.
+  assert.equal((await pedir(agencia, { accion: 'solicitud', id: '00000000-0000-4000-8000-0000000000b2' })).status, 404);
+  assert.equal((await pedir(agencia, { accion: 'solicitud', id: 'no-es-un-id' })).status, 400);
+  assert.equal((await pedir(emi, { accion: 'solicitud', id })).status, 400);
+  sql(`update public.solicitudes_credito set vendedor_id = null where id = '${id}'`);
+  assert.equal((await pedir(agencia, { accion: 'solicitud', id })).status, 404);
+});
+
 test('historial: eliminar oculta del historial pero no reinicia el tope ni borra el registro', async () => {
   sql("update public.ajustes_agencias set habilitado = true, tope_diario = 500;");
   sql('delete from public.cotizaciones_agencia;');
