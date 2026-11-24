@@ -46,7 +46,7 @@ const S = {
  *  navegador hasta que se envía). `envio`: la solicitud ya creada en la base, si una subida quedó a medias. */
 function nuevaSol() {
   return {
-    abierta: false, ingresos: null, ingreso: '', categoria: '', docs: {},
+    abierta: false, ingresos: null, ingreso: '', categoria: '', docs: {}, chk: {},
     actividad: '', dni: '', domicilio: '', estado_civil: '', matrimonio_lugar: '', matrimonio_fecha: '', celular: '', cbu: '', conformidad: false,
     cuenta: '', cuenta_titular: '', cuenta_cuit: '', cuenta_relacion: '',
     errores: [], error: '', enviando: false, progreso: '', preparando: 0, enviada: false, envio: null,
@@ -703,6 +703,21 @@ const REQUISITOS = `<p class="m0"><b>Recordá que para aprobar el crédito neces
   </ol>
   <p class="hint m0">Cada archivo puede pesar hasta 10 MB (las fotos se achican solas).</p>`;
 
+/** Lista que tilda la propia agencia a medida que sube cada documento. No mira los archivos ni se guarda: es solo una ayuda para no olvidarse. */
+const INGRESOS_LISTA = {
+  dependencia: ['Recibos de sueldo'],
+  monotributo: ['Constancia de inscripción', 'Últimos pagos del monotributo'],
+  inscripto: ['Constancia de inscripción', 'Declaraciones juradas de IVA y Ganancias'],
+};
+
+function checklistArchivos(L) {
+  const item = (k, texto) => { const ok = !!L.chk?.[k];
+    return `<button class="chk-item" type="button" data-chk="${k}" aria-pressed="${ok}"><span class="chk" aria-hidden="true">${ok ? '✅' : '❌'}</span><span>${esc(texto)}</span></button>`; };
+  const ingresos = (INGRESOS_LISTA[L.categoria] || []).map((t, i) => item(`ing${i}`, t)).join('');
+  return `<div class="checklist"><p class="m0"><b>Checklist</b> <span class="hint">Tocá cada ítem cuando ya lo hayas subido. No impide enviar.</span></p>
+    <div class="checklist-lista">${item('dni', 'DNI, ambos lados')}${item('servicio', 'Impuesto o servicio (domicilio)')}${ingresos}${item('titulo', 'Título del automotor')}</div></div>`;
+}
+
 /** El recuadro donde la agencia suelta o elige todos los archivos juntos. */
 function casillero(slot) {
   const L = S.sol, d = DOCS[slot], xs = L.docs[slot] || [];
@@ -736,6 +751,7 @@ function vistaSolicitud() {
   html += `<section class="card no-imprimir"><h2>4 · Documentación</h2>
     <div class="requisitos-caja">${REQUISITOS}</div>
     ${casillero('documentacion')}
+    ${checklistArchivos(L)}
   </section>
   <section class="card no-imprimir" id="pasoDatos"><h2>5 · Datos del cliente</h2>
     <div class="bloque"><label class="f">Empleo, profesión o actividad (opcional)<input data-campo="actividad" autocomplete="off" maxlength="200" placeholder="Ej.: empleado de comercio en Supermercado X; docente; productor agropecuario" value="${v('actividad')}"></label></div>
@@ -1050,6 +1066,7 @@ document.addEventListener('click', (e) => {
   else if (t.dataset.categoria) { S.sol.categoria = t.dataset.categoria; render(); }
   else if (t.dataset.civil) { S.sol.estado_civil = t.dataset.civil; render(); }
   else if (t.dataset.cuenta) { S.sol.cuenta = t.dataset.cuenta; render(); }
+  else if (t.dataset.chk) { S.sol.chk[t.dataset.chk] = !S.sol.chk[t.dataset.chk]; render(); }
   else if (t.dataset.quitar) quitarArchivo(t.dataset.quitar, Number(t.dataset.i));
   else if (t.id === 'btnEnviarSol') enviarSolicitud();
   else if (t.dataset.wacot) { const x = S.cots?.find((c) => String(c.id) === t.dataset.wacot); if (x) window.open(`https://wa.me/?text=${encodeURIComponent(textoParaComprador(x))}`, '_blank', 'noopener'); }
