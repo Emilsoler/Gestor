@@ -251,10 +251,9 @@ export function htmlGenerar(g) {
     <fieldset class="ag-gen-grupo"><legend>Ajuste de la impresora</legend>
       <div class="grid2"><label class="f">Correr a la derecha (mm)<input data-k="ag.gen.dx" value="${esc(g.dx ?? '')}" inputmode="decimal" autocomplete="off"></label>
       <label class="f">Correr hacia abajo (mm)<input data-k="ag.gen.dy" value="${esc(g.dy ?? '')}" inputmode="decimal" autocomplete="off"></label></div>
-      <p class="hint m0">Se usa la «hoja de prueba» sobre un formulario oficial para ver cuánto corre tu impresora. Se recuerda en este dispositivo.</p></fieldset>
+      <p class="hint m0">Sirve para corregir lo que tu impresora corre el papel. Se recuerda en este dispositivo.</p></fieldset>
     <div class="actions"><button class="btn primary" data-a="ag-gen-pdf" data-id="${esc(g.id)}">Descargar PDF para imprimir</button>
-      ${g.tipo === 'contratos' ? `<label class="ag-check"><input type="checkbox" data-k="ag.gen.sinOriginal" ${g.sinOriginal ? 'checked' : ''}> Solo la copia no negociable</label><label class="ag-check"><input type="checkbox" data-k="ag.gen.sinCopia" ${g.sinCopia ? 'checked' : ''}> Solo el original</label>` : ''}
-      <button class="btn" data-a="ag-gen-prueba">Hoja de prueba</button></div></div>`;
+    </div></div>`;
 }
 
 export function htmlFaltanGen(g) {

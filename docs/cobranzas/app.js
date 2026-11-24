@@ -27,7 +27,7 @@ import { xlsx } from '../excel.js';
 import { datosAcuerdo, avisosAcuerdo, armarAcuerdo, hojasRefinanciacion, CAMPOS_ACUERDO } from './acuerdo.js';
 import { nuevaDemanda, nuevoDemandado, demandaDesdeDeudor, estadoDemanda, datosDemanda, avisosDemanda, faltanDemanda, CAMPOS_DEMANDA } from './demanda.js';
 import { abrirChat } from './chat.js';
-import { datosDeSolicitud, textoVencimientos, armarFormularios, hojaDePrueba, conDomicilioDelDeudor } from './prendaforms.js';
+import { datosDeSolicitud, textoVencimientos, armarFormularios, conDomicilioDelDeudor } from './prendaforms.js';
 import { nuevoDescuento, nuevoCheque, formDeFila, filaDeForm, liquidarDescuento, cartera, resumenCartera, cuandoVence, bancoDe, htmlLiquidacionDescuento, hojaDescuento, ESTADOS_CHEQUE } from './descuento.js';
 
 const VERSION = '1.11.2';
@@ -699,13 +699,6 @@ async function generarFormularios() {
     toast(`PDF listo: ${archivo}. Imprimilo sobre los formularios oficiales en blanco.`);
   } catch (e) { console.error(e); toast('No se pudo armar el PDF'); }
 }
-async function hojaPruebaFormularios() {
-  const g = S.ag.gen; if (!g) return;
-  try {
-    const bytes = await hojaDePrueba({ dx: mm(g.dx), dy: mm(g.dy) });
-    await entregar(new Blob([bytes], { type: 'application/pdf' }), 'Hoja de prueba - formularios de prenda.pdf');
-  } catch (e) { console.error(e); toast('No se pudo armar la hoja de prueba'); }
-}
 
 async function accionAgencias(act, b) {
   const G = S.ag, id = b.dataset.id;
@@ -758,7 +751,6 @@ async function accionAgencias(act, b) {
   if (act === 'ag-gen-abrir') { await abrirGenerar(id, b.dataset.tipo); return; }
   if (act === 'ag-gen-cerrar') { G.gen = null; render(); return; }
   if (act === 'ag-gen-pdf') { await generarFormularios(); return; }
-  if (act === 'ag-gen-prueba') { await hojaPruebaFormularios(); return; }
   if (act === 'ag-borrar-preguntar' || act === 'ag-borrar-no') { G.borrar = act === 'ag-borrar-preguntar' ? id : ''; render(); return; }
   if (act === 'ag-borrar') {
     try { await eliminarSolicitud(id); } catch (e) { toast(mensaje(e, 'no se pudo eliminar la solicitud')); return; }
