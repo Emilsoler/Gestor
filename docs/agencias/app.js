@@ -37,7 +37,7 @@ const S = {
   marcas: null, marca: '', modelos: null, modelo: '', versiones: null, version: '', anios: null, anio: '', buscaVer: '',
   plazo: 0, monto: '', cuotaMax: '', cargando: '', res: null,
   foto: null, // { ref, src }: la foto de la versión elegida (src null si no hay); la pide `cargarFoto`
-  cuit: '', bcra: null, bcraError: '', continuo: false, confirmarOtro: false, sols: null, cots: null, elimCot: '', novedades: null,
+  cuit: '', bcra: null, bcraError: '', continuo: false, confirmarOtro: false, sols: null, cots: null, elimCot: '', elimTodas: false, novedades: null,
   sol: null, // la solicitud que se está armando (nuevaSol)
   rap: null, // simulación rápida (solo la agencia marcada; `nuevaRapida`)
 };
@@ -897,7 +897,12 @@ const etqEstado = (e) => { const [t, c] = ESTADOS[e] || [e, '']; return `<span c
 function vistaHistorial() {
   if (!S.cots) return '<section class="card"><p class="hint m0">Cargando…</p></section>';
   if (!S.cots.length) return '<section class="card"><h2>Mis cotizaciones</h2><p class="hint m0">Todavía no hiciste cotizaciones. Aparecen acá apenas cotices un vehículo.</p></section>';
-  return `<section class="card"><h2>Mis cotizaciones</h2><p class="hint">Las últimas 50. Son las condiciones de ese día: si querés una actual, cotizá de nuevo.</p>${S.cots.map((x) => `<div class="sol">
+  return `<section class="card"><h2>Mis cotizaciones</h2><p class="hint">Las últimas 50. Son las condiciones de ese día: si querés una actual, cotizá de nuevo.</p>
+    ${S.elimTodas ? '<span class="aviso suave m0">Se sacan todas las cotizaciones de tu lista. Tocá de nuevo para confirmarlo.</span>' : ''}
+    <div class="acciones">
+      <button class="btn chico" type="button" data-elimtodas>${S.elimTodas ? 'Sí, eliminar todas' : 'Eliminar todas'}</button>
+      ${S.elimTodas ? '<button class="btn chico" type="button" data-elimtodas-no>Cancelar</button>' : ''}
+    </div>${S.cots.map((x) => `<div class="sol">
       <div class="card-cab"><b>${esc(x.vehiculo || 'Vehículo')}</b> <span class="hint">${esc(etiquetaAnio(x.anio))}</span></div>
       <div class="hint">${esc(fechaHora(x.momento))}${x.cuit ? ` · <span class="mono">${esc(cuitLindo(x.cuit))}</span>` : ''}</div>
       <div class="mono">${plata(x.monto)} · ${x.cuotas} × ${plata(x.cuota)}</div>
@@ -912,11 +917,22 @@ function vistaHistorial() {
 
 /** Saca una cotización de la lista (con segundo toque). Es solo del historial: el cálculo ya hecho no cambia. */
 async function eliminarCotizacion(id) {
-  if (S.elimCot !== id) { S.elimCot = id; render(); return; }
+  if (S.elimCot !== id) { S.elimCot = id; S.elimTodas = false; render(); return; }
   S.elimCot = '';
   try {
     await fn({ accion: 'cotizacion_eliminar', id: Number(id) });
     S.cots = (S.cots || []).filter((c) => String(c.id) !== id);
+  } catch (e) { falla(e); return; }
+  render();
+}
+
+/** Saca todas las cotizaciones de la lista (con segundo toque). La función, sin `id`, oculta todas las del vendedor, no solo las 50 que se ven. */
+async function eliminarTodasCotizaciones() {
+  if (!S.elimTodas) { S.elimTodas = true; S.elimCot = ''; render(); return; }
+  S.elimTodas = false;
+  try {
+    await fn({ accion: 'cotizacion_eliminar' });
+    S.cots = [];
   } catch (e) { falla(e); return; }
   render();
 }
@@ -1072,6 +1088,8 @@ document.addEventListener('click', (e) => {
   else if (t.dataset.wacot) { const x = S.cots?.find((c) => String(c.id) === t.dataset.wacot); if (x) window.open(`https://wa.me/?text=${encodeURIComponent(textoParaComprador(x))}`, '_blank', 'noopener'); }
   else if (t.dataset.elimcot) eliminarCotizacion(t.dataset.elimcot);
   else if (t.hasAttribute('data-elimcot-no')) { S.elimCot = ''; render(); }
+  else if (t.hasAttribute('data-elimtodas')) eliminarTodasCotizaciones();
+  else if (t.hasAttribute('data-elimtodas-no')) { S.elimTodas = false; render(); }
   else if (t.id === 'btnRapida') simularRapida();
   else if (t.id === 'btnRapidaReset') { S.rap = { ...nuevaRapida(), capital: S.rap?.capital || '', cuotas: S.rap?.cuotas || nuevaRapida().cuotas }; render(); }
   else if (t.id === 'btnWhatsappRapida' && S.rap?.res) window.open(`https://wa.me/?text=${encodeURIComponent(textoRapida(S.rap.res))}`, '_blank', 'noopener');
