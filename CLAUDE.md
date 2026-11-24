@@ -950,6 +950,7 @@ de la solicitud, editables, y la lista de lo que va a salir en blanco.
   cuota = hoy + 37 días, prenda fija, sin pagarés, concepto «Préstamo de dinero», lugar de pago «Bv. Colón 135 Bell Ville», inspección «Amplios»,
   gravámenes «Ninguno de ninguna índole», interés punitorio, base del % y todos los datos del seguro con «-»; los del cónyuge también con «-» **salvo que el deudor sea casado/a** (ahí quedan en blanco para completar y se avisa). «Dónde están los bienes» y el domicilio constituido salen del
   domicilio del deudor si están vacíos (`conDomicilioDelDeudor`); en el deudor, ciudad y localidad son lo mismo (un solo campo). Lo escrito a mano manda.
+- **La TNA arranca en blanco** (pedido de la persona del 24/11/2026): no se toma de la tasa de la solicitud; se escribe a mano y, si falta, se avisa.
 - **No se inventa nada del deudor ni del vehículo**: lo que la solicitud no trae (dominio, motor, chasis, nacionalidad, nacimiento) queda en blanco
   y se avisa. El **texto de los modelos no se cambia**; la única
   leyenda agregada es la de jurisdicción en el espacio libre de la copia no negociable (texto del estudio).

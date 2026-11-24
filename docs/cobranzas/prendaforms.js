@@ -380,7 +380,7 @@ export { fechaLarga };
  */
 export function datosDeSolicitud(x, hoy = '') {
   const p = nuevosDatos(), d = x.datos || {}, dom = partirDomicilio(d.domicilio), v = partirVehiculo(x.vehiculo);
-  Object.assign(p, { fecha: hoy, lugar: 'Bell Ville', monto: Number(x.monto) || 0, cuotas: Number(x.cuotas) || 0, cuota: Number(x.cuota) || 0, tna: Math.round(Number(x.tasa || 0) * 12 * 100) / 100, primerVto: '' });
+  Object.assign(p, { fecha: hoy, lugar: 'Bell Ville', monto: Number(x.monto) || 0, cuotas: Number(x.cuotas) || 0, cuota: Number(x.cuota) || 0, tna: '', primerVto: '' }); // la TNA queda en blanco a propósito (pedido de la persona, 24/11/2026): se escribe a mano
   Object.assign(p.deudor, {
     nombre: String(x.denominacion || '').trim(), dni: String(d.dni || ''), estadoCivil: d.estado_civil === 'casado' ? 'casado' : d.estado_civil === 'soltero' ? 'soltero' : '',
     profesion: String(d.actividad || ''), calle: dom.calle, numero: dom.numero, localidad: dom.localidad,

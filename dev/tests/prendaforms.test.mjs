@@ -10,7 +10,7 @@ const solCasado = { ...sol, datos: { ...sol.datos, conyuge_nombre: 'GOMEZ MARIA'
 
 test('los datos de la solicitud se pasan sin inventar nada', () => {
   const p = datosDeSolicitud(sol, '2026-11-24');
-  assert.equal(p.tna, 60);
+  assert.equal(p.tna, ''); // en blanco por defecto
   assert.equal(p.deudor.calle, 'San Martín'); assert.equal(p.deudor.numero, '450'); assert.equal(p.deudor.localidad, 'Bell Ville');
   assert.equal(p.deudor.estadoCivil, 'casado');
   assert.equal(p.vehiculo.dominio, ''); assert.equal(p.vehiculo.motor, '');
