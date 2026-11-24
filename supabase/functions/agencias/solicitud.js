@@ -109,8 +109,26 @@ export function revisarDatos(d, hoy) {
   const txt = (x, n) => String(x ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
   const dni = String(d?.dni ?? '').replace(/\D/g, '');
   if (!/^\d{7,8}$/.test(dni)) errores.push('El DNI tiene que tener 7 u 8 números.');
-  const domicilio = txt(d?.domicilio, 300);
-  if (domicilio.length < 5) errores.push('Escribí el domicilio real del cliente.');
+  // Domicilio real: desde el 24/11/2026 en casilleros (calle, número, piso, depto., CP, localidad, departamento y provincia),
+  // para completar solos el Formulario 03 y el contrato de prenda. `domicilio` queda armado de corrido para lo demás. Un
+  // pedido viejo (de una app que quedó abierta) trae solo `domicilio` y se acepta como antes.
+  const porPartes = d?.dom_calle !== undefined;
+  let domicilio = txt(d?.domicilio, 300), partes = {}, nacionalidad = '', nacimiento = '';
+  if (porPartes) {
+    const calle = txt(d?.dom_calle, 120), numero = txt(d?.dom_numero, 12), piso = txt(d?.dom_piso, 12), depto = txt(d?.dom_depto, 12), cp = txt(d?.dom_cp, 10);
+    const localidad = txt(d?.dom_localidad, 100), departamento = txt(d?.dom_departamento, 100), provincia = txt(d?.dom_provincia, 100);
+    if (calle.length < 2) errores.push('Escribí la calle del domicilio del cliente.');
+    if (!numero) errores.push('Escribí el número del domicilio del cliente (o «S/N»).');
+    if (localidad.length < 2) errores.push('Escribí la localidad del cliente.');
+    if (provincia.length < 2) errores.push('Escribí la provincia del cliente.');
+    domicilio = `${calle} ${numero}${piso ? `, piso ${piso}` : ''}${depto ? `, depto. ${depto}` : ''}, ${localidad}`.slice(0, 300);
+    partes = { dom_calle: calle, dom_numero: numero, ...(piso ? { dom_piso: piso } : {}), ...(depto ? { dom_depto: depto } : {}), ...(cp ? { dom_cp: cp } : {}),
+      dom_localidad: localidad, ...(departamento ? { dom_departamento: departamento } : {}), dom_provincia: provincia };
+    nacionalidad = txt(d?.nacionalidad, 80);
+    nacimiento = String(d?.nacimiento ?? '');
+    if (nacionalidad.length < 3) errores.push('Escribí la nacionalidad del cliente.');
+    if (!fechaValida(nacimiento) || nacimiento < '1900-01-01' || nacimiento > hoy) errores.push('Escribí la fecha de nacimiento del cliente.');
+  } else if (domicilio.length < 5) errores.push('Escribí el domicilio real del cliente.');
   const estado = d?.estado_civil;
   if (!['soltero', 'casado'].includes(estado)) errores.push('Elegí el estado civil.');
   let lugar = '', fecha = '', conyuge = {};
@@ -152,6 +170,6 @@ export function revisarDatos(d, hoy) {
   const actividad = txt(d?.actividad, 200);
   if (errores.length) return { errores };
   return {
-    datos: { ...(actividad ? { actividad } : {}), dni, domicilio, estado_civil: estado, ...(estado === 'casado' ? { matrimonio_lugar: lugar, matrimonio_fecha: fecha, ...conyuge } : {}), celular, ...(cbu ? { cbu } : {}), ...(alias ? { alias } : {}), ...(hayCuenta ? { cuenta } : {}), ...tercero },
+    datos: { ...(actividad ? { actividad } : {}), dni, domicilio, ...partes, ...(porPartes ? { nacionalidad, nacimiento } : {}), estado_civil: estado, ...(estado === 'casado' ? { matrimonio_lugar: lugar, matrimonio_fecha: fecha, ...conyuge } : {}), celular, ...(cbu ? { cbu } : {}), ...(alias ? { alias } : {}), ...(hayCuenta ? { cuenta } : {}), ...tercero },
   };
 }

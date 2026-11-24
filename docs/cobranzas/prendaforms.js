@@ -383,6 +383,14 @@ export function datosDeSolicitud(x, hoy = '') {
     nombre: String(x.denominacion || '').trim(), dni: String(d.dni || ''), estadoCivil: d.estado_civil === 'casado' ? 'casado' : d.estado_civil === 'soltero' ? 'soltero' : '',
     profesion: String(d.actividad || ''), calle: dom.calle, numero: dom.numero, localidad: dom.localidad,
   });
+  // Desde el 24/11/2026 la agencia carga el domicilio por casilleros, la nacionalidad y el nacimiento: se usan tal cual.
+  // Las solicitudes anteriores traen solo el domicilio de corrido (arriba) y lo demás queda para completar.
+  if (d.dom_calle !== undefined) {
+    Object.assign(p.deudor, { calle: String(d.dom_calle), numero: String(d.dom_numero || ''), piso: String(d.dom_piso || ''), dep: String(d.dom_depto || ''), cp: String(d.dom_cp || ''),
+      localidad: String(d.dom_localidad || ''), partido: String(d.dom_departamento || ''), provincia: String(d.dom_provincia || '') });
+  }
+  if (d.nacionalidad) p.deudor.nacionalidad = String(d.nacionalidad);
+  if (d.nacimiento) p.deudor.nacimiento = String(d.nacimiento);
   // Cónyuge: lo que la agencia cargó en la solicitud (solo si el cliente es casado/a). La profesión no se pide: queda para completar.
   if (d.estado_civil === 'casado' && d.conyuge_nombre) {
     const edad = edadDe(d.conyuge_nacimiento, hoy);

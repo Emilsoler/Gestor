@@ -47,7 +47,7 @@ const S = {
 function nuevaSol() {
   return {
     abierta: false, ingresos: null, ingreso: '', categoria: '', docs: {}, chk: {},
-    actividad: '', dni: '', domicilio: '', estado_civil: '', matrimonio_lugar: '', matrimonio_fecha: '', conyuge_nombre: '', conyuge_dni: '', conyuge_nacionalidad: '', conyuge_domicilio: '', conyuge_nacimiento: '', celular: '', cbu: '', alias: '', conformidad: false,
+    actividad: '', dni: '', nacionalidad: '', nacimiento: '', dom_calle: '', dom_numero: '', dom_piso: '', dom_depto: '', dom_cp: '', dom_localidad: '', dom_departamento: '', dom_provincia: '', estado_civil: '', matrimonio_lugar: '', matrimonio_fecha: '', conyuge_nombre: '', conyuge_dni: '', conyuge_nacionalidad: '', conyuge_domicilio: '', conyuge_nacimiento: '', celular: '', cbu: '', alias: '', conformidad: false,
     cuenta: '', cuenta_titular: '', cuenta_cuit: '', cuenta_relacion: '',
     errores: [], error: '', enviando: false, progreso: '', preparando: 0, enviada: false, envio: null,
   };
@@ -241,7 +241,7 @@ const sinAdjuntar = () => docsRequeridos(S.sol.categoria, S.res.anio).filter((k)
 
 function revisarSolicitud() {
   const L = S.sol, errores = [];
-  const rd = revisarDatos({ actividad: L.actividad, dni: L.dni, domicilio: L.domicilio, estado_civil: L.estado_civil, matrimonio_lugar: L.matrimonio_lugar, matrimonio_fecha: L.matrimonio_fecha,
+  const rd = revisarDatos({ actividad: L.actividad, dni: L.dni, nacionalidad: L.nacionalidad, nacimiento: L.nacimiento, dom_calle: L.dom_calle, dom_numero: L.dom_numero, dom_piso: L.dom_piso, dom_depto: L.dom_depto, dom_cp: L.dom_cp, dom_localidad: L.dom_localidad, dom_departamento: L.dom_departamento, dom_provincia: L.dom_provincia, estado_civil: L.estado_civil, matrimonio_lugar: L.matrimonio_lugar, matrimonio_fecha: L.matrimonio_fecha,
     conyuge_nombre: L.conyuge_nombre, conyuge_dni: L.conyuge_dni, conyuge_nacionalidad: L.conyuge_nacionalidad, conyuge_domicilio: L.conyuge_domicilio, conyuge_nacimiento: L.conyuge_nacimiento,
     celular: L.celular, cbu: L.cbu, alias: L.alias, cuenta: L.cuenta, cuenta_titular: L.cuenta_titular, cuenta_cuit: L.cuenta_cuit, cuenta_relacion: L.cuenta_relacion }, hoy());
   if (rd.errores) errores.push(...rd.errores);
@@ -759,7 +759,18 @@ function vistaSolicitud() {
     <div class="bloque"><label class="f">DNI<input data-campo="dni" inputmode="numeric" autocomplete="off" maxlength="12" value="${v('dni')}"></label>
       ${dniCuit && dni && dni !== dniCuit ? '<p class="aviso suave m0">No coincide con el CUIL que se consultó en el BCRA.</p>' : ''}</div>
     <div class="bloque"><div class="f">Vehículo cotizado<div class="dato">${esc(r.vehiculo)} · ${esc(etiquetaAnio(r.anio))}</div></div></div>
-    <div class="bloque"><label class="f">Domicilio real<input data-campo="domicilio" autocomplete="off" maxlength="300" placeholder="Calle, número y localidad" value="${v('domicilio')}"></label></div>
+    <div class="bloque"><div class="grilla">
+      <label class="f">Nacionalidad<input data-campo="nacionalidad" autocomplete="off" maxlength="80" placeholder="Ej.: Argentina" value="${v('nacionalidad')}"></label>
+      <label class="f">Fecha de nacimiento<input data-campo="nacimiento" type="date" max="${hoy()}" value="${v('nacimiento')}"></label></div></div>
+    <div class="bloque"><p class="hint m0"><b>Domicilio real</b></p><div class="grilla">
+      <label class="f">Calle<input data-campo="dom_calle" autocomplete="off" maxlength="120" value="${v('dom_calle')}"></label>
+      <label class="f">Número<input data-campo="dom_numero" autocomplete="off" maxlength="12" placeholder="o S/N" value="${v('dom_numero')}"></label>
+      <label class="f">Piso (opcional)<input data-campo="dom_piso" autocomplete="off" maxlength="12" value="${v('dom_piso')}"></label>
+      <label class="f">Depto. (opcional)<input data-campo="dom_depto" autocomplete="off" maxlength="12" value="${v('dom_depto')}"></label>
+      <label class="f">Código postal (opcional)<input data-campo="dom_cp" autocomplete="off" maxlength="10" value="${v('dom_cp')}"></label>
+      <label class="f">Localidad<input data-campo="dom_localidad" autocomplete="off" maxlength="100" value="${v('dom_localidad')}"></label>
+      <label class="f">Departamento (opcional)<input data-campo="dom_departamento" autocomplete="off" maxlength="100" value="${v('dom_departamento')}"></label>
+      <label class="f">Provincia<input data-campo="dom_provincia" autocomplete="off" maxlength="100" value="${v('dom_provincia')}"></label></div></div>
     <div class="bloque"><div class="f">Estado civil<div class="opciones2" role="radiogroup" aria-label="Estado civil">
         <button type="button" role="radio" data-civil="soltero" aria-checked="${L.estado_civil === 'soltero'}">Soltero/a</button>
         <button type="button" role="radio" data-civil="casado" aria-checked="${L.estado_civil === 'casado'}">Casado/a</button></div></div>

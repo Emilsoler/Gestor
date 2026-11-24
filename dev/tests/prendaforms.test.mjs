@@ -79,3 +79,10 @@ test('el PDF tiene una hoja por cada hoja oficial y sin escaneo de fondo', async
   assert.ok(!/\/Subtype\s*\/Image/.test(Buffer.from(todo.bytes).toString('latin1')), 'no lleva imágenes');
   assert.ok((await hojaDePrueba({})).length > 500);
 });
+
+test('el domicilio por casilleros, la nacionalidad y el nacimiento que carga la agencia pasan al deudor', () => {
+  const x = { ...sol, datos: { ...sol.datos, dom_calle: 'Ernesto Sabato', dom_numero: '1919', dom_piso: '2', dom_depto: 'B', dom_cp: '2550', dom_localidad: 'Bell Ville', dom_departamento: 'Unión', dom_provincia: 'Córdoba', nacionalidad: 'Argentina', nacimiento: '1980-02-03' } };
+  const d = datosDeSolicitud(x, '2026-11-24').deudor;
+  assert.deepEqual([d.calle, d.numero, d.piso, d.dep, d.cp, d.localidad, d.partido, d.provincia, d.nacionalidad, d.nacimiento],
+    ['Ernesto Sabato', '1919', '2', 'B', '2550', 'Bell Ville', 'Unión', 'Córdoba', 'Argentina', '1980-02-03']);
+});

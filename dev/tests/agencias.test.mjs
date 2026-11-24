@@ -392,6 +392,10 @@ test('las reglas de la solicitud: copia igual en la función, casilleros como en
   assert.equal(SOL.relacionCuota(450_000, 1_000_000), 45);
   assert.equal(SOL.relacionCuota(1, 0), null);
   assert.deepEqual(SOL.revisarDatos(DATOS, '2026-11-17').datos, { ...DATOS, celular: '3534123456' });
+  // domicilio por casilleros + nacionalidad y nacimiento (24/11/2026)
+  const nuevo = { dni: '11111111', estado_civil: 'soltero', celular: '3534123456', nacionalidad: 'Argentina', nacimiento: '1980-02-03', dom_calle: 'Sabato', dom_numero: '1919', dom_piso: '2', dom_localidad: 'Bell Ville', dom_provincia: 'Córdoba' };
+  assert.equal(SOL.revisarDatos(nuevo, '2026-11-24').datos.domicilio, 'Sabato 1919, piso 2, Bell Ville');
+  assert.equal(SOL.revisarDatos({ ...nuevo, dom_localidad: '' }, '2026-11-24').errores.length, 1);
   const { errores } = SOL.revisarDatos({ dni: '12', domicilio: 'x', estado_civil: 'casado', matrimonio_fecha: '2030-01-01', celular: '12', cbu: CBU.slice(0, 21) + '9' }, '2026-11-17');
   assert.equal(errores.length, 12, errores.join(' | ')); // 7 de antes + los 5 datos del cónyuge
   assert.deepEqual(SOL.revisarDatos({ ...DATOS, estado_civil: 'soltero' }, '2026-11-17').datos.matrimonio_lugar, undefined);

@@ -171,6 +171,8 @@ function solicitud(x, A, est, notas) {
         ${fila('Total · tasa mensual · CFT', `${plata(x.total)} · ${pct(x.tasa)} · ${pct(x.cft)}`)}
         ${d.dni ? fila('DNI', `${esc(Number(d.dni).toLocaleString('es-AR'))}${dniCuit && dniCuit !== d.dni ? ' <span class="tag t-mal">no coincide con el CUIL</span>' : ''}`) : ''}
         ${d.domicilio ? fila('Domicilio real', esc(d.domicilio)) : ''}
+        ${d.nacionalidad || d.nacimiento ? fila('Nacionalidad · nacimiento', `${esc(d.nacionalidad || '')} · ${esc(String(d.nacimiento || '').split('-').reverse().join('/'))}`) : ''}
+        ${d.dom_provincia ? fila('Localidad · departamento · provincia · CP', esc([d.dom_localidad, d.dom_departamento, d.dom_provincia, d.dom_cp].filter(Boolean).join(' · '))) : ''}
         ${d.estado_civil ? fila('Estado civil', d.estado_civil === 'casado' ? `Casado/a · ${esc(d.matrimonio_lugar || '')}, ${esc(String(d.matrimonio_fecha || '').split('-').reverse().join('/'))}` : 'Soltero/a') : ''}
         ${d.estado_civil === 'casado' && d.conyuge_nombre ? fila('Cónyuge', `${esc(d.conyuge_nombre)} · DNI ${esc(Number(d.conyuge_dni).toLocaleString('es-AR'))} · ${esc(d.conyuge_nacionalidad || '')} · nació el ${esc(String(d.conyuge_nacimiento || '').split('-').reverse().join('/'))} · ${esc(d.conyuge_domicilio || '')}`) : ''}
         ${x.cliente ? fila('Celular', esc(x.cliente)) : ''}
