@@ -91,7 +91,7 @@ const F03 = {
   conyuge: { x: 725, y: 926, w: 370 },
   // entes jurídicos (acreedor)
   personeria: { x: 322, y: 977, w: 370 }, datosInsc: { x: 322, y: 1051, w: 222 },
-  finsc: { dia: { x: 580, y: 1051, w: 30 }, mes: { x: 624, y: 1051, w: 30 }, anio: { x: 690, y: 1051, w: 34 } },
+  finsc: { dia: { x: 553, y: 1051, w: 30 }, mes: { x: 598, y: 1051, w: 30 }, anio: { x: 664, y: 1051, w: 34 } }, // 5 mm a la izquierda (pedido del 24/11/2026)
   // G: automotor
   g: {
     dominio: { x: 512, y: 1264, w: 180 }, marca: { x: 382, y: 1301, w: 310 }, tipo: { x: 358, y: 1338, w: 334 },
