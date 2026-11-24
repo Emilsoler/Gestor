@@ -37,7 +37,7 @@ const S = {
   marcas: null, marca: '', modelos: null, modelo: '', versiones: null, version: '', anios: null, anio: '', buscaVer: '',
   plazo: 0, monto: '', cuotaMax: '', precio: '', anticipo: '', cargando: '', res: null,
   foto: null, // { ref, src }: la foto de la versión elegida (src null si no hay); la pide `cargarFoto`
-  cuit: '', bcra: null, bcraError: '', continuo: false, confirmarOtro: false, sols: null, cots: null, novedades: null,
+  cuit: '', bcra: null, bcraError: '', continuo: false, confirmarOtro: false, sols: null, cots: null, elimCot: '', novedades: null,
   sol: null, // la solicitud que se está armando (nuevaSol)
   rap: null, // simulación rápida (solo la agencia marcada; `nuevaRapida`)
 };
@@ -892,8 +892,24 @@ function vistaHistorial() {
       <div class="card-cab"><b>${esc(x.vehiculo || 'Vehículo')}</b> <span class="hint">${esc(etiquetaAnio(x.anio))}</span></div>
       <div class="hint">${esc(fechaHora(x.momento))}${x.cuit ? ` · <span class="mono">${esc(cuitLindo(x.cuit))}</span>` : ''}</div>
       <div class="mono">${plata(x.monto)} · ${x.cuotas} × ${plata(x.cuota)}</div>
-      <button class="btn chico" type="button" data-wacot="${esc(String(x.id))}">Mandar por WhatsApp</button>
+      ${S.elimCot === String(x.id) ? '<span class="aviso suave m0">Se saca de tu lista. Tocá de nuevo para confirmarlo.</span>' : ''}
+      <div class="acciones">
+        <button class="btn chico" type="button" data-wacot="${esc(String(x.id))}">Mandar por WhatsApp</button>
+        <button class="btn chico" type="button" data-elimcot="${esc(String(x.id))}">${S.elimCot === String(x.id) ? 'Sí, eliminar' : 'Eliminar'}</button>
+        ${S.elimCot === String(x.id) ? '<button class="btn chico" type="button" data-elimcot-no>Cancelar</button>' : ''}
+      </div>
     </div>`).join('')}</section>`;
+}
+
+/** Saca una cotización de la lista (con segundo toque). Es solo del historial: el cálculo ya hecho no cambia. */
+async function eliminarCotizacion(id) {
+  if (S.elimCot !== id) { S.elimCot = id; render(); return; }
+  S.elimCot = '';
+  try {
+    await fn({ accion: 'cotizacion_eliminar', id: Number(id) });
+    S.cots = (S.cots || []).filter((c) => String(c.id) !== id);
+  } catch (e) { falla(e); return; }
+  render();
 }
 
 /** «Mis solicitudes», para la agencia. */
@@ -1051,6 +1067,8 @@ document.addEventListener('click', (e) => {
   else if (t.dataset.quitar) quitarArchivo(t.dataset.quitar, Number(t.dataset.i));
   else if (t.id === 'btnEnviarSol') enviarSolicitud();
   else if (t.dataset.wacot) { const x = S.cots?.find((c) => String(c.id) === t.dataset.wacot); if (x) window.open(`https://wa.me/?text=${encodeURIComponent(textoParaComprador(x))}`, '_blank', 'noopener'); }
+  else if (t.dataset.elimcot) eliminarCotizacion(t.dataset.elimcot);
+  else if (t.hasAttribute('data-elimcot-no')) { S.elimCot = ''; render(); }
   else if (t.id === 'btnRapida') simularRapida();
   else if (t.id === 'btnRapidaReset') { S.rap = { ...nuevaRapida(), capital: S.rap?.capital || '', cuotas: S.rap?.cuotas || nuevaRapida().cuotas }; render(); }
   else if (t.id === 'btnWhatsappRapida' && S.rap?.res) window.open(`https://wa.me/?text=${encodeURIComponent(textoRapida(S.rap.res))}`, '_blank', 'noopener');

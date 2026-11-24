@@ -468,6 +468,22 @@ test('historial: cada vendedor ve sus cotizaciones, la más nueva primero, sin v
   assert.deepEqual((await pedir(agencia, { accion: 'cotizaciones' })).datos.cotizaciones.map((x) => x.vehiculo), ['MARCA UNO SEGUNDA']);
 });
 
+test('historial: eliminar oculta del historial pero no reinicia el tope ni borra el registro', async () => {
+  sql("update public.ajustes_agencias set habilitado = true, tope_diario = 500;");
+  sql('delete from public.cotizaciones_agencia;');
+  const ref = (await pedir(agencia, { accion: 'versiones', marca: 1, grupo: 10 })).datos.versiones[0].ref;
+  for (const v of ['UNA', 'DOS', 'TRES']) assert.equal((await pedir(agencia, { accion: 'cotizar', ref, anio: '0km', cuotas: 12, vehiculo: 'MARCA ' + v })).status, 200);
+  const lista = async () => (await pedir(agencia, { accion: 'cotizaciones' })).datos.cotizaciones;
+  const [una] = (await lista()).filter((x) => x.vehiculo === 'MARCA UNA');
+  assert.equal((await pedir(agencia, { accion: 'cotizacion_eliminar', id: 'x' })).status, 400);
+  assert.equal((await pedir(agencia, { accion: 'cotizacion_eliminar', id: una.id })).status, 200);
+  assert.deepEqual((await lista()).map((x) => x.vehiculo).sort(), ['MARCA DOS', 'MARCA TRES']);
+  // La Mutual sigue viéndola y el tope diario la cuenta.
+  assert.equal(sql("select count(*) from public.cotizaciones_agencia").toString().trim(), '3');
+  assert.equal((await pedir(agencia, { accion: 'cotizacion_eliminar' })).status, 200);
+  assert.deepEqual(await lista(), []);
+});
+
 test('semáforo: rojo no apto; amarillo y sin antecedentes siguen, sujetos a revisión', async () => {
   sql(PARAMS_MUTUAL + "; delete from public.solicitudes_credito");
   await cargarCasosBCRA();

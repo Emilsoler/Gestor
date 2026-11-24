@@ -961,6 +961,14 @@ export async function manejar(req: Request): Promise<Response> {
     if (accion === 'cotizaciones') {
       return responder({ cotizaciones: ag.miembro ? [] : await rpc('agencia_cotizaciones', { p_user: uid }) }, 200, cors);
     }
+    if (accion === 'cotizacion_eliminar') {
+      // Oculta de «Mis cotizaciones» (no borra: el tope diario y el registro de la Mutual siguen). Sin `id`, las oculta todas.
+      if (ag.miembro) throw new Falla('Pedido desconocido.', 400, 'accion');
+      const id = pedido.id == null ? null : Number(pedido.id);
+      if (id !== null && !(Number.isSafeInteger(id) && id > 0)) throw new Falla('Falta la cotización.', 400, 'pedido');
+      const n = await rpc('agencia_cotizacion_ocultar', { p_user: uid, p_id: id });
+      return responder({ ok: true, eliminadas: Number(n) || 0 }, 200, cors);
+    }
     if (accion === 'solicitudes') {
       return responder({ solicitudes: ag.miembro ? [] : await rpc('agencia_solicitudes', { p_user: uid }) }, 200, cors);
     }
