@@ -961,7 +961,6 @@ async function eliminarTodasCotizaciones() {
 // ───────────────────────── «Ver mi solicitud» ─────────────────────────
 // El detalle de lo que la agencia mandó: lo pide a la función (`solicitud`), que no devuelve el % del valor del vehículo
 // ni enlaces a los archivos; de estos solo se ven el nombre y el tamaño.
-const CATEGORIAS = { dependencia: 'Relación de dependencia', monotributo: 'Monotributo', inscripto: 'Responsable inscripto' };
 const ESTADO_CIVIL = { soltero: 'Soltero/a', casado: 'Casado/a', divorciado: 'Divorciado/a', viudo: 'Viudo/a', separado: 'Separado/a', conviviente: 'Conviviente' };
 const fechaLinda = (f) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(f || '')); return m ? `${m[3]}/${m[2]}/${m[1]}` : String(f || ''); };
 const tamanoLindo = (b) => { const n = Number(b) || 0; return n >= 1048576 ? `${(n / 1048576).toLocaleString('es-AR', { maximumFractionDigits: 1 })} MB` : `${Math.max(1, Math.round(n / 1024))} KB`; };
