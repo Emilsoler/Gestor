@@ -335,7 +335,7 @@ export async function armarFormularios(p, { dx = 0, dy = 0, hoy = '', fondos = n
     renglones(pg2, [0, 1, 2, 3].map((k) => ({ x: 128, y: 520 + k * 27, w: 880 })), LEYENDA_JURISDICCION(p.jurisdiccion));
     if (de.estadoCivil === 'casado') {
       T(pg2, q.cony.nombre, cy.nombre); T(pg2, q.cony.ec, cy.estadoCivil); T(pg2, q.cony.prof, cy.profesion); T(pg2, q.cony.nac, cy.nacionalidad); T(pg2, q.cony.edad, cy.edad);
-      T(pg2, q.cony.dom, cy.domicilio); T(pg2, q.cony.doc, cy.dni ? `DNI ${dniOficio(cy.dni)}` : '');
+      T(pg2, q.cony.dom, cy.domicilio); T(pg2, q.cony.doc, cy.dni === '-' ? '-' : cy.dni ? `DNI ${dniOficio(cy.dni)}` : '');
     }
   }
   return { bytes: await doc.save(), faltan: faltanFormularios(p) };
@@ -419,6 +419,11 @@ export function conDomicilioDelDeudor(p) {
   u.provincia = u.provincia || d.provincia || ''; u.departamento = u.departamento || d.partido || '';
   u.ciudad = u.ciudad || dd.localidad || ''; u.calle = u.calle || dd.calle || ''; u.numero = u.numero || dd.numero || '';
   l.calle = l.calle || dd.calle || ''; l.numero = l.numero || dd.numero || ''; l.ciudad = l.ciudad || dd.localidad || '';
+  // Cónyuge: sin cónyuge todo va con guion; si el deudor es casado/a, queda lo que se escriba (y se avisa si falta).
+  if (d.estadoCivil !== 'casado') {
+    q.conyuge = q.conyuge || {};
+    for (const k of ['nombre', 'estadoCivil', 'profesion', 'nacionalidad', 'edad', 'domicilio', 'dni']) q.conyuge[k] = q.conyuge[k] || '-';
+  }
   return q;
 }
 

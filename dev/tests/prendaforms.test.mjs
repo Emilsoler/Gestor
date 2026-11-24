@@ -37,6 +37,14 @@ test('los bienes y el domicilio constituido salen del domicilio del deudor, y lo
   assert.equal(p.domicilioLegal.ciudad, '', 'no cambia el original');
 });
 
+test('cónyuge: con guion si el deudor no es casado, a completar si lo es', () => {
+  const casado = conDomicilioDelDeudor(datosDeSolicitud(sol, '2026-11-24'));
+  assert.equal(casado.conyuge.nombre, ''); assert.equal(casado.conyuge.dni, '');
+  const soltero = conDomicilioDelDeudor(datosDeSolicitud({ ...sol, datos: { ...sol.datos, estado_civil: 'soltero' } }, '2026-11-24'));
+  for (const v of Object.values(soltero.conyuge)) assert.equal(v, '-');
+  assert.ok(faltanFormularios(casado).includes('Cónyuge: nombre y apellido'));
+});
+
 test('vencimientos: solo si se sabe la primera cuota', () => {
   const p = datosDeSolicitud(sol, '2026-11-24');
   p.primerVto = '';

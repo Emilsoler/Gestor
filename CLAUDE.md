@@ -948,7 +948,7 @@ de la solicitud, editables, y la lista de lo que va a salir en blanco.
   25/11/1987; grado 1, cláusula de actualización NO, concepto PRÉSTAMO; tribunales de Bell Ville.
 - **Condiciones fijas ya cargadas** (pedido de la persona del 24/11/2026; `DEFECTOS_CONTRATO` en `prendaforms.js`, plegadas en la pantalla): primera
   cuota = hoy + 37 días, prenda fija, sin pagarés, concepto «Préstamo de dinero», lugar de pago «Bv. Colón 135 Bell Ville», inspección «Amplios»,
-  gravámenes «Ninguno de ninguna índole», interés punitorio, base del % y todos los datos del seguro con «-». «Dónde están los bienes» y el domicilio constituido salen del
+  gravámenes «Ninguno de ninguna índole», interés punitorio, base del % y todos los datos del seguro con «-»; los del cónyuge también con «-» **salvo que el deudor sea casado/a** (ahí quedan en blanco para completar y se avisa). «Dónde están los bienes» y el domicilio constituido salen del
   domicilio del deudor si están vacíos (`conDomicilioDelDeudor`); en el deudor, ciudad y localidad son lo mismo (un solo campo). Lo escrito a mano manda.
 - **No se inventa nada del deudor ni del vehículo**: lo que la solicitud no trae (dominio, motor, chasis, nacionalidad, nacimiento) queda en blanco
   y se avisa. El **texto de los modelos no se cambia**; la única
