@@ -179,7 +179,9 @@ export function faltanFormularios(p, { soloF03 = false } = {}) {
     pide(p.vencimientos, 'Vencimientos'); pide(p.lugarPago, 'Lugar de pago');
   }
   const a = p.acreedor; pide(a.nombre, 'Acreedor: nombre'); pide(a.inscripcion, 'Acreedor: N° de inscripción'); pide(a.personeria, 'Acreedor: personería otorgada por'); pide(a.datosInscripcion, 'Acreedor: datos de inscripción'); pide(a.domicilio || a.calle, 'Acreedor: domicilio');
-  const d = p.deudor; pide(d.nombre, 'Deudor: nombre'); pide(d.dni, 'Deudor: DNI'); pide(d.nacionalidad, 'Deudor: nacionalidad'); pide(d.nacimiento, 'Deudor: fecha de nacimiento'); pide(d.estadoCivil, 'Deudor: estado civil'); pide(d.domicilio || d.calle, 'Deudor: domicilio'); pide(d.localidad, 'Deudor: localidad'); pide(d.provincia, 'Deudor: provincia');
+  const d = p.deudor; pide(d.nombre, 'Deudor: nombre'); pide(d.dni, 'Deudor: DNI'); pide(d.nacionalidad, 'Deudor: nacionalidad'); pide(d.nacimiento, 'Deudor: fecha de nacimiento'); pide(d.estadoCivil, 'Deudor: estado civil'); pide(d.domicilio || d.calle, 'Deudor: domicilio'); pide(d.localidad, 'Deudor: localidad');
+  // La provincia del deudor solo se imprime en el Formulario 03; los contratos no la llevan (la de los bienes va aparte).
+  if (soloF03) pide(d.provincia, 'Deudor: provincia');
   if (d.estadoCivil === 'casado') pide(p.conyuge.nombre, 'Cónyuge: nombre y apellido');
   const v = p.vehiculo; pide(v.dominio, 'Vehículo: dominio'); pide(v.marca, 'Vehículo: marca'); pide(v.tipo, 'Vehículo: tipo'); pide(v.modelo, 'Vehículo: modelo'); pide(v.motor, 'Vehículo: N° de motor'); pide(v.chasis, 'Vehículo: N° de chasis');
   // Interés punitorio, base del %, seguro y «autorizado a diligenciar» quedan en blanco a propósito (pedido de la persona,

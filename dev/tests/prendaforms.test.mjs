@@ -86,3 +86,9 @@ test('el domicilio por casilleros, la nacionalidad y el nacimiento que carga la 
   assert.deepEqual([d.calle, d.numero, d.piso, d.dep, d.cp, d.localidad, d.partido, d.provincia, d.nacionalidad, d.nacimiento],
     ['Ernesto Sabato', '1919', '2', 'B', '2550', 'Bell Ville', 'Unión', 'Córdoba', 'Argentina', '1980-02-03']);
 });
+
+test('la provincia del deudor se pide solo para el Formulario 03, no para los contratos', () => {
+  const p = datosDeSolicitud(sol, '2026-11-24');
+  assert.ok(!faltanFormularios(p).includes('Deudor: provincia'));
+  assert.ok(faltanFormularios(p, { soloF03: true }).includes('Deudor: provincia'));
+});
