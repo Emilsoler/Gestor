@@ -732,7 +732,10 @@ test('simulación rápida: solo la agencia marcada, con capital, cuotas, tasa y 
   const rb = await pedir(agencia, { accion: 'rapida', capital: 5_000_000, cuotas: 12, tasa: 1, gastos: { ...gastos, contratos: 999999 } });
   assert.equal(rb.status, 200, rb.texto);
   const espBasica = simularCredito({ capital: 5_000_000, cuotas: 12, g: { ...Object.fromEntries(Object.keys(gastos).map((k) => [k, Number(gMutual[k]) || 0])), redondeo: null }, tasa: 6 });
-  assert.equal(rb.datos.tasa, 6, 'la tasa que manda una agencia básica se ignora');
+  assert.equal(rb.datos.tasa, undefined, 'una agencia básica no recibe la tasa');
+  assert.equal(rb.datos.sellado, undefined, 'ni el detalle de los gastos');
+  assert.equal(rb.datos.arancel, undefined);
+  assert.ok(rb.datos.gastos_otorgamiento > 0, 'pero sí el total de gastos');
   assert.equal(rb.datos.cuota, espBasica.cuota, 'los gastos que manda una agencia básica se ignoran');
 
   sql(`select set_config('gestor.autor', 'Claude', false); update public.agencias set simulacion_completa = true where email = 'salon@test.local';`);

@@ -584,7 +584,7 @@ function vistaRapida() {
       <tr><td>Gastos de otorgamiento (incluidos en las cuotas)</td><td class="num">${plata(r.gastos_otorgamiento)}</td></tr>
     </tbody></table>
     ${opciones ? `<div class="scroll"><table><thead><tr><th>Otros plazos con este monto</th><th class="num">Cuota</th></tr></thead><tbody>${opciones}</tbody></table></div>` : ''}
-    <p class="leyenda tasas m0">Tasa mensual ${pct(r.tasa)}. No incluye IVA.</p>
+    ${r.tasa == null ? '' : `<p class="leyenda tasas m0">Tasa mensual ${pct(r.tasa)}. No incluye IVA.</p>`}
     ${hojaImprimir(r, '')}
     <div class="acciones no-imprimir">
       <button class="btn" type="button" id="btnWhatsappRapida">Enviar por WhatsApp</button>

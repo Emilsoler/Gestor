@@ -796,8 +796,10 @@ export async function manejar(req: Request): Promise<Response> {
       if (!sim) throw new Falla('No se pudo calcular el crédito con estos datos.', 400, 'calculo');
       const opciones = plazosValidos(a).map((n) => { const s = simularCredito({ capital, cuotas: n, g, tasa }); return s ? { cuotas: n, cuota: s.cuota } : null; }).filter(Boolean);
       return responder({
-        financiable: true, rapida: true, monto: capital, cuotas, cuota: sim.cuota, total: sim.totalCredito, tasa,
-        gastos_otorgamiento: sim.gastos, sellado: sim.sellado, arancel: sim.arancel, opciones,
+        financiable: true, rapida: true, monto: capital, cuotas, cuota: sim.cuota, total: sim.totalCredito,
+        gastos_otorgamiento: sim.gastos, opciones,
+        // Solo la versión completa ve la tasa y el detalle de los gastos; la básica ve un único total de gastos.
+        ...(completa ? { tasa, sellado: sim.sellado, arancel: sim.arancel } : {}),
       }, 200, cors);
     }
     if (accion === 'bcra') {
