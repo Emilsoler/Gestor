@@ -37,7 +37,7 @@ import { MAX_FOTO, base64, tipoImagen, urlDeFoto } from './foto.js';
 // Chat de las agencias (botón «M»): el asistente, su hoja de respuestas y los avisos a la Mutual (migración 0038).
 import { MAX_AUDIO_BYTES, RESPUESTA_SEGURA, SIN_ASISTENTE, TEXTO_AUDIO, armarMensajes, instrucciones, limpiarRespuesta, segundosDeAudio, textoDeAgencia, tipoAudio } from './chat.js';
 import { enviarPush, nuevasClaves } from './push.js';
-import { CATEGORIAS, DOCS, MAX_BYTES, docsRequeridos, relacionCuota, revisarDatos, tipoArchivo } from './solicitud.js';
+import { CATEGORIAS, DOCS, MAX_BYTES, docsRequeridos, esJuridica, relacionCuota, revisarDatos, tipoArchivo } from './solicitud.js';
 
 const URL_BASE = Deno.env.get('SUPABASE_URL') || '';
 const CLAVE_SERVICIO = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
@@ -843,7 +843,10 @@ export async function manejar(req: Request): Promise<Response> {
       const categoria = String(pedido.categoria || '');
       if (!Object.hasOwn(CATEGORIAS, categoria)) throw new Falla('Elegí cómo obtiene sus ingresos el cliente.', 400, 'categoria');
       if (pedido.consentimiento !== true) throw new Falla('Falta la conformidad del cliente para enviar sus datos y documentos a la Mutual.', 400, 'consentimiento');
-      const rd = revisarDatos(pedido.datos, hoyCordoba());
+      // Persona jurídica (CUIT 30, 33 o 34): sus ingresos son siempre como responsable inscripto y sus datos son los de la empresa.
+      const juridica = esJuridica(pedido.cuit);
+      if (juridica && categoria !== 'inscripto') throw new Falla('Una persona jurídica se presenta como responsable inscripto.', 400, 'categoria');
+      const rd = revisarDatos(pedido.datos, hoyCordoba(), juridica);
       if (rd.errores) throw new Falla(rd.errores.join(' '), 400, 'datos');
       const c = await calcular(pedido, a);
       if (!c.financiable) throw new Falla('Este vehículo no alcanza el monto mínimo de financiación.', 400, 'monto');

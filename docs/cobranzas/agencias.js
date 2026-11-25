@@ -169,8 +169,10 @@ function solicitud(x, A, est, notas) {
       <div class="ag-tabla"><table class="tabla"><tbody>
         ${b ? fila('Deuda informada · entidades', `${plata(b.deuda_total)} · ${esc(b.entidades)}`) : ''}
         ${fila('Total · tasa mensual', `${plata(x.total)} · ${pct(x.tasa)}`)}
+        ${d.asociado === true || d.asociado === false ? fila('Asociado a la Mutual', d.asociado ? 'Sí' : '<span class="tag t-prom">No es asociado</span>') : ''}
+        ${d.persona === 'juridica' ? fila('Persona jurídica · representante', `${esc(d.representante_nombre || '')} · DNI ${esc(d.representante_dni ? Number(d.representante_dni).toLocaleString('es-AR') : '')} · ${esc(d.representante_cargo || '')}`) : ''}
         ${d.dni ? fila('DNI', `${esc(Number(d.dni).toLocaleString('es-AR'))}${dniCuit && dniCuit !== d.dni ? ' <span class="tag t-mal">no coincide con el CUIL</span>' : ''}`) : ''}
-        ${d.domicilio ? fila('Domicilio real', esc(d.domicilio)) : ''}
+        ${d.domicilio ? fila(d.persona === 'juridica' ? 'Sede social' : 'Domicilio real', esc(d.domicilio)) : ''}
         ${d.nacionalidad || d.nacimiento ? fila('Nacionalidad · nacimiento', `${esc(d.nacionalidad || '')} · ${esc(String(d.nacimiento || '').split('-').reverse().join('/'))}`) : ''}
         ${d.dom_provincia ? fila('Localidad · departamento · provincia · CP', esc([d.dom_localidad, d.dom_departamento, d.dom_provincia, d.dom_cp].filter(Boolean).join(' · '))) : ''}
         ${d.estado_civil ? fila('Estado civil', d.estado_civil === 'casado' ? `Casado/a · ${esc(d.matrimonio_lugar || '')}, ${esc(String(d.matrimonio_fecha || '').split('-').reverse().join('/'))}` : 'Soltero/a') : ''}

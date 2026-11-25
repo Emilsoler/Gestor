@@ -920,6 +920,20 @@ Mutual y no nombra a InfoAuto.
   `select gestor.pausar_vendedor('vendedor@agencia.com')` (la cuenta de login hay que crearla antes). Publicar: migración 0042,
   `deploy_edge_function` de `agencias` (siete archivos) y subir la app. Pruebas: el test «vendedores» de `agencias.test.mjs` y el del panel en `agencias-admin.test.mjs`.
 
+- **Persona jurídica y «¿es asociado a la Mutual?»** (pedido de la persona del 25/11/2026, sin migración): si el CUIT consultado empieza con 30, 33 o 34
+  (`esJuridica` en `solicitud.js`), la app no pregunta por ingresos demostrables ni cómo los obtiene (van siempre como `inscripto`), y el paso «Datos del cliente»
+  pide la sede social (los mismos casilleros `dom_*`), el representante (`representante_nombre`, `representante_dni`, `representante_cargo`) y el celular, en vez de
+  DNI, nacionalidad, nacimiento y estado civil. Esos datos quedan en `datos` con `persona: 'juridica'`; la razón social es la denominación del BCRA. La función
+  decide por el `cuit` que manda la app (`solicitar`) y rechaza una jurídica con categoría distinta de `inscripto`; `revisarDatos(d, hoy, juridica)` controla cada caso.
+  **A todos** (física o jurídica) se les pide, al final del paso 3, si son asociados: `datos.asociado` (true/false, obligatorio). Si una **empresa no es asociada**
+  se suman cuatro botones de cámara y renglones de la lista de control: Estatuto social, Última acta de autoridades, Último balance certificado y aprobado y DNI de los
+  socios (`DOCS_NO_ASOCIADA`); a una persona física no asociada no se le pide nada más. La Mutual ve «Asociado a la Mutual» y, en una empresa, el representante y la sede
+  en «Más datos del cliente». **Pendiente**: el Formulario 03 y el contrato de prenda (`datosDeSolicitud`) no están pensados para una sociedad (usan DNI, estado civil y
+  nacimiento); para una empresa esos datos hay que completarlos a mano. Publicar: `deploy_edge_function` de `agencias` (siete archivos) y subir la app. Prueba:
+  `agencias-juridica-puro.test.mjs`.
+- **Botones de cámara** (pedido de la persona del 24/11/2026): fijos DNI (ambos lados), Impuesto o servicio y Título del automotor; después, según cómo obtiene sus
+  ingresos: empleado, recibos de sueldo (últimos 3); monotributista, constancia de inscripción y últimos 3 pagos; responsable inscripto, constancia, DDJJ de Ganancias (la
+  última) y DDJJ de IVA (últimas 6). Cada foto se guarda con el nombre del botón (`TIPOS_FOTO` en `docs/agencias/app.js`).
 - **Cuota deseada** (pedido de la persona del 23/11/2026, sin migración): en el paso 2, bajo el título en negrita «También tenés la posibilidad de indicar
   simplemente la cuota que puede pagar el cliente y nosotros calculamos el resto», hay un campo opcional: «Cuota que quiere pagar (hasta)» manda `cuota_max` a
   `cotizar`: en cada plazo, la función busca (por mitades, de a $ 1.000 o el `redondeo`) el monto más alto cuya cuota no pase de lo pedido, sin pasar el

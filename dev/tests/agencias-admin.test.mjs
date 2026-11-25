@@ -64,7 +64,7 @@ before(async () => {
   const ref = (await pedir(jwt, { accion: 'versiones', marca: 1, grupo: 10 })).datos.versiones[0].ref;
   const r = await pedir(jwt, {
     accion: 'solicitar', consulta, ref, anio: '2024', cuotas: 24, vehiculo: 'MARCA UNO SEDAN 1.6', ingresos: true, ingreso: 4_000_000, categoria: 'dependencia',
-    consentimiento: true, datos: { dni: '22222222', domicilio: 'Bv. Colón 135, Bell Ville', estado_civil: 'soltero', celular: '3534 123456', cbu: '2850590940090418135201', cuenta: 'terceros', cuenta_titular: 'Autos del Sur SA', cuenta_cuit: '30444444440' },
+    consentimiento: true, datos: { asociado: true, dni: '22222222', domicilio: 'Bv. Colón 135, Bell Ville', estado_civil: 'soltero', celular: '3534 123456', cbu: '2850590940090418135201', cuenta: 'terceros', cuenta_titular: 'Autos del Sur SA', cuenta_cuit: '30444444440' },
   });
   assert.equal(r.status, 200, JSON.stringify(r.datos));
   idSolicitud = r.datos.id;

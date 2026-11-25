@@ -95,6 +95,12 @@ export function dniDelCuit(cuit) {
   return c.length === 11 && /^2[0347]$/.test(c.slice(0, 2)) ? String(Number(c.slice(2, 10))) : '';
 }
 
+/** CUIT de persona jurídica (empresas, sociedades, asociaciones): empieza con 30, 33 o 34. */
+export const esJuridica = (cuit) => /^3[034]\d{9}$/.test(String(cuit ?? '').replace(/\D/g, ''));
+
+/** Lo que se pide de más a una persona jurídica que no es asociada a la Mutual (nov 2026). */
+export const DOCS_NO_ASOCIADA = ['Estatuto social', 'Última acta de autoridades', 'Último balance certificado y aprobado', 'DNI de los socios'];
+
 /** Qué parte del ingreso mensual se lleva la cuota, en % con dos decimales. null sin ingreso. */
 export const relacionCuota = (cuota, ingreso) => (Number(ingreso) > 0 ? Math.round((Number(cuota) / Number(ingreso)) * 10000) / 100 : null);
 
@@ -104,7 +110,8 @@ const fechaValida = (f) => /^\d{4}-\d{2}-\d{2}$/.test(f) && !Number.isNaN(Date.p
  * Los datos del cliente, controlados y limpios: { datos } o { errores: [texto…] }, todos juntos para mostrarlos
  * de una vez. `hoy` es AAAA-MM-DD (la fecha del matrimonio no puede ser posterior).
  */
-export function revisarDatos(d, hoy) {
+export function revisarDatos(d, hoy, juridica = false) {
+  if (juridica) return revisarDatosJuridica(d);
   const errores = [];
   const txt = (x, n) => String(x ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
   const dni = String(d?.dni ?? '').replace(/\D/g, '');
@@ -168,8 +175,55 @@ export function revisarDatos(d, hoy) {
   }
   // Empleo, profesión o actividad del cliente, en palabras de la agencia (opcional; nov 2026, para la Mutual).
   const actividad = txt(d?.actividad, 200);
+  if (typeof d?.asociado !== 'boolean') errores.push('Indicá si el cliente es asociado a la Mutual.');
   if (errores.length) return { errores };
   return {
-    datos: { ...(actividad ? { actividad } : {}), dni, domicilio, ...partes, ...(porPartes ? { nacionalidad, nacimiento } : {}), estado_civil: estado, ...(estado === 'casado' ? { matrimonio_lugar: lugar, matrimonio_fecha: fecha, ...conyuge } : {}), celular, ...(cbu ? { cbu } : {}), ...(alias ? { alias } : {}), ...(hayCuenta ? { cuenta } : {}), ...tercero },
+    datos: { asociado: d.asociado, ...(actividad ? { actividad } : {}), dni, domicilio, ...partes, ...(porPartes ? { nacionalidad, nacimiento } : {}), estado_civil: estado, ...(estado === 'casado' ? { matrimonio_lugar: lugar, matrimonio_fecha: fecha, ...conyuge } : {}), celular, ...(cbu ? { cbu } : {}), ...(alias ? { alias } : {}), ...(hayCuenta ? { cuenta } : {}), ...tercero },
+  };
+}
+
+/**
+ * Los datos de una persona jurídica (CUIT 30, 33 o 34), controlados y limpios: { datos } o { errores }. En lugar del DNI, el
+ * estado civil y el nacimiento, lleva la sede social y los datos de quien la representa. La razón social es la que informó
+ * el BCRA (queda en la solicitud). Se pide también si es asociada a la Mutual.
+ */
+function revisarDatosJuridica(d) {
+  const errores = [];
+  const txt = (x, n) => String(x ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
+  const calle = txt(d?.dom_calle, 120), numero = txt(d?.dom_numero, 12), piso = txt(d?.dom_piso, 12), depto = txt(d?.dom_depto, 12), cp = txt(d?.dom_cp, 10);
+  const localidad = txt(d?.dom_localidad, 100), departamento = txt(d?.dom_departamento, 100), provincia = txt(d?.dom_provincia, 100);
+  if (calle.length < 2) errores.push('Escribí la calle del domicilio o sede social.');
+  if (!numero) errores.push('Escribí el número del domicilio o sede social (o «S/N»).');
+  if (localidad.length < 2) errores.push('Escribí la localidad de la sede social.');
+  if (provincia.length < 2) errores.push('Escribí la provincia de la sede social.');
+  const domicilio = `${calle} ${numero}${piso ? `, piso ${piso}` : ''}${depto ? `, depto. ${depto}` : ''}, ${localidad}`.slice(0, 300);
+  const partes = { dom_calle: calle, dom_numero: numero, ...(piso ? { dom_piso: piso } : {}), ...(depto ? { dom_depto: depto } : {}), ...(cp ? { dom_cp: cp } : {}),
+    dom_localidad: localidad, ...(departamento ? { dom_departamento: departamento } : {}), dom_provincia: provincia };
+  const repNombre = txt(d?.representante_nombre, 200), repDni = String(d?.representante_dni ?? '').replace(/\D/g, ''), repCargo = txt(d?.representante_cargo, 100);
+  if (repNombre.length < 3) errores.push('Escribí el apellido y nombre de quien representa a la empresa.');
+  if (!/^\d{7,8}$/.test(repDni)) errores.push('El DNI del representante tiene que tener 7 u 8 números.');
+  if (repCargo.length < 2) errores.push('Escribí el cargo del representante (por ejemplo, presidente o socio gerente).');
+  const celular = String(d?.celular ?? '').replace(/\D/g, '');
+  if (celular.length < 8 || celular.length > 15) errores.push('El celular tiene que tener entre 8 y 15 números, con la característica.');
+  const cbu = String(d?.cbu ?? '').replace(/\D/g, '');
+  if (cbu && !cbuValido(cbu)) errores.push(cbu.length === 22 ? 'Ese CBU o CVU no es válido: revisá los números.' : 'El CBU o CVU tiene que tener 22 números.');
+  const alias = String(d?.alias ?? '').trim();
+  if (alias && !aliasValido(alias)) errores.push('El alias tiene que tener de 6 a 20 caracteres: letras, números, puntos o guiones, sin espacios.');
+  const hayCuenta = Boolean(cbu || alias);
+  const cuenta = hayCuenta ? d?.cuenta : undefined;
+  let tercero = {};
+  if (hayCuenta && !['propia', 'terceros'].includes(cuenta)) errores.push('Elegí si la cuenta es de la empresa o de un tercero.');
+  if (cuenta === 'terceros') {
+    const titular = txt(d?.cuenta_titular, 200), cuit = String(d?.cuenta_cuit ?? '').replace(/\D/g, '');
+    if (titular.length < 3) errores.push('Escribí el nombre o la razón social del titular de la cuenta.');
+    if (!cuitValido(cuit)) errores.push('El CUIT o CUIL del titular de la cuenta no es válido: revisá los números.');
+    tercero = { cuenta_titular: titular, cuenta_cuit: cuit, ...(txt(d?.cuenta_relacion, 120) ? { cuenta_relacion: txt(d?.cuenta_relacion, 120) } : {}) };
+  }
+  const actividad = txt(d?.actividad, 200);
+  if (typeof d?.asociado !== 'boolean') errores.push('Indicá si la empresa es asociada a la Mutual.');
+  if (errores.length) return { errores };
+  return {
+    datos: { persona: 'juridica', asociado: d.asociado, ...(actividad ? { actividad } : {}), domicilio, ...partes, representante_nombre: repNombre, representante_dni: repDni, representante_cargo: repCargo,
+      celular, ...(cbu ? { cbu } : {}), ...(alias ? { alias } : {}), ...(hayCuenta ? { cuenta } : {}), ...tercero },
   };
 }

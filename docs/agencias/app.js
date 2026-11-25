@@ -13,7 +13,7 @@
 // demostrables (sin eso no sigue) y el ingreso mensual (la cuota no puede pasar el 45 %); cómo obtiene los
 // ingresos; 4) su documentación; 5) datos del cliente con la suya; y se envía todo a la Mutual.
 import { iniciarChat, apagarChat } from './chat.js?v=20261123b';
-import { CATEGORIAS, DOCS, MAX_BYTES, docsPermitidos, docsRequeridos, dniDelCuit, relacionCuota, revisarDatos, tipoArchivo } from './solicitud.js';
+import { CATEGORIAS, DOCS, DOCS_NO_ASOCIADA, MAX_BYTES, docsPermitidos, docsRequeridos, dniDelCuit, esJuridica, relacionCuota, revisarDatos, tipoArchivo } from './solicitud.js?v=20261125a';
 
 const cfg = window.GESTOR_CONFIG || {};
 // Sesión propia, no la del gestor ('gestor.sesion', que comparten el gestor, Cobranzas y Prenda): así entrar acá
@@ -47,7 +47,7 @@ const S = {
 function nuevaSol() {
   return {
     abierta: false, ingresos: null, ingreso: '', categoria: '', docs: {}, chk: {},
-    actividad: '', dni: '', nacionalidad: '', nacimiento: '', dom_calle: '', dom_numero: '', dom_piso: '', dom_depto: '', dom_cp: '', dom_localidad: '', dom_departamento: '', dom_provincia: '', estado_civil: '', matrimonio_lugar: '', matrimonio_fecha: '', conyuge_nombre: '', conyuge_dni: '', conyuge_nacionalidad: '', conyuge_domicilio: '', conyuge_nacimiento: '', celular: '', cbu: '', alias: '', conformidad: false,
+    actividad: '', dni: '', nacionalidad: '', nacimiento: '', dom_calle: '', dom_numero: '', dom_piso: '', dom_depto: '', dom_cp: '', dom_localidad: '', dom_departamento: '', dom_provincia: '', estado_civil: '', matrimonio_lugar: '', matrimonio_fecha: '', conyuge_nombre: '', conyuge_dni: '', conyuge_nacionalidad: '', conyuge_domicilio: '', conyuge_nacimiento: '', representante_nombre: '', representante_dni: '', representante_cargo: '', asociado: '', celular: '', cbu: '', alias: '', conformidad: false,
     cuenta: '', cuenta_titular: '', cuenta_cuit: '', cuenta_relacion: '',
     errores: [], error: '', enviando: false, progreso: '', preparando: 0, enviada: false, envio: null,
   };
@@ -176,6 +176,9 @@ function otroCliente() {
 // ───────────────────────── La solicitud ─────────────────────────
 const hoy = () => new Date().toLocaleDateString('sv-SE'); // AAAA-MM-DD, en la hora del teléfono
 const tope = () => S.yo?.relacion_max || 45;
+/** Persona jurídica (CUIT 30, 33 o 34): sus ingresos son siempre como responsable inscripto y se piden los datos de la empresa. */
+const juridica = () => esJuridica(S.bcra?.cuit);
+const asociadoDe = (L) => (L.asociado === 'si' ? true : L.asociado === 'no' ? false : undefined);
 const relacionActual = () => (S.res?.financiable ? relacionCuota(S.res.cuota, soloNumero(S.sol.ingreso)) : null);
 const relacionOk = () => S.sol.ingresos === true && relacionActual() !== null && relacionActual() <= tope();
 const porcentaje = (n) => (Number(n) || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 });
@@ -185,7 +188,8 @@ const LADO_FOTO = 2000; // px: se leen bien recibos y declaraciones, y cada foto
 function abrirSolicitud() {
   const L = S.sol;
   L.abierta = true;
-  if (!L.dni) L.dni = dniDelCuit(S.bcra?.cuit);
+  if (juridica()) { L.ingresos = true; L.categoria = 'inscripto'; } // no hay que preguntarlo
+  else if (!L.dni) L.dni = dniDelCuit(S.bcra?.cuit);
   render();
   $('#pasoIngresos')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -240,14 +244,24 @@ const TIPOS_FOTO = [
   { k: 'pagos_mono', t: 'Últimos 3 pagos del monotributo', para: 'monotributo' },
   { k: 'ddjj_ganancias', t: 'DDJJ de Ganancias (la última)', para: 'inscripto' },
   { k: 'ddjj_iva', t: 'DDJJ de IVA (últimas 6)', para: 'inscripto' },
+  // Solo una persona jurídica que no es asociada a la Mutual (nov 2026).
+  { k: 'estatuto', t: 'Estatuto social', noasoc: true },
+  { k: 'acta', t: 'Última acta de autoridades', noasoc: true },
+  { k: 'balance', t: 'Último balance certificado y aprobado', noasoc: true },
+  { k: 'dni_socios', t: 'DNI de los socios', noasoc: true },
 ];
-const tiposFoto = (cat) => TIPOS_FOTO.filter((x) => !x.para || [].concat(x.para).includes(cat));
+/** Los botones que corresponden: los fijos, los de cómo obtiene sus ingresos y, en una empresa no asociada, los de la sociedad. */
+function tiposFoto(cat) {
+  const noAsoc = juridica() && asociadoDe(S.sol) === false;
+  return TIPOS_FOTO.filter((x) => (x.noasoc ? noAsoc : !x.para || [].concat(x.para).includes(cat)))
+    .map((x) => (x.k === 'dni' && juridica() ? { ...x, t: 'DNI del representante (ambos lados)' } : x));
+}
 
 /** Tilda sola la lista de control cuando ya se sacó la foto que corresponde (la agencia la puede destildar). */
 function tildarSegunFoto(k) {
   const L = S.sol, c = (L.chk ||= {}), n = (t) => (L.docs.documentacion || []).filter((x) => x.tipo === t).length;
   if (k === 'dni') { if (n('dni') >= 2) c.dni = true; }
-  else if (k === 'servicio' || k === 'titulo') c[k] = true;
+  else if (['servicio', 'titulo', 'estatuto', 'acta', 'balance', 'dni_socios'].includes(k)) c[k] = true;
   else if (k === 'recibo') c.ing0 = true;
   else if (k === 'constancia') c.ing0 = true;
   else if (k === 'pagos_mono') c.ing1 = true;
@@ -256,7 +270,7 @@ function tildarSegunFoto(k) {
 
 /** Una foto sacada con la cámara: se achica como cualquier otra y queda con el nombre del documento («DNI (frente).jpg»). */
 async function agregarFoto(k, files) {
-  const L = S.sol, tipo = TIPOS_FOTO.find((x) => x.k === k), slot = 'documentacion', d = DOCS[slot];
+  const L = S.sol, tipo = tiposFoto(L.categoria).find((x) => x.k === k), slot = 'documentacion', d = DOCS[slot];
   if (!tipo) return;
   L.error = '';
   for (const f of files) {
@@ -290,7 +304,8 @@ function revisarSolicitud() {
   const L = S.sol, errores = [];
   const rd = revisarDatos({ actividad: L.actividad, dni: L.dni, nacionalidad: L.nacionalidad, nacimiento: L.nacimiento, dom_calle: L.dom_calle, dom_numero: L.dom_numero, dom_piso: L.dom_piso, dom_depto: L.dom_depto, dom_cp: L.dom_cp, dom_localidad: L.dom_localidad, dom_departamento: L.dom_departamento, dom_provincia: L.dom_provincia, estado_civil: L.estado_civil, matrimonio_lugar: L.matrimonio_lugar, matrimonio_fecha: L.matrimonio_fecha,
     conyuge_nombre: L.conyuge_nombre, conyuge_dni: L.conyuge_dni, conyuge_nacionalidad: L.conyuge_nacionalidad, conyuge_domicilio: L.conyuge_domicilio, conyuge_nacimiento: L.conyuge_nacimiento,
-    celular: L.celular, cbu: L.cbu, alias: L.alias, cuenta: L.cuenta, cuenta_titular: L.cuenta_titular, cuenta_cuit: L.cuenta_cuit, cuenta_relacion: L.cuenta_relacion }, hoy());
+    representante_nombre: L.representante_nombre, representante_dni: L.representante_dni, representante_cargo: L.representante_cargo, asociado: asociadoDe(L),
+    celular: L.celular, cbu: L.cbu, alias: L.alias, cuenta: L.cuenta, cuenta_titular: L.cuenta_titular, cuenta_cuit: L.cuenta_cuit, cuenta_relacion: L.cuenta_relacion }, hoy(), juridica());
   if (rd.errores) errores.push(...rd.errores);
   if (!L.conformidad) errores.push('Marcá que el cliente está de acuerdo con enviar sus datos y documentos a la Mutual.');
   return { errores, datos: rd.datos };
@@ -304,7 +319,7 @@ async function enviarSolicitud() {
   if (errores.length) { render(); $('#erroresSol')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
   const r = S.res;
   const cuerpo = { accion: 'solicitar', consulta: S.bcra.consulta, ref: S.version, anio: r.anio, cuotas: r.cuotas, monto: r.monto, vehiculo: r.vehiculo,
-    ingresos: true, ingreso: soloNumero(L.ingreso), categoria: L.categoria, datos, consentimiento: true };
+    ingresos: true, ingreso: soloNumero(L.ingreso), categoria: L.categoria, cuit: S.bcra.cuit, datos, consentimiento: true };
   const firma = JSON.stringify(cuerpo);
   const permitidos = docsPermitidos(L.categoria, r.anio);
   const archivos = Object.entries(L.docs).filter(([k]) => permitidos.includes(k)).flatMap(([slot, xs]) => xs.map((x) => ({ slot, x })));
@@ -734,13 +749,19 @@ function htmlRelacion() {
   const rel = relacionActual(), max = tope();
   if (rel === null) return `<p class="hint m0">Con el ingreso se calcula qué parte se lleva la cuota de ${plata(S.res.cuota)} (hasta el ${porcentaje(max)} %).</p>`;
   if (rel > max) return `<p class="aviso m0" role="alert">La cuota (${plata(S.res.cuota)}) es el ${porcentaje(rel)} % del ingreso: supera el ${porcentaje(max)} %. Para avanzar, probá con más cuotas o un monto menor.</p>`;
+  const A = S.sol.asociado;
+  const asociado = S.sol.categoria ? `<div class="f">${juridica() ? '¿La empresa es asociada a la Mutual?' : '¿El cliente es asociado a la Mutual?'}<div class="opciones2" role="radiogroup" aria-label="Asociado a la Mutual">
+      <button type="button" role="radio" data-asociado="si" aria-checked="${A === 'si'}">Sí</button>
+      <button type="button" role="radio" data-asociado="no" aria-checked="${A === 'no'}">No</button></div></div>
+    ${juridica() && A === 'no' ? `<p class="hint m0">Como no es asociada, además hay que adjuntar: ${DOCS_NO_ASOCIADA.map((t) => t.charAt(0).toLowerCase() + t.slice(1)).join(', ')}.</p>` : ''}` : '';
   return `<p class="aviso ok m0">La cuota es el ${porcentaje(rel)} % del ingreso (el tope es ${porcentaje(max)} %).</p>
-    <div class="f">¿Cómo obtiene sus ingresos?<div class="categorias" role="radiogroup" aria-label="Cómo obtiene sus ingresos">${Object.entries(CATEGORIAS)
-      .map(([k, t], i) => `<button type="button" role="radio" data-categoria="${k}" aria-checked="${S.sol.categoria === k}"><span class="num-cat">${i + 1}</span>${esc(t)}</button>`).join('')}</div></div>`;
+    ${juridica() ? '' : `<div class="f">¿Cómo obtiene sus ingresos?<div class="categorias" role="radiogroup" aria-label="Cómo obtiene sus ingresos">${Object.entries(CATEGORIAS)
+      .map(([k, t], i) => `<button type="button" role="radio" data-categoria="${k}" aria-checked="${S.sol.categoria === k}"><span class="num-cat">${i + 1}</span>${esc(t)}</button>`).join('')}</div></div>`}
+    ${asociado}`;
 }
 
 /** Lo que la Mutual necesita para aprobar el crédito (texto pedido por la persona, 20/11/2026). */
-const REQUISITOS = `<p class="m0"><b>Recordá que para aprobar el crédito necesitamos estos archivos (PDF o fotos):</b></p>
+const REQUISITOS_PERSONA = `<p class="m0"><b>Recordá que para aprobar el crédito necesitamos estos archivos (PDF o fotos):</b></p>
   <ol class="requisitos">
     <li>Foto de DNI (ambos lados)</li>
     <li>Foto de un impuesto o servicio para constatar el domicilio</li>
@@ -750,6 +771,18 @@ const REQUISITOS = `<p class="m0"><b>Recordá que para aprobar el crédito neces
     <li>Título del automotor</li>
   </ol>
   <p class="hint m0">Cada archivo puede pesar hasta 10 MB (las fotos se achican solas).</p>`;
+const REQUISITOS_EMPRESA = `<p class="m0"><b>Recordá que para aprobar el crédito necesitamos estos archivos (PDF o fotos):</b></p>
+  <ol class="requisitos">
+    <li>Foto del DNI del representante (ambos lados)</li>
+    <li>Foto de un impuesto o servicio que acredite la sede social</li>
+    <li>Constancia de inscripción, última DDJJ de Ganancias y últimas 6 DDJJ de IVA</li>
+    <li>Título del automotor</li>
+    __NOASOC__
+  </ol>
+  <p class="hint m0">Cada archivo puede pesar hasta 10 MB (las fotos se achican solas).</p>`;
+const requisitos = () => (juridica()
+  ? REQUISITOS_EMPRESA.replace('__NOASOC__', asociadoDe(S.sol) === false ? `<li>Por no ser asociada: ${DOCS_NO_ASOCIADA.map((t) => t.charAt(0).toLowerCase() + t.slice(1)).join(', ')}.</li>` : '')
+  : REQUISITOS_PERSONA);
 
 /** Lista que tilda la propia agencia a medida que sube cada documento. No mira los archivos ni se guarda: es solo una ayuda para no olvidarse. */
 const INGRESOS_LISTA = {
@@ -763,7 +796,7 @@ function checklistArchivos(L) {
     return `<button class="chk-item" type="button" data-chk="${k}" aria-pressed="${ok}"><span class="chk" aria-hidden="true">${ok ? '✅' : '❌'}</span><span>${esc(texto)}</span></button>`; };
   const ingresos = (INGRESOS_LISTA[L.categoria] || []).map((t, i) => item(`ing${i}`, t)).join('');
   return `<div class="checklist"><p class="m0"><b>Checklist</b> <span class="hint">Tocá cada ítem cuando ya lo hayas subido. No impide enviar.</span></p>
-    <div class="checklist-lista">${item('dni', 'DNI, ambos lados')}${item('servicio', 'Impuesto o servicio (domicilio)')}${ingresos}${item('titulo', 'Título del automotor')}</div></div>`;
+    <div class="checklist-lista">${item('dni', juridica() ? 'DNI del representante, ambos lados' : 'DNI, ambos lados')}${item('servicio', juridica() ? 'Impuesto o servicio (sede social)' : 'Impuesto o servicio (domicilio)')}${ingresos}${item('titulo', 'Título del automotor')}${juridica() && asociadoDe(L) === false ? DOCS_NO_ASOCIADA.map((t, i) => item(['estatuto', 'acta', 'balance', 'dni_socios'][i], t)).join('') : ''}</div></div>`;
 }
 
 /** Botones para sacar la foto de cada documento directamente con la cámara (en la compu abren el selector de archivos). */
@@ -795,9 +828,9 @@ function vistaSolicitud() {
   const L = S.sol, r = S.res;
   if (!L.abierta || L.enviada || !r?.financiable) return '';
   let html = `<section class="card no-imprimir" id="pasoIngresos"><h2>3 · Ingresos</h2>
-    <div class="f">¿Tiene ingresos demostrables?<div class="opciones2" role="radiogroup" aria-label="Ingresos demostrables">
+    ${juridica() ? '<p class="hint m0">Es una persona jurídica: sus ingresos se presentan como responsable inscripto.</p>' : `<div class="f">¿Tiene ingresos demostrables?<div class="opciones2" role="radiogroup" aria-label="Ingresos demostrables">
       <button type="button" role="radio" data-ingresos="si" aria-checked="${L.ingresos === true}">Sí</button>
-      <button type="button" role="radio" data-ingresos="no" aria-checked="${L.ingresos === false}">No</button></div></div>`;
+      <button type="button" role="radio" data-ingresos="no" aria-checked="${L.ingresos === false}">No</button></div></div>`}`;
   if (L.ingresos === false) html += '<p class="aviso m0" role="alert">Sin ingresos demostrables no se puede avanzar con la solicitud.</p>';
   if (L.ingresos === true) {
     html += `<label class="f">Ingreso mensual aproximado ($)<input id="inIngreso" inputmode="numeric" autocomplete="off" placeholder="Ej.: 1.500.000" value="${esc(L.ingreso)}"></label>
@@ -809,19 +842,29 @@ function vistaSolicitud() {
   const v = (k) => esc(L[k] ?? '');
   const dniCuit = dniDelCuit(S.bcra?.cuit), dni = soloDigitos(L.dni);
   html += `<section class="card no-imprimir"><h2>4 · Documentación</h2>
-    <div class="requisitos-caja">${REQUISITOS}</div>
+    <div class="requisitos-caja">${requisitos()}</div>
     ${casillero('documentacion')}
     ${checklistArchivos(L)}
   </section>
   <section class="card no-imprimir" id="pasoDatos"><h2>5 · Datos del cliente</h2>
     <div class="bloque"><label class="f">Empleo, profesión o actividad (opcional)<input data-campo="actividad" autocomplete="off" maxlength="200" placeholder="Ej.: empleado de comercio en Supermercado X; docente; productor agropecuario" value="${v('actividad')}"></label></div>
+    ${juridica() ? `
+    <div class="bloque"><div class="f">Razón social<div class="dato">${esc(S.bcra?.denominacion || S.bcra?.cuit || '')}</div></div>
+      <div class="hint m0"><b>Quien representa a la empresa</b></div><div class="grilla">
+      <label class="f">Apellido y nombre<input data-campo="representante_nombre" autocomplete="off" maxlength="200" value="${v('representante_nombre')}"></label>
+      <label class="f">DNI<input data-campo="representante_dni" inputmode="numeric" autocomplete="off" maxlength="12" value="${v('representante_dni')}"></label>
+      <label class="f ancho">Cargo<input data-campo="representante_cargo" autocomplete="off" maxlength="100" placeholder="Ej.: presidente, socio gerente" value="${v('representante_cargo')}"></label></div></div>
+    ` : `
     <div class="bloque"><label class="f">DNI<input data-campo="dni" inputmode="numeric" autocomplete="off" maxlength="12" value="${v('dni')}"></label>
       ${dniCuit && dni && dni !== dniCuit ? '<p class="aviso suave m0">No coincide con el CUIL que se consultó en el BCRA.</p>' : ''}</div>
+    `}
     <div class="bloque"><div class="f">Vehículo cotizado<div class="dato">${esc(r.vehiculo)} · ${esc(etiquetaAnio(r.anio))}</div></div></div>
+    ${juridica() ? '' : `
     <div class="bloque"><div class="grilla">
       <label class="f">Nacionalidad<input data-campo="nacionalidad" autocomplete="off" maxlength="80" placeholder="Ej.: Argentina" value="${v('nacionalidad')}"></label>
       <label class="f">Fecha de nacimiento<input data-campo="nacimiento" type="date" max="${hoy()}" value="${v('nacimiento')}"></label></div></div>
-    <div class="bloque"><p class="hint m0"><b>Domicilio real</b></p><div class="grilla">
+    `}
+    <div class="bloque"><p class="hint m0"><b>${juridica() ? 'Domicilio o sede social' : 'Domicilio real'}</b></p><div class="grilla">
       <label class="f">Calle<input data-campo="dom_calle" autocomplete="off" maxlength="120" value="${v('dom_calle')}"></label>
       <label class="f">Número<input data-campo="dom_numero" autocomplete="off" maxlength="12" placeholder="o S/N" value="${v('dom_numero')}"></label>
       <label class="f">Piso (opcional)<input data-campo="dom_piso" autocomplete="off" maxlength="12" value="${v('dom_piso')}"></label>
@@ -830,6 +873,7 @@ function vistaSolicitud() {
       <label class="f">Localidad<input data-campo="dom_localidad" autocomplete="off" maxlength="100" value="${v('dom_localidad')}"></label>
       <label class="f">Departamento (opcional)<input data-campo="dom_departamento" autocomplete="off" maxlength="100" value="${v('dom_departamento')}"></label>
       <label class="f">Provincia<input data-campo="dom_provincia" autocomplete="off" maxlength="100" value="${v('dom_provincia')}"></label></div></div>
+    ${juridica() ? '' : `
     <div class="bloque"><div class="f">Estado civil<div class="opciones2" role="radiogroup" aria-label="Estado civil">
         <button type="button" role="radio" data-civil="soltero" aria-checked="${L.estado_civil === 'soltero'}">Soltero/a</button>
         <button type="button" role="radio" data-civil="casado" aria-checked="${L.estado_civil === 'casado'}">Casado/a</button></div></div>
@@ -843,6 +887,7 @@ function vistaSolicitud() {
         <label class="f">Nacionalidad<input data-campo="conyuge_nacionalidad" autocomplete="off" maxlength="80" value="${v('conyuge_nacionalidad')}"></label>
         <label class="f">Fecha de nacimiento<input data-campo="conyuge_nacimiento" type="date" max="${hoy()}" value="${v('conyuge_nacimiento')}"></label>
         <label class="f ancho">Domicilio<input data-campo="conyuge_domicilio" autocomplete="off" maxlength="300" value="${v('conyuge_domicilio')}"></label></div>` : ''}</div>
+    `}
     <div class="bloque"><label class="f">Celular, con característica<input data-campo="celular" type="tel" inputmode="tel" autocomplete="off" maxlength="25" placeholder="Ej.: 3534 123456" value="${v('celular')}"></label></div>
     <div class="bloque"><label class="f">CBU o CVU donde se deposita el crédito (opcional)<input data-campo="cbu" inputmode="numeric" autocomplete="off" maxlength="30" value="${v('cbu')}"></label>
       <label class="f">O, si no lo tenés a mano, el alias de la cuenta (opcional)<input data-campo="alias" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="20" placeholder="Ej.: juan.perez.mp" value="${v('alias')}"></label>
@@ -1046,7 +1091,9 @@ function vistaDetalle() {
     ${x.nota ? `<p class="m0">Respuesta de la Mutual: ${esc(x.nota)}</p>` : ''}
     <div class="hint">Enviada el ${esc(fechaHora(x.momento))}</div>
     ${bloque('Cliente', [fila('Nombre', x.denominacion), fila('CUIT', cuitLindo(x.cuit)), fila('DNI', d.dni), fila('Celular', d.celular), fila('Empleo o actividad', d.actividad),
-      fila('Nacionalidad', d.nacionalidad), fila('Fecha de nacimiento', fechaLinda(d.nacimiento)), fila('Domicilio', d.domicilio), fila('Estado civil', ESTADO_CIVIL[d.estado_civil] || d.estado_civil)])}
+      fila('Nacionalidad', d.nacionalidad), fila('Fecha de nacimiento', fechaLinda(d.nacimiento)), fila(d.persona === 'juridica' ? 'Sede social' : 'Domicilio', d.domicilio), fila('Estado civil', ESTADO_CIVIL[d.estado_civil] || d.estado_civil),
+      fila('Representante', d.representante_nombre), fila('DNI del representante', d.representante_dni), fila('Cargo', d.representante_cargo),
+      fila('Asociado a la Mutual', d.asociado === true ? 'Sí' : d.asociado === false ? 'No' : '')])}
     ${d.estado_civil === 'casado' ? bloque('Matrimonio y cónyuge', [fila('Lugar del matrimonio', d.matrimonio_lugar), fila('Fecha del matrimonio', fechaLinda(d.matrimonio_fecha)), fila('Cónyuge', d.conyuge_nombre),
       fila('DNI del cónyuge', d.conyuge_dni), fila('Nacionalidad del cónyuge', d.conyuge_nacionalidad), fila('Nacimiento del cónyuge', fechaLinda(d.conyuge_nacimiento)), fila('Domicilio del cónyuge', d.conyuge_domicilio)]) : ''}
     ${bloque('Crédito', [fila('Vehículo', x.vehiculo ? `${x.vehiculo} (${etiquetaAnio(x.anio)})` : ''), fila('Monto', plata(x.monto)), fila('Cuotas', `${x.cuotas} × ${plata(x.cuota)}`),
@@ -1207,6 +1254,7 @@ document.addEventListener('click', (e) => {
   else if (t.dataset.categoria) { S.sol.categoria = t.dataset.categoria; render(); }
   else if (t.dataset.civil) { S.sol.estado_civil = t.dataset.civil; render(); }
   else if (t.dataset.cuenta) { S.sol.cuenta = t.dataset.cuenta; render(); }
+  else if (t.dataset.asociado) { S.sol.asociado = t.dataset.asociado; render(); }
   else if (t.dataset.chk) { S.sol.chk[t.dataset.chk] = !S.sol.chk[t.dataset.chk]; render(); }
   else if (t.dataset.quitar) quitarArchivo(t.dataset.quitar, Number(t.dataset.i));
   else if (t.id === 'btnEnviarSol') enviarSolicitud();
