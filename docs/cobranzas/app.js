@@ -5,7 +5,7 @@ import {
   crearDeudor, cambiarDeudor, borrarDeudor, crearModelo, guardarModelo, borrarModelo, guardarAjustes,
   consultarInfoAuto, consultarInfoAutoTodo, consultarBCRA, detalleConsulta, detalleGuardado, borrarConsulta, consultarCheque, entidadesCheques, borrarConsultaCheque, crearCasoRefi, actualizarCasoRefi, borrarCasoRefi, archivarCasoRefi,
   crearDescuento, guardarDescuento, borrarDescuento, estadoCheque,
-  leerAgencias, contarSolicitudes, guardarAjustesAgencias, altaAgencia, crearAgencia, crearVendedor, activarVendedor, activarAgencia, resolverSolicitud, documentosSolicitud, eliminarSolicitud, eliminarCotizaciones, estadisticasAgencias,
+  leerAgencias, contarSolicitudes, guardarAjustesAgencias, altaAgencia, crearAgencia, crearVendedor, activarVendedor, activarAgencia, resolverSolicitud, documentosSolicitud, leerDocumentos, eliminarSolicitud, eliminarCotizaciones, estadisticasAgencias,
   chatsAgencias, chatResumen, verChat, responderChat, cerrarChat, eliminarChat, claveAvisos, registrarAvisos, quitarAvisos, probarAvisos,
 } from './datos.js';
 import { htmlAgencias, htmlFaltanGen, avisoInicio, parametrosEnTexto, leerParametros, TABS_AGENCIAS } from './agencias.js';
@@ -27,7 +27,7 @@ import { xlsx } from '../excel.js';
 import { datosAcuerdo, avisosAcuerdo, armarAcuerdo, hojasRefinanciacion, CAMPOS_ACUERDO } from './acuerdo.js';
 import { nuevaDemanda, nuevoDemandado, demandaDesdeDeudor, estadoDemanda, datosDemanda, avisosDemanda, faltanDemanda, CAMPOS_DEMANDA } from './demanda.js';
 import { abrirChat } from './chat.js';
-import { datosDeSolicitud, textoVencimientos, armarFormularios, conDomicilioDelDeudor } from './prendaforms.js';
+import { datosDeSolicitud, textoVencimientos, armarFormularios, conDomicilioDelDeudor, aplicarLectura } from './prendaforms.js';
 import { nuevoDescuento, nuevoCheque, formDeFila, filaDeForm, liquidarDescuento, cartera, resumenCartera, cuandoVence, bancoDe, htmlLiquidacionDescuento, hojaDescuento, ESTADOS_CHEQUE } from './descuento.js';
 
 const VERSION = '1.11.2';
@@ -676,6 +676,17 @@ function abrirGenerar(id, tipo) {
   render();
   document.querySelector('.ag-gen-panel')?.scrollIntoView({ block: 'nearest' });
 }
+/** «Leer documentos»: la función lee el título y el DNI de la solicitud; lo leído completa los campos vacíos y queda para revisar. */
+async function leerDocumentosGen() {
+  const g = S.ag.gen; if (!g || g.leyendo) return;
+  const sol = S.ag.datos?.solicitudes.find((x) => x.id === g.id);
+  g.leyendo = true; g.lecturaError = ''; render();
+  try {
+    const l = await leerDocumentos(g.id);
+    if (S.ag.gen === g) g.lectura = aplicarLectura(g.p, l, sol);
+  } catch (e) { g.lecturaError = mensaje(e, 'no se pudieron leer los documentos'); }
+  g.leyendo = false; render();
+}
 const mm = (v) => { const n = Number(String(v ?? '').replace(',', '.')); return Number.isFinite(n) ? n : 0; };
 function datosListos(g) {
   const p = conDomicilioDelDeudor(g.p);
@@ -750,6 +761,7 @@ async function accionAgencias(act, b) {
   if (act === 'ag-pdf') { await pdfDeSolicitud(id); return; }
   if (act === 'ag-gen-abrir') { await abrirGenerar(id, b.dataset.tipo); return; }
   if (act === 'ag-gen-cerrar') { G.gen = null; render(); return; }
+  if (act === 'ag-gen-leer') { await leerDocumentosGen(); return; }
   if (act === 'ag-gen-pdf') { await generarFormularios(); return; }
   if (act === 'ag-borrar-preguntar' || act === 'ag-borrar-no') { G.borrar = act === 'ag-borrar-preguntar' ? id : ''; render(); return; }
   if (act === 'ag-borrar') {

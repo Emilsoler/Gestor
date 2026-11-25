@@ -461,3 +461,40 @@ export function textoVencimientos(p) {
   const imp = Number(p.cuota).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return `${p.cuotas} cuotas mensuales y consecutivas de $ ${imp} cada una, venciendo la primera el ${String(f.d).padStart(2, '0')}/${String(f.m).padStart(2, '0')}/${f.a}`;
 }
+
+// ───────────────────────── Lectura de los documentos (botón «Leer documentos») ─────────────────────────
+const sinTildes = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+const compactar = (s) => sinTildes(s).replace(/ /g, '');
+/** ¿Las dos listas de palabras de un nombre coinciden en más de la mitad? (los nombres pueden venir en otro orden). */
+function mismoNombre(a, b) {
+  const x = sinTildes(a).split(' ').filter(Boolean), y = new Set(sinTildes(b).split(' ').filter(Boolean));
+  if (!x.length || !y.size) return true; // sin dato no se puede decir que no coincide
+  return x.filter((w) => y.has(w)).length * 2 >= Math.min(x.length, y.size);
+}
+
+/**
+ * Vuelca en los datos de la prenda lo que se leyó del título (solo en los campos que están vacíos: lo que la persona ya
+ * escribió manda) y compara con lo que cargó la agencia. Devuelve lo que la pantalla muestra para revisar:
+ * {puestos, difs, avisos, titular}. `l` es la respuesta de la función (ya controlada) y `sol` la solicitud.
+ */
+export function aplicarLectura(p, l, sol) {
+  const puestos = [], difs = [], avisos = [...(Array.isArray(l?.avisos) ? l.avisos : [])];
+  const t = l?.titulo, d = l?.dni, datos = sol?.datos || {};
+  if (t) {
+    const campos = [['dominio', 'Dominio'], ['marca', 'Marca'], ['tipo', 'Tipo'], ['modelo', 'Modelo'], ['anio', 'Año'], ['marcaMotor', 'Marca del motor'], ['motor', 'N° de motor'], ['marcaChasis', 'Marca del chasis'], ['chasis', 'N° de chasis']];
+    for (const [k, rotulo] of campos) {
+      const leido = t[k];
+      if (!leido) continue;
+      const actual = String(p.vehiculo[k] ?? '').trim();
+      if (!actual) { p.vehiculo[k] = String(leido); puestos.push(`${rotulo}: ${leido}`); }
+      else if (['dominio', 'motor', 'chasis'].includes(k) && compactar(actual) !== compactar(leido)) difs.push(`${rotulo}: escrito «${actual}», en el título «${leido}»`);
+    }
+    if (t.titular && sol?.denominacion && !mismoNombre(t.titular, sol.denominacion)) avisos.push(`El título está a nombre de «${t.titular}», que no coincide con el cliente («${sol.denominacion}»). Revisalo.`);
+  }
+  if (d) {
+    if (d.numero && datos.dni && String(datos.dni).replace(/\D/g, '') !== d.numero) avisos.push(`El DNI de la foto (${d.numero}) no coincide con el que cargó la agencia (${datos.dni}).`);
+    if (d.nacimiento && datos.nacimiento && String(datos.nacimiento) !== d.nacimiento) avisos.push(`La fecha de nacimiento del DNI (${d.nacimiento}) no coincide con la que cargó la agencia (${datos.nacimiento}).`);
+    if (d.nombre && sol?.denominacion && !mismoNombre(d.nombre, sol.denominacion)) avisos.push(`El nombre del DNI («${d.nombre}») no coincide con el del cliente («${sol.denominacion}»).`);
+  }
+  return { puestos, difs, avisos, titular: t?.titular || '', leidos: Number(l?.leidos) || 0, omitidos: Number(l?.omitidos) || 0 };
+}

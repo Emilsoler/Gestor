@@ -879,3 +879,8 @@ body:has(#drawer:not([hidden])) #btnClaudeWeb,body:has(#menu:not([hidden])) #btn
 .ag-gen-grupo legend{font-weight:600;padding:0 6px}
 .ag-gen-plegado>summary{cursor:pointer;font-weight:600;padding:2px 0}
 .ag-gen-plegado[open]>summary{margin-bottom:8px}
+
+/* Leer documentos (generar documentación) */
+.ag-gen-leer{display:grid;gap:8px}
+.ag-gen-leido{display:grid;gap:6px;background:var(--sunken);border:1px solid var(--line-soft);border-radius:var(--r-s);padding:10px 12px;font-size:13.5px}
+.ag-gen-leido ul{padding-left:18px}

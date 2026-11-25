@@ -546,6 +546,8 @@ export const resolverSolicitud = (id, estado, nota) => pedir(sb.from('solicitude
 export async function documentosSolicitud(id) {
   return (await invocarBCRA({ accion: 'archivos', id }, 'agencias')).archivos || [];
 }
+/** Lee con Claude el título del automotor y el DNI de una solicitud: {titulo, dni, avisos, leidos, omitidos}. No guarda nada. */
+export const leerDocumentos = (id) => invocarBCRA({ id }, 'leer-documentos');
 
 /** Elimina una cotización del registro (id), varias (una lista de ids) o todas (sin id). Es solo un registro: no hay nada más que borrar. */
 export const eliminarCotizaciones = (id) => {

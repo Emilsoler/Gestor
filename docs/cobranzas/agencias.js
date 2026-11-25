@@ -244,6 +244,7 @@ export function htmlGenerar(g) {
   const grupos = g.tipo === 'prenda' ? GEN_PRENDA : GEN_CONTRATOS;
   return `<div class="ag-gen-panel"><div class="card-cab"><h4>${g.tipo === 'prenda' ? 'Formulario 03 (PRENDA)' : 'Contrato de prenda y copia no negociable'}</h4><button class="btn small" data-a="ag-gen-cerrar">Cerrar</button></div>
     <p class="hint">Revisá los datos. Lo que dejes vacío sale en blanco, para completar a mano. Lo que no está en la solicitud (dominio, motor, chasis…) se lee del título del automotor.</p>
+    ${htmlLectura(g)}
     ${grupos.map(([t, cs, plegado]) => plegado
       ? `<details class="ag-gen-grupo ag-gen-plegado"><summary>${esc(t)}</summary><div class="grid2">${cs.map((c) => campoGen(g, c)).join('')}</div></details>`
       : `<fieldset class="ag-gen-grupo"><legend>${esc(t)}</legend><div class="grid2">${cs.map((c) => campoGen(g, c)).join('')}</div></fieldset>`).join('')}
@@ -254,6 +255,20 @@ export function htmlGenerar(g) {
       <p class="hint m0">Sirve para corregir lo que tu impresora corre el papel. Se recuerda en este dispositivo.</p></fieldset>
     <div class="actions"><button class="btn primary" data-a="ag-gen-pdf" data-id="${esc(g.id)}">Descargar PDF para imprimir</button>
     </div></div>`;
+}
+
+/** El botón «Leer documentos» y lo que dejó la última lectura, para revisar contra los originales. */
+export function htmlLectura(g) {
+  const l = g.lectura;
+  const lista = (xs) => `<ul class="m0">${xs.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`;
+  return `<div class="ag-gen-leer"><div class="actions"><button class="btn" data-a="ag-gen-leer" data-id="${esc(g.id)}"${g.leyendo ? ' disabled' : ''}>${g.leyendo ? 'Leyendo los documentos…' : l ? 'Leer de nuevo los documentos' : 'Leer título y DNI de los documentos'}</button></div>
+    <p class="hint m0">Lee el título del automotor y el DNI que subió la agencia y completa lo que esté vacío. Es una ayuda: revisá cada dato contra el original antes de imprimir.</p>
+    ${g.lecturaError ? `<p class="aviso-chico" role="alert">${esc(g.lecturaError)}</p>` : ''}
+    ${l ? `<div class="ag-gen-leido" role="status">
+      ${l.puestos.length ? `<p class="m0"><b>Se completó, leído del título (revisalo):</b></p>${lista(l.puestos)}` : '<p class="hint m0">No hubo nada nuevo para completar.</p>'}
+      ${l.difs.length ? `<p class="aviso-chico" role="alert"><b>No coincide con lo que ya estaba escrito (no se cambió):</b></p>${lista(l.difs)}` : ''}
+      ${l.avisos.length ? `<p class="aviso-chico" role="alert"><b>Revisá:</b></p>${lista(l.avisos)}` : ''}
+      <p class="hint m0">Se leyeron ${l.leidos} ${l.leidos === 1 ? 'archivo' : 'archivos'}${l.omitidos ? `; ${l.omitidos} quedaron afuera por el tamaño o la cantidad` : ''}.</p></div>` : ''}</div>`;
 }
 
 export function htmlFaltanGen(g) {

@@ -962,8 +962,18 @@ de la solicitud, editables, y la lista de lo que va a salir en blanco.
 - **No se inventa nada del deudor ni del vehículo**: lo que la solicitud no trae (dominio, motor, chasis, nacionalidad, nacimiento) queda en blanco
   y se avisa. El **texto de los modelos no se cambia**; la única
   leyenda agregada es la de jurisdicción en el espacio libre de la copia no negociable (texto del estudio).
-- **Pendiente**: leer dominio, motor y chasis del título del automotor que sube la agencia (con revisión humana antes de generar).
-  Requiere una acción nueva en la función `agencias`.
+- **Leer documentos** (25/11/2026, pedido de la persona): en la pantalla de revisión, el botón «Leer título y DNI de los documentos»
+  (`leerDocumentosGen` en `docs/cobranzas/app.js`, `htmlLectura` en `agencias.js`) pide a la función `leer-documentos` (`supabase/functions/leer-documentos/`, aparte de `agencias` a propósito: las agencias la usan todos los días)
+  el pedido `{id}` (solo miembros, misma verificación que `bcra`). La función baja los PDF y JPEG de la solicitud (hasta 10 archivos y 14 MB), se los manda a Claude (`leer.js`: las
+  instrucciones, el armado del pedido y el control de lo que contesta; modelo `claude-sonnet-5-5`, `AGENCIAS_LECTURA_MODELO` lo cambia; usa
+  `ANTHROPIC_API_KEY`) y devuelve el título (dominio, marca, tipo, modelo, año, marca y N° de motor, marca y N° de chasis, titular) y el DNI
+  (nombre, número, nacimiento) **ya controlados**: patente, DNI y fechas con su formato, y lo que no pasa queda en null con un aviso. El modelo
+  tiene que devolver null ante la duda: nunca completar. **No se guarda nada** (ni el resultado ni las fotos fuera de las que ya estaban) y en
+  los registros no queda contenido, solo el estado de la respuesta. `aplicarLectura` (`prendaforms.js`) completa solo los campos **vacíos**,
+  no pisa lo que la persona escribió (avisa si dominio, motor o chasis difieren) y avisa si el DNI, la fecha de nacimiento, el nombre del DNI
+  o el titular del título no coinciden con el cliente de la solicitud. **Siempre se revisa a mano antes de imprimir**: es un dato que va a un
+  trámite del Registro. Las fotos viajan a la API de Claude, igual que el chat. Prueba: `node --test dev/tests/agencias-leer-puro.test.mjs`
+  (sin stack). Publicar: `deploy_edge_function` con nombre `leer-documentos`, `verify_jwt: true` y sus dos archivos (`index.ts`, `leer.js`), y subir la app. Necesita el secreto `ANTHROPIC_API_KEY` (el mismo del chat). `agencias` no cambia: vuelve a **siete** archivos.
 
 ### Chat «M» con la Mutual (migración 0038, pedido de la persona del 22/11/2026)
 
