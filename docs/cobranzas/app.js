@@ -11,7 +11,7 @@ import {
 import { htmlAgencias, htmlConectadas, htmlFaltanGen, avisoInicio, parametrosEnTexto, leerParametros, TABS_AGENCIAS } from './agencias.js';
 import {
   avisoCuit, soloDigitos, fichaConsulta, filaConsulta, textoConsulta, deudoresDelCuit,
-  avisoCheque, numeroCheque, bancosRecientes, opcionesBancos, bancoEnLista, fichaCheque, textoCheque, filaCheque, resumenBcraCheque,
+  avisoCheque, numeroCheque, bancosRecientes, opcionesBancos, bancoEnLista, fichaCheque, textoCheque, filaCheque, resumenBcraCheque, resumenDenuncia,
 } from './creditos.js';
 import { nuevaRefi, vto1Efectivo, estadoRefi, htmlEstadoRefi, htmlPlanRefi, datosCaso, restaurarCaso } from './refinanciacion.js';
 import { modeloSimple, preciosPorAnio, rangoAnios, enPesos, valorDeReferencia, htmlSimulador, htmlSimuladorManual, estadoSimuladorManual, htmlSimulacion, estadoSimulador, GASTOS_DEFECTO } from './vehiculos.js';
@@ -70,7 +70,7 @@ const S = {
     caso: { id: '', nombre: '', confirmar: false }, // el caso guardado que está abierto (si hay) y el nombre con que se guarda
     gastosAbierto: false, // «Gastos y honorarios de juicio» empieza plegado; si se despliega, queda así al redibujar
     // Descuento de cheques: qué se ve (liquidar, cartera, operaciones), el formulario (null hasta entrar), la operación abierta.
-    dc: { sub: 'liquidar', f: null, id: '', confirmar: false, q: '', bcra: {} }, // bcra: por CUIT del librador, {estado: consultando|error, error}
+    dc: { sub: 'liquidar', f: null, id: '', confirmar: false, q: '', bcra: {}, den: {} }, // bcra: por CUIT del librador, {estado: consultando|error, error}; den: lo mismo por «banco:número» del cheque
   },
   // Agencias (el cotizador para agencias): lo leído, la pestaña, los enlaces a documentos ya pedidos, lo que se escribe
   // (notas para la agencia, parámetros y alta, atados con data-k) y cuántas solicitudes esperan respuesta.
@@ -1304,19 +1304,19 @@ function formDescuento() {
   const C = S.cred.dc, F = C.f, abierta = dcAbierta(), k = (c) => 'cred.dc.f.' + c;
   if (C.id && !abierta) C.id = ''; // la eliminaron desde otro lugar: lo escrito queda como operación nueva
   const campo = (c, t, extra = '', modo = 'decimal') => `<label class="f">${t}<input id="dc_${c.replace(/\./g, '_')}" ${atar(k(c))} inputmode="${modo}" autocomplete="off"${extra}></label>`;
-  // Primero el cheque (librador y su CUIT, con el semáforo del BCRA debajo, importe, plazo, banco y número),
+  // Primero el cheque (CUIT del librador, con el semáforo del BCRA debajo —el nombre sale del informe—, importe, plazo, banco y número, con la consulta de denuncia debajo),
   // después el socio y al final la liquidación con sus condiciones.
   const cheques = F.cheques.map((c, i) => {
     const est = c.estado && c.estado !== 'cartera' ? ' ' + pill(ESTADOS_CHEQUE[c.estado] + (c.fecha_estado ? ' el ' + fmt(c.fecha_estado) : ''), c.estado === 'cobrado' ? 's-ok' : 's-bad') : '';
     return `<div class="dc-cheque"><h4>Cheque ${i + 1}${est}</h4><div class="sim-form rf-pago">
-      ${campo(`cheques.${i}.librador`, 'Librador', ' maxlength="200"', 'text').replace('class="f"', 'class="f dc-largo"')}
-      ${campo(`cheques.${i}.cuit`, 'CUIT del librador', ' maxlength="20"', 'numeric')}
+      ${campo(`cheques.${i}.cuit`, 'CUIT del librador', ' maxlength="20"', 'numeric').replace('class="f"', 'class="f dc-largo"')}
       <div class="dc-bcra dc-largo" id="dcBcra${i}" aria-live="polite">${bcraDeCheque(i)}</div>
       ${campo(`cheques.${i}.importe`, 'Importe ($)', ' data-importe')}
       <label class="f">Fecha de pago<input type="date" data-k="${k(`cheques.${i}.vence`)}" value="${esc(c.vence)}"></label>
       <div class="dc-largo dc-banco"><label class="f">Banco<input id="dc_banco_${i}" ${atar(k(`cheques.${i}.banco`))} data-dc-i="${i}" autocomplete="off" autocorrect="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-controls="dcSug${i}" aria-expanded="false" placeholder="${S.cred.bancos ? 'Escribí para buscar' : ''}"></label>
         <div class="dc-sug" id="dcSug${i}" role="listbox" hidden></div></div>
       ${campo(`cheques.${i}.numero`, 'N° de cheque', ' maxlength="24"', 'numeric')}
+      <div class="dc-bcra dc-largo" id="dcDen${i}" aria-live="polite">${denunciaDeCheque(i)}</div>
       ${F.cheques.length > 1 ? `<button class="btn small" type="button" data-a="dc-cheque-menos" data-i="${i}" aria-label="Quitar el cheque ${i + 1}">Quitar</button>` : ''}
     </div></div>`;
   }).join('');
@@ -1363,7 +1363,46 @@ function bcraDeCheque(i) {
   const ver = `<div class="actions"><button class="btn small" type="button" data-a="dc-bcra-ver" data-id="${esc(ult.id)}">Ver detalle completo</button>${otra}</div>`;
   return resumenBcraCheque(ult, { ver });
 }
-function pintarBcra() { (S.cred.dc.f?.cheques || []).forEach((_, i) => { const d = $('#dcBcra' + i); if (d) d.innerHTML = bcraDeCheque(i); }); }
+// El nombre del librador no se escribe: sale del informe del BCRA de su CUIT (queda guardado en el cheque para la cartera).
+function pintarBcra() {
+  (S.cred.dc.f?.cheques || []).forEach((c, i) => {
+    const cuit = soloDigitos(c.cuit), ult = avisoCuit(cuit).ok ? ultimaBcra(cuit) : null;
+    if (ult?.denominacion) c.librador = ult.denominacion; else if (!cuit) c.librador = '';
+    const d = $('#dcBcra' + i); if (d) d.innerHTML = bcraDeCheque(i);
+  });
+}
+
+// ── Cheque denunciado: al tener banco (elegido de la lista) y número se consulta solo al BCRA ──
+// Queda guardada como cualquier consulta, en «Cheques denunciados». El BCRA responde solo si el cheque está denunciado
+// (extraviado, sustraído o adulterado); si lo rechazó el banco se ve en los cheques rechazados del CUIT del librador.
+const demoraDen = {};
+const claveDen = (c) => { const e = +c?.entidad || 0, n = numeroCheque(c?.numero); return e && n && avisoCheque(c.numero).ok ? `${e}:${n}` : ''; };
+const recienteDen = (c) => { const e = +c.entidad, n = numeroCheque(c.numero); return D.consultas_cheques.find((x) => x.entidad === e && numeroCheque(x.numero) === n) || null; };
+function denunciaDeCheque(i) {
+  const c = S.cred.dc.f?.cheques[i], k = claveDen(c); if (!k) return '';
+  const e = S.cred.dc.den[k], ult = recienteDen(c);
+  const otra = `<button class="btn small" type="button" data-a="dc-den-de" data-i="${i}">Consultar de nuevo</button>`;
+  if (e?.estado === 'consultando') return '<p class="hint m0">Consultando al BCRA si el cheque está denunciado…</p>';
+  if (e?.estado === 'error') return `<p class="aviso-chico" role="alert">${esc(e.error)}</p><button class="btn small" type="button" data-a="dc-den-de" data-i="${i}">Reintentar</button>`;
+  if (!ult) return D.denunciados ? `<button class="btn small" type="button" data-a="dc-den-de" data-i="${i}">¿Está denunciado? Consultar BCRA</button>` : '';
+  return resumenDenuncia(ult, { ver: `<div class="actions">${otra}</div>` });
+}
+function pintarDen() { (S.cred.dc.f?.cheques || []).forEach((_, i) => { const d = $('#dcDen' + i); if (d) d.innerHTML = denunciaDeCheque(i); }); }
+/** Espera a que termine de escribir el número y consulta (`forzar`: aunque ya haya una consulta de ese cheque). */
+function programarDenuncia(i, forzar = false) {
+  clearTimeout(demoraDen[i]);
+  pintarDen();
+  demoraDen[i] = setTimeout(() => consultarDenuncia(i, forzar), forzar ? 0 : 700);
+}
+async function consultarDenuncia(i, forzar = false) {
+  const C = S.cred.dc, c = C.f?.cheques[i], k = claveDen(c);
+  if (!k || !D.denunciados || C.den[k]?.estado === 'consultando') return;
+  if (!forzar && recienteDen(c)) { delete C.den[k]; pintarDen(); return; }
+  C.den[k] = { estado: 'consultando' }; pintarDen();
+  try { await consultarCheque(+c.entidad, numeroCheque(c.numero)); delete C.den[k]; }
+  catch (e) { C.den[k] = { estado: 'error', error: e.sinSesion ? mensaje(e) : e.message || 'No se pudo consultar al BCRA' }; }
+  pintarDen();
+}
 /** Consulta al BCRA el CUIT del librador del cheque `i` (`forzar`: aunque haya una consulta reciente). */
 async function consultarLibrador(i, forzar = false) {
   const C = S.cred.dc, cuit = soloDigitos(C.f?.cheques[i]?.cuit);
@@ -1451,6 +1490,7 @@ function elegirBancoDc(codigo, i) {
   const caja = $('#dcSug' + i); if (caja) { caja.hidden = true; caja.innerHTML = ''; }
   campo?.setAttribute('aria-expanded', 'false');
   actualizarDescuento();
+  programarDenuncia(+i);
   $(`#dc_cheques_${i}_numero`)?.focus();
 }
 document.addEventListener('focusin', (e) => { if (e.target.matches?.('[data-dc-i]')) mostrarBancos(e.target.dataset.dcI); });
@@ -1475,6 +1515,7 @@ async function accionDescuento(act, a) {
     bajar(hojaDescuento(fila, e, hoy()), `descuento-cheques-${slug(fila.cliente) || 'cliente'}-${e.fecha || hoy()}.xlsx`); return;
   }
   if (act === 'dc-bcra-de') { await consultarLibrador(+a.dataset.i, true); return; }
+  if (act === 'dc-den-de') { await consultarDenuncia(+a.dataset.i, true); return; }
   if (act === 'dc-bcra-ver') { cambiarModo('cuit'); await abrirConsulta(a.dataset.id); return; }
   if (act === 'dc-bcra') { Object.assign(S.cred, { cuit: a.dataset.cuit }); cambiarModo('cuit'); await consultarCuit(a.dataset.cuit); return; }
   if (act === 'dc-denunciado') {
@@ -2977,6 +3018,7 @@ document.addEventListener('input', (e) => {
   if (k.startsWith('cred.dc.f.')) {
     if (/\.banco$/.test(k)) { bancoDelCheque(k, el.value); mostrarBancos(el.dataset.dcI); }
     const q = k.match(/\.cheques\.(\d+)\.cuit$/); if (q) { pintarBcra(); consultarLibrador(+q[1]); }
+    const n = k.match(/\.cheques\.(\d+)\.(numero|banco)$/); if (n) programarDenuncia(+n[1]);
     actualizarDescuento(); return;
   }
   if (k.startsWith('ag.gen.')) { const f = $('#genFaltan'); if (f && S.ag.gen) f.innerHTML = htmlFaltanGen(S.ag.gen); return; }

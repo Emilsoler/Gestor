@@ -17,9 +17,16 @@ const errores = [];
 async function nuevaPagina(opciones = {}) {
   const c = await browser.newContext({ locale: 'es-AR', timezoneId: 'America/Argentina/Cordoba', viewport: { width: 1366, height: 900 }, ...opciones });
   // Lista de bancos o, si viene un CUIT, una consulta inventada (la función real no corre acá): rojo para el que empieza con 20.
-  c.consultasBcra = [];
+  c.consultasBcra = []; c.consultasCheque = [];
   await c.route('**/functions/v1/bcra', (r) => {
     let cuerpo = {}; try { cuerpo = JSON.parse(r.request().postData() || '{}'); } catch { /* sin cuerpo */ }
+    if (cuerpo.accion === 'cheque') { // «¿está denunciado?»: el número 666 figura denunciado, cualquier otro no
+      c.consultasCheque.push(cuerpo);
+      const den = String(cuerpo.numero) === '666';
+      const consulta = { id: crypto.randomUUID(), entidad: cuerpo.entidad, entidad_nombre: 'BANCO DE LA NACION ARGENTINA', numero: String(cuerpo.numero), denunciado: den, fecha_bcra: null,
+        momento: new Date().toISOString(), consultado_por: 'Emi', rev: 1, resultado: { detalles: den ? [{ causal: 'Denunciado por titular', sucursal: 1, numeroCuenta: 123 }] : [] } };
+      return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ consulta }) });
+    }
     if (!cuerpo.cuit) return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ entidades: BANCOS }) });
     c.consultasBcra.push(cuerpo.cuit);
     const consulta = { id: crypto.randomUUID(), cuit: cuerpo.cuit, denominacion: 'LIBRADOR DE PRUEBA', momento: new Date().toISOString(), consultado_por: 'Emi', periodo: '202609',
@@ -62,7 +69,6 @@ test('liquidar: se cargan cliente, condiciones y dos cheques; la liquidación se
   await page.fill('[data-k="cred.dc.f.cheques.0.vence"]', enDias(30));
   await page.fill('[data-k="cred.dc.f.cheques.0.banco"]', 'BANCO DE LA NACION ARGENTINA');
   await page.fill('#dc_cheques_0_numero', '00012345');
-  await page.fill('#dc_cheques_0_librador', 'ACME SA');
   await page.click('[data-a="dc-cheque-mas"]');
   await page.fill('#dc_cheques_1_importe', '500.000');
   await page.fill('[data-k="cred.dc.f.cheques.1.vence"]', enDias(0));
@@ -170,7 +176,7 @@ test('orden: primero el cheque, después el socio, al final la liquidación', as
   await page.click('[data-a="dc-limpiar"], [data-a="dc-nueva"]');
   // Orden del documento (es el de lectura y el de tabulación), en PC y en celular.
   const orden = (p, ids) => p.evaluate((xs) => xs.map((id) => document.getElementById(id)).every((e, i, a) => !i || (a[i - 1].compareDocumentPosition(e) & Node.DOCUMENT_POSITION_FOLLOWING) > 0), ids);
-  const ids = ['dc_cheques_0_librador', 'dc_cheques_0_cuit', 'dcBcra0', 'dc_cheques_0_importe', 'dc_banco_0', 'dc_cheques_0_numero', 'dc_cliente', 'dc_cuit', 'dc_socio', 'dc_tasa', 'dcResultado'];
+  const ids = ['dc_cheques_0_cuit', 'dcBcra0', 'dc_cheques_0_importe', 'dc_banco_0', 'dc_cheques_0_numero', 'dc_cliente', 'dc_cuit', 'dc_socio', 'dc_tasa', 'dcResultado'];
   assert.equal(await orden(page, ids), true);
   const posicion = (id) => page.locator('#' + id).evaluate((e) => e.getBoundingClientRect().top);
   assert.ok(await posicion('dc_cheques_0_importe') < await posicion('dc_cliente'));
@@ -206,6 +212,24 @@ test('CUIT del librador: al completarlo válido consulta al BCRA y muestra el se
   await page.click('[data-cr-modo="descuento"]');
   await page.waitForSelector('#crDescuento');
   assert.equal(await page.inputValue('#dc_cheques_0_cuit'), '20-12345678-6', 'al volver sigue lo escrito');
+  await page.click('[data-a="dc-limpiar"], [data-a="dc-nueva"]');
+});
+
+test('el nombre del librador sale del informe del BCRA (no se escribe) y el cheque se consulta solo al tener banco y número', async () => {
+  await page.click('[data-a="dc-limpiar"], [data-a="dc-nueva"]');
+  assert.equal(await page.locator('#dc_cheques_0_librador').count(), 0, 'ya no hay campo de nombre del librador');
+  const ctx = page.context(), antes = ctx.consultasCheque.length;
+  await page.fill('#dc_cheques_0_cuit', '20-12345678-6');
+  await page.waitForSelector('#dcBcra0 .luz-rojo');
+  await page.fill('[data-k="cred.dc.f.cheques.0.banco"]', 'BANCO DE LA NACION ARGENTINA');
+  await page.fill('#dc_cheques_0_numero', '00001996');
+  await page.waitForSelector('#dcDen0 .luz-verde');
+  assert.match(norm(await page.textContent('#dcDen0')), /Sin denuncias/);
+  assert.equal(ctx.consultasCheque.length, antes + 1);
+  assert.equal(ctx.consultasCheque.at(-1).numero, '1996', 'sin ceros adelante');
+  await page.fill('#dc_cheques_0_numero', '666');
+  await page.waitForSelector('#dcDen0 .luz-rojo');
+  assert.match(norm(await page.textContent('#dcDen0')), /Denunciado por titular/);
   await page.click('[data-a="dc-limpiar"], [data-a="dc-nueva"]');
 });
 

@@ -219,6 +219,15 @@ export function resumenBcraCheque(c, { ver = '' } = {}) {
     ${mot.length ? `<ul class="motivos">${mot.map((m) => `<li>${esc(m)}</li>`).join('')}</ul>` : ''}${ver}`;
 }
 
+/** Resultado de la consulta de «cheque denunciado» debajo del banco y el número, en el formulario de descuento. */
+export function resumenDenuncia(c, { ver = '' } = {}) {
+  const r = resultadoCheque(c), det = lista(c.resultado?.detalles);
+  return `<div class="dc-bcra-cab"><span class="cr-luz luz-${r.clase}"><i aria-hidden="true"></i><span><b>${esc(r.texto)}</b></span></span>
+      <span class="dc-bcra-q"><b>${esc(r.detalle)}</b><small class="mono">${esc(bancoDe(c))} · N° ${esc(c.numero)} · ${esc(momentoTexto(c.momento))}</small></span></div>
+    ${c.denunciado && det.length ? `<ul class="motivos">${det.map((d) => `<li>${esc(d?.causal || 'Sin causal informada')} · sucursal ${esc(String(d?.sucursal ?? '—'))} · cuenta ${esc(String(d?.numeroCuenta ?? '—'))}</li>`).join('')}</ul>` : ''}
+    ${c.denunciado ? '' : '<p class="hint m0">Sin denuncia no quiere decir con fondos: mirá arriba los cheques rechazados del librador.</p>'}${ver}`;
+}
+
 /** El resumen para copiar y pegar (en un mail, en un WhatsApp al consejo, en un acta). */
 export function textoConsulta(c) {
   const sem = semaforo(c.semaforo);
