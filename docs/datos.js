@@ -476,6 +476,38 @@ export async function leerDemanda(tipo, archivos) {
   return r.data;
 }
 
+/** La firma del abogado (bytes del JPEG) para la demanda en PDF, o null si no está cargada o no se pudo leer. */
+export async function leerFirma() {
+  if (!sb) return null;
+  try {
+    const { data, error } = await sb.from('ajustes_firma').select('imagen').eq('id', 1).maybeSingle();
+    if (error || !data?.imagen) return null;
+    const bin = atob(data.imagen);
+    return Uint8Array.from(bin, (c) => c.charCodeAt(0));
+  } catch { return null; }
+}
+
+/**
+ * Guarda archivos en la carpeta del demandado en Drive (función `guardar-demanda` → puente de Drive del estudio).
+ * `archivos`: [{ nombre, tipo, bytes }]. Devuelve { ok: true, carpeta, url, creada, guardados } o { ok: false, motivo, mensaje }:
+ * nunca tira error, porque la demanda ya está armada y el guardado en Drive es un agregado.
+ */
+export async function guardarEnDrive(carpeta, archivos) {
+  if (!sb) return { ok: false, motivo: 'sin_configurar', mensaje: 'La app no está conectada a su base de datos' };
+  const lista = archivos.map((f) => {
+    let bin = ''; for (let i = 0; i < f.bytes.length; i += 0x8000) bin += String.fromCharCode(...f.bytes.subarray(i, i + 0x8000));
+    return { nombre: f.nombre, tipo: f.tipo, base64: btoa(bin) };
+  });
+  let r;
+  try { r = await sb.functions.invoke('guardar-demanda', { body: { carpeta, archivos: lista } }); } catch { return { ok: false, motivo: 'red', mensaje: 'Sin conexión con Drive' }; }
+  if (r.error) {
+    let d = null;
+    try { d = await r.error.context?.json(); } catch { /* sin cuerpo */ }
+    return { ok: false, motivo: d?.error || 'drive', mensaje: d?.mensaje || 'No se pudo guardar en Drive' };
+  }
+  return { ok: true, ...r.data };
+}
+
 /** Un deudor de Cobranzas (misma base), para armar la causa cuando pasa a juicio. null si no existe. */
 export async function leerDeudor(id) {
   if (!sb) return null;

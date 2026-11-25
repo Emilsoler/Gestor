@@ -349,6 +349,20 @@ puede completar todo a mano (sin elegir tipo, nada cambia).
   archivos a Claude (`DEMANDA_LECTURA_MODELO`, por defecto `claude-sonnet-5-5`; secreto `ANTHROPIC_API_KEY`), controla lo que contesta (DNI, fechas,
   importes, patente: lo que no pasa queda en null con un aviso) y **no guarda nada**. Las fotos viajan a la API de Claude. Publicar:
   `deploy_edge_function` con nombre `leer-demanda`, `verify_jwt: true` y sus dos archivos.
+- **Demanda en PDF con firma** (25/11/2026, pedido de la persona): además del Word, `docs/demanda-pdf.js` arma la demanda en PDF a partir del
+  mismo Word (lee sus párrafos y los vuelve a escribir en hoja carta con los márgenes del modelo, Times, justificado) y pone la firma con sello
+  al pie. **La imagen de la firma no está en el repositorio** (es público): vive en `public.ajustes_firma` (migración 0054, una fila, JPEG en
+  base64, solo miembros) y la app la pide con `leerFirma` (`datos.js`). Para cambiarla: `update public.ajustes_firma set imagen = '<base64>'`
+  (verificar con `md5(imagen)`: copiar a mano 20 KB falla; la actual es una versión de 220 px, ~3 KB). Sin firma cargada, el PDF sale igual y la app avisa.
+  Prueba: `node --test tests/demanda-pdf.test.mjs` (con `GUARDAR_PDF=<carpeta>` deja el PDF para mirarlo).
+- **Guardar en Drive** (25/11/2026): al crear la causa, la app manda a la carpeta del demandado (`J01. Asociacion Mutual Bell / EN TRÁMITE / APELLIDO NOMBRE`,
+  la crea si no está) los PDF que se adjuntaron, el Word y el PDF firmado. **La app no puede escribir en Drive sola** (es una página web, sin
+  credenciales de Google): lo hace un «puente», un Google Apps Script que vive en la cuenta de Drive de la persona (`dev/drive-puente.gs`, sin
+  datos ni claves). La función `supabase/functions/guardar-demanda/` (verifica la sesión, controla los archivos) le pasa los archivos al
+  puente con los secretos `DRIVE_PUENTE_URL` y `DRIVE_PUENTE_CLAVE` (nunca en el repositorio ni en el chat: los carga la persona en el panel de Supabase).
+  Sin esos secretos la función contesta `sin_configurar` y la app avisa y descarga los archivos igual. El puente busca la carpeta del demandado sin
+  mirar tildes ni mayúsculas, no pisa archivos (agrega «(2)») y no borra nada. Publicar: `deploy_edge_function` con nombre `guardar-demanda`,
+  `verify_jwt: true` y su `index.ts`, y subir la app.
 - **Siempre se revisa el Word antes de presentar**: lo que no se pudo leer queda como «[dato]» y la app lo avisa al crear.
 - Pruebas: `node --test tests/demanda-nueva.test.mjs` (sin stack). Publicar: migración 0053, función `leer-demanda`, subir la app.
 

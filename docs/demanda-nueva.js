@@ -170,6 +170,15 @@ export function nombreWord(modo, demandados, hoy) {
   return `${String(hoy).slice(2).replace(/-/g, '')} - ${tipo} - ${quien}.docx`.replace(/[\\/:*?"<>|]+/g, ' ');
 }
 
+/** La carpeta del demandado en Drive: «APELLIDO NOMBRE» del primer demandado (como las que ya hay en «EN TRÁMITE»). */
+export function carpetaDemandado(lectura) {
+  const n = String((lectura?.demandados || []).map((d) => d?.nombre).find((x) => String(x || '').trim()) || '').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return mayus(n);
+}
+
+/** El nombre del PDF de la demanda: el del Word con otra extensión. */
+export const nombrePdf = (nombreDelWord) => String(nombreDelWord || 'Demanda').replace(/\.docx$/i, '') + '.pdf';
+
 /**
  * Arma el Word de la demanda con el modelo del estudio (`modelo`: los bytes del .docx).
  * Devuelve { blob, faltan, nombre }: `faltan` son los nombres, en palabras, de lo que quedó entre corchetes.

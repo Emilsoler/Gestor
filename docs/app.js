@@ -1,7 +1,7 @@
 // Interfaz del gestor. Los datos y la red viven en datos.js.
 import {
   D, iniciar, reconectar, entrar, salir, cambiarClave, alCambiar, mensaje, ultimaDe,
-  crearCausa, guardarCausa, actualizarCausa, borrarCausa, asignarExpte, leerDemanda,
+  crearCausa, guardarCausa, actualizarCausa, borrarCausa, asignarExpte, leerDemanda, leerFirma, guardarEnDrive,
   crearAcuerdo, actualizarAcuerdo, borrarAcuerdo,
   crearPlantilla, guardarPlantilla, borrarPlantilla,
   crearEscrito, actualizarAgenda, preguntarAClaude, leerChat, guardarChat, leerDeudor,
@@ -1298,14 +1298,35 @@ async function crearConDemanda(c, boton) {
     Object.assign(c, M.causaDeLectura(S.dem.modo, lectura, c, { moraN: S.dem.mora }));
     const avisos = [...(lectura.avisos || [])];
     try { await crearCausa(c); } catch (e) { toast(e.code === '23505' ? 'Ya existe una causa con ese expediente' : mensaje(e)); return; }
-    let faltan = [];
+    let faltan = [], pdf = null, drive = null, word = null;
     try {
       const modelo = new Uint8Array(await (await fetch(M.MODELOS_WORD[S.dem.modo])).arrayBuffer());
-      const r = await M.armarDemanda(S.dem.modo, lectura, modelo, { moraN: S.dem.mora, hoy: iso(today()) });
-      faltan = r.faltan; await entregar(r.blob, r.nombre);
+      word = await M.armarDemanda(S.dem.modo, lectura, modelo, { moraN: S.dem.mora, hoy: iso(today()) });
+      faltan = word.faltan;
     } catch (e) { console.error(e); toast('La causa se creó, pero no se pudo armar el Word. Probá de nuevo desde la ficha.'); closeDrawer(); return; }
+    // La demanda en PDF con la firma: si falla, el Word igual se entrega.
+    let sinFirma = false;
+    try {
+      const firma = await leerFirma();
+      sinFirma = !firma;
+      pdf = await (await import('./demanda-pdf.js')).pdfDesdeWord(word.blob, firma, { titulo: word.nombre.replace(/\.docx$/i, '') });
+    } catch (e) { console.error(e); }
+    // A la carpeta del demandado en Drive: los PDF que se adjuntaron, el Word y el PDF firmado.
+    const carpeta = M.carpetaDemandado(lectura);
+    if (carpeta) {
+      try {
+        const archivos = [];
+        for (const f of S.dem.archivos.filter((x) => x.type === 'application/pdf' || /\.pdf$/i.test(x.name))) archivos.push({ nombre: f.name, tipo: 'application/pdf', bytes: new Uint8Array(await f.arrayBuffer()) });
+        archivos.push({ nombre: word.nombre, tipo: word.blob.type, bytes: new Uint8Array(await word.blob.arrayBuffer()) });
+        if (pdf) archivos.push({ nombre: M.nombrePdf(word.nombre), tipo: 'application/pdf', bytes: pdf });
+        drive = await guardarEnDrive(carpeta, archivos);
+      } catch (e) { console.error(e); drive = { ok: false, mensaje: 'No se pudo guardar en Drive' }; }
+    }
+    await entregar(word.blob, word.nombre);
+    if (pdf && (!movil.matches || !drive?.ok)) await entregar(new Blob([pdf], { type: 'application/pdf' }), M.nombrePdf(word.nombre));
     closeDrawer();
-    toast(`Causa creada${esPend(c.expte) ? ' (expediente pendiente)' : ''} y demanda descargada. ${faltan.length ? 'Falta completar en el Word: ' + faltan.join(', ') + '. ' : ''}${avisos.length ? 'Ojo: ' + avisos.join(' ') + ' ' : ''}Revisala antes de presentar.`);
+    const dr = drive?.ok ? `Guardado en Drive (carpeta «${drive.carpeta}»${drive.creada ? ', nueva' : ''}). ` : drive ? `No se guardó en Drive: ${drive.mensaje}. ` : '';
+    toast(`Causa creada${esPend(c.expte) ? ' (expediente pendiente)' : ''} y demanda descargada${pdf ? ' (Word y PDF)' : ''}. ${dr}${sinFirma && pdf ? 'El PDF salió sin firma (falta cargarla). ' : ''}${faltan.length ? 'Falta completar en el Word: ' + faltan.join(', ') + '. ' : ''}${avisos.length ? 'Ojo: ' + avisos.join(' ') + ' ' : ''}Revisala antes de presentar.`);
   });
 }
 
