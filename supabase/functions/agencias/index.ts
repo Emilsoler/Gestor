@@ -715,6 +715,13 @@ export async function manejar(req: Request): Promise<Response> {
 
     if (/^(chat|push_)/.test(accion) || accion === 'chats') return await accionChat(accion, pedido, { ag, a, uid, form }, cors);
 
+    if (accion === 'latido') {
+      // «Agencias conectadas» (migración 0051): el cotizador avisa cada minuto mientras está a la vista. Solo se anota la hora;
+      // la vista previa de la Mutual no cuenta como agencia.
+      if (!ag.miembro) await rpc('agencia_latido', { p_user: uid });
+      return responder({ ok: true }, 200, cors);
+    }
+
     if (accion === 'marcas') {
       const xs = await todas('/brands/');
       const marcas = xs.filter((m) => m && Number.isInteger(Number(m.id)) && texto(m.name) && (m.prices || m.list_price))

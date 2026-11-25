@@ -514,6 +514,13 @@ export async function leerAgencias() {
   return { ajustes, agencias, cotizaciones, solicitudes, vendedores, bcra: new Map(bcra.map((x) => [x.id, x])) };
 }
 
+/** Quiénes tienen el cotizador abierto ahora (migración 0051): un renglón por vendedor activo, con `conectado` ya decidido por la base.
+ *  Si la base todavía no tiene la función (o no hay red), devuelve null y el cartel no se muestra. */
+export async function leerConectadas() {
+  if (!sb) return null;
+  try { const r = await sb.rpc('agencias_conectadas'); return r.error ? null : r.data || []; } catch { return null; }
+}
+
 /** Cotizaciones, solicitudes y aprobaciones de cada agencia en los últimos `dias` (null = desde siempre). Migración 0044. */
 export const estadisticasAgencias = (dias) => pedir(sb.rpc('estadisticas_agencias', { p_dias: dias }));
 

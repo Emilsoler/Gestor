@@ -787,6 +787,20 @@ body:has(#drawer:not([hidden])) #btnClaudeWeb,body:has(#menu:not([hidden])) #btn
 .ag-acceso dt{color:var(--muted);font-size:13px}
 .ag-acceso dd{margin:0;font-size:17px;overflow-wrap:anywhere;user-select:all}
 
+/* «Agencias conectadas»: la luz verde (alguna agencia tiene el cotizador abierto ahora) o roja (ninguna) y la lista de quiénes son */
+.luz{display:inline-block;width:14px;height:14px;border-radius:50%;flex:none}
+.luz.verde{background:var(--ok);box-shadow:0 0 0 4px var(--ok-soft),0 0 10px var(--ok)}
+.luz.roja{background:var(--bad);box-shadow:0 0 0 4px var(--bad-soft)}
+.ag-conx.card{padding:0}
+.ag-conx-cab{display:flex;align-items:center;gap:14px;width:100%;padding:14px 16px;background:none;border:0;color:inherit;font:inherit;text-align:left;cursor:pointer;border-radius:inherit}
+.ag-conx-t{display:grid;gap:2px;flex:1;min-width:0}
+.ag-conx-flecha{color:var(--muted);font-size:12px}
+.ag-conx-lista{list-style:none;margin:0;padding:4px 16px 12px;display:grid;gap:2px;border-top:1px solid var(--line-soft)}
+.ag-conx-fila{display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--line-soft)}
+.ag-conx-fila:last-child{border-bottom:0}
+.ag-conx-quien{display:grid;gap:1px;flex:1;min-width:0;overflow-wrap:anywhere}
+.ag-conx-vacio{margin:0;padding:4px 16px 14px}
+
 /* Semáforo del BCRA en las solicitudes de agencias: solo un círculo de color */
 .sem-punto{display:inline-block;width:14px;height:14px;border-radius:50%;vertical-align:-2px;background:var(--soft)}
 .sem-punto.verde{background:var(--ok)} .sem-punto.amarillo{background:var(--warn)} .sem-punto.rojo{background:var(--bad)}

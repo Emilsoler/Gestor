@@ -490,3 +490,51 @@ export const avisoInicio = (n, chats = 0) => (n ? `<section class="card ag-aviso
   <div class="hint">Con el informe del BCRA, el crédito y los documentos.</div></div><button class="btn primary" data-ir="agencias">Ver solicitudes</button></section>` : '')
   + (chats ? `<section class="card ag-aviso"><div><b>${chats === 1 ? 'Hay 1 conversación de una agencia para atender' : `Hay ${chats} conversaciones de agencias para atender`}</b>
   <div class="hint">Una agencia quiere hablar con vos o te escribió.</div></div><button class="btn primary" data-a="ag-ir-chats">Ver chats</button></section>` : '');
+
+// ───────────────────────── Agencias conectadas (migración 0051) ─────────────────────────
+
+/** Agrupa los renglones de `agencias_conectadas()` por agencia: está conectada si algún vendedor suyo lo está.
+ *  Las conectadas van primero (por nombre) y después las demás, la que estuvo más hace menos arriba. */
+export function resumenConectadas(filas) {
+  const por = new Map();
+  for (const f of filas || []) {
+    const g = por.get(f.agencia_id) || { id: f.agencia_id, nombre: String(f.agencia || ''), vendedores: [], conectada: false, hace: null };
+    g.vendedores.push(f);
+    if (f.conectado) g.conectada = true;
+    if (f.hace_seg != null && (g.hace == null || f.hace_seg < g.hace)) g.hace = f.hace_seg;
+    por.set(f.agencia_id, g);
+  }
+  const todas = [...por.values()];
+  const conectadas = todas.filter((g) => g.conectada).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  const otras = todas.filter((g) => !g.conectada).sort((a, b) => (a.hace ?? Infinity) - (b.hace ?? Infinity) || a.nombre.localeCompare(b.nombre, 'es'));
+  return { conectadas, otras, total: todas.length };
+}
+
+/** «hace 5 min», «hace 3 h», «hace 2 días»; null si nunca entró. */
+export function haceTexto(seg) {
+  if (seg == null) return 'todavía no entró';
+  if (seg < 3600) return `hace ${Math.max(1, Math.round(seg / 60))} min`;
+  if (seg < 86400) return `hace ${Math.round(seg / 3600)} h`;
+  const d = Math.round(seg / 86400);
+  return `hace ${d} ${d === 1 ? 'día' : 'días'}`;
+}
+
+/** El cartel «3 agencias conectadas» con su luz (verde si hay alguna, roja si ninguna); al tocarlo se despliega quiénes son.
+ *  `C = { filas, abierto }`; sin filas (la base todavía no lo tiene) no se muestra nada. Lleva `id="agConx"` para repintarlo solo. */
+export function htmlConectadas(C) {
+  if (!C || !C.filas) return '';
+  const R = resumenConectadas(C.filas), n = R.conectadas.length;
+  const titulo = n === 0 ? 'Ninguna agencia conectada' : n === 1 ? '1 agencia conectada' : `${n} agencias conectadas`;
+  // Con más de una cuenta en la agencia, se dice cuáles de sus vendedores están (con una sola, el nombre sería el de la agencia otra vez).
+  const quien = (g) => (g.vendedores.length > 1 ? g.vendedores.filter((v) => v.conectado).map((v) => v.vendedor).join(', ') : '');
+  const renglon = (g) => `<li class="ag-conx-fila"><span class="luz ${g.conectada ? 'verde' : 'roja'}" aria-hidden="true"></span>
+    <span class="ag-conx-quien"><b>${esc(g.nombre)}</b>${g.conectada && quien(g) ? `<span class="hint">${esc(quien(g))}</span>` : ''}</span>
+    <span class="hint">${g.conectada ? 'conectada ahora' : esc(haceTexto(g.hace))}</span></li>`;
+  const lista = C.abierto
+    ? (R.total ? `<ul class="ag-conx-lista">${[...R.conectadas, ...R.otras].map(renglon).join('')}</ul>` : '<p class="hint ag-conx-vacio">Todavía no hay agencias activas.</p>')
+    : '';
+  return `<section class="card ag-conx" id="agConx"><button type="button" class="ag-conx-cab" data-a="ag-conx" aria-expanded="${C.abierto ? 'true' : 'false'}">
+    <span class="luz ${n ? 'verde' : 'roja'}" aria-hidden="true"></span>
+    <span class="ag-conx-t"><b>${titulo}</b><span class="hint">usando el cotizador ahora · ${C.abierto ? 'tocá para cerrar' : 'tocá para ver quiénes son'}</span></span>
+    <span class="ag-conx-flecha" aria-hidden="true">${C.abierto ? '▲' : '▼'}</span></button>${lista}</section>`;
+}

@@ -5,10 +5,10 @@ import {
   crearDeudor, cambiarDeudor, borrarDeudor, crearModelo, guardarModelo, borrarModelo, guardarAjustes,
   consultarInfoAuto, consultarInfoAutoTodo, consultarBCRA, detalleConsulta, detalleGuardado, borrarConsulta, consultarCheque, entidadesCheques, borrarConsultaCheque, crearCasoRefi, actualizarCasoRefi, borrarCasoRefi, archivarCasoRefi,
   crearDescuento, guardarDescuento, borrarDescuento, estadoCheque,
-  leerAgencias, contarSolicitudes, guardarAjustesAgencias, altaAgencia, crearAgencia, crearVendedor, activarVendedor, activarAgencia, resolverSolicitud, documentosSolicitud, leerDocumentos, eliminarSolicitud, eliminarCotizaciones, estadisticasAgencias,
+  leerAgencias, leerConectadas, contarSolicitudes, guardarAjustesAgencias, altaAgencia, crearAgencia, crearVendedor, activarVendedor, activarAgencia, resolverSolicitud, documentosSolicitud, leerDocumentos, eliminarSolicitud, eliminarCotizaciones, estadisticasAgencias,
   chatsAgencias, chatResumen, verChat, responderChat, cerrarChat, eliminarChat, claveAvisos, registrarAvisos, quitarAvisos, probarAvisos,
 } from './datos.js';
-import { htmlAgencias, htmlFaltanGen, avisoInicio, parametrosEnTexto, leerParametros, TABS_AGENCIAS } from './agencias.js';
+import { htmlAgencias, htmlConectadas, htmlFaltanGen, avisoInicio, parametrosEnTexto, leerParametros, TABS_AGENCIAS } from './agencias.js';
 import {
   avisoCuit, soloDigitos, fichaConsulta, filaConsulta, textoConsulta, deudoresDelCuit,
   avisoCheque, numeroCheque, bancosRecientes, opcionesBancos, bancoEnLista, fichaCheque, textoCheque, filaCheque, resumenBcraCheque,
@@ -76,7 +76,7 @@ const S = {
   // (notas para la agencia, parámetros y alta, atados con data-k) y cuántas solicitudes esperan respuesta.
   ag: {
     est: { dias: 30, filas: null, error: '' },
-    datos: null, cargando: false, error: '', tab: 'solicitudes', msg: '', docs: new Map(), notas: {}, p: {}, alta: {}, vend: {}, pend: 0, borrar: '', borrarCot: '', selCot: new Set(),
+    datos: null, cargando: false, error: '', tab: 'solicitudes', msg: '', docs: new Map(), notas: {}, p: {}, alta: {}, vend: {}, pend: 0, conx: { filas: null, abierto: false }, borrar: '', borrarCot: '', selCot: new Set(),
     // Chats de las agencias: la lista, la conversación abierta (hilo + mensajes), lo que se escribe (texto) y el estado de los
     // avisos al celular (push: cargando | no | denegado | inactivo | activo). `atencion`: conversaciones que piden respuesta.
     chat: { lista: [], atencion: 0, espera: 0, error: '', hilo: null, mensajes: [], texto: '', enviando: false, push: 'cargando', pushMsg: '' },
@@ -191,7 +191,7 @@ function mostrar(pantalla) {
   if (enApp) { $('#ingresoCuerpo').innerHTML = ''; render(); seguirEnlace(); return; }
   cerrarFicha(); S.menu = false; renderMenu();
   for (const k of ['#main', '#chips', '#franja', '#nPlanes', '#nDeudores', '#nAgencias']) $(k).innerHTML = '';
-  S.ag = { ...S.ag, gen: null, est: { dias: 30, filas: null, error: '' }, datos: null, error: '', docs: new Map(), notas: {}, alta: {}, vend: {}, nueva: null, pend: 0 }; // al salir no queda nada de otra sesión
+  S.ag = { ...S.ag, gen: null, est: { dias: 30, filas: null, error: '' }, datos: null, error: '', docs: new Map(), notas: {}, alta: {}, vend: {}, nueva: null, pend: 0, conx: { filas: null, abierto: false } }; // al salir no queda nada de otra sesión
   $('#sub').textContent = ''; $('#q').value = ''; S.q = '';
   renderIngreso();
 }
@@ -297,7 +297,7 @@ function render() {
   const porAgencias = S.ag.pend + (S.ag.chat.atencion || 0);
   insignia('#nAgencias', porAgencias, 'pend', porAgencias === 1 ? 'cosa de agencias para atender (solicitud o chat)' : 'cosas de agencias para atender (solicitudes y chats)');
   main.innerHTML = {
-    inicio: (t) => avisoInicio(S.ag.pend, S.ag.chat.atencion) + vistaInicio(t), deudores: vistaDeudores, planes: vistaPlanes, creditos: vistaCreditos, agencias: vistaAgencias,
+    inicio: (t) => htmlConectadas(S.ag.conx) + avisoInicio(S.ag.pend, S.ag.chat.atencion) + vistaInicio(t), deudores: vistaDeudores, planes: vistaPlanes, creditos: vistaCreditos, agencias: vistaAgencias,
   }[S.vista](todos);
   aplicarAnchos(main);
   if (S.vista === 'inicio') ajustarNombre();
@@ -528,7 +528,7 @@ function vistaAgencias() {
   }
   const pend = G.datos.solicitudes.filter((x) => x.estado === 'pendiente' || x.estado === 'en_analisis').length;
   subtitulo(`${pend ? cuantos(pend, 'solicitud pendiente', 'solicitudes pendientes') : 'Sin solicitudes pendientes'} · el cotizador está ${G.datos.ajustes?.habilitado ? 'habilitado' : 'apagado'}`);
-  return htmlAgencias(G.datos, G);
+  return htmlConectadas(G.conx) + htmlAgencias(G.datos, G);
 }
 
 async function cargarAgencias() {
@@ -747,6 +747,7 @@ async function accionAgencias(act, b) {
   if (act === 'ag-push-activar') { await activarAvisos(); return; }
   if (act === 'ag-push-quitar') { await quitarAvisosAca(); return; }
   if (act === 'ag-push-probar') { await probarAvisosAca(); return; }
+  if (act === 'ag-conx') { G.conx.abierto = !G.conx.abierto; pintarConectadas(); return; }
   if (act === 'ag-tab') {
     G.tab = b.dataset.tab; G.msg = ''; G.nueva = null; G.borrarCot = ''; G.selCot.clear(); G.chat.hilo = null; G.chat.error = '';
     try { localStorage.setItem('cb.agTab', G.tab); } catch { /* sin almacenamiento */ }
@@ -3037,7 +3038,7 @@ movil.addEventListener('change', () => render());
 
 // Cambios que llegan de la base: los propios, los de Claude o los de otro dispositivo.
 alCambiar((que, detalle) => {
-  if (que === 'sesion') { if (detalle !== S.pantalla) mostrar(detalle); else if (detalle === 'listo') render(); if (detalle === 'listo') contarPendientes(); return; }
+  if (que === 'sesion') { if (detalle !== S.pantalla) mostrar(detalle); else if (detalle === 'listo') render(); if (detalle === 'listo') { contarPendientes(); cargarConectadas(); } return; }
   if (S.pantalla !== 'listo') return;
   if (que === 'estado') { renderFranja(); if (S.menu) renderMenu(); return; }
   render();
@@ -3079,10 +3080,30 @@ setInterval(async () => {
   if ((C.mensajes.length ? C.mensajes[C.mensajes.length - 1].id : 0) !== antes) { render(); const m = $('#agMsgs'); if (m) m.scrollTop = m.scrollHeight; }
 }, 10_000);
 
+/** Repinta solo el cartel «agencias conectadas», sin tocar lo que se esté escribiendo en la pantalla. */
+function pintarConectadas() {
+  const el = document.getElementById('agConx');
+  if (el) el.outerHTML = htmlConectadas(S.ag.conx);
+}
+
+/** Lee quiénes tienen el cotizador abierto. Si el cartel ya está en pantalla lo repinta en el lugar; si no estaba, dibuja. */
+async function cargarConectadas() {
+  if (S.pantalla !== 'listo') return;
+  const f = await leerConectadas();
+  if (f === null || S.pantalla !== 'listo') return; // sin la función o sin red: queda lo último que se vio
+  const antes = !!S.ag.conx.filas;
+  S.ag.conx.filas = f;
+  if (document.getElementById('agConx')) pintarConectadas();
+  else if (!antes && (S.vista === 'inicio' || S.vista === 'agencias')) render();
+}
+
 // Las solicitudes de las agencias no llegan en vivo: se cuentan al abrir, al volver a la app y cada minuto.
 setInterval(() => { if (document.visibilityState === 'visible') contarPendientes(); }, 60_000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') contarPendientes(); });
+// Las agencias avisan cada minuto que tienen el cotizador abierto (migración 0051): se mira cada 30 s para que la luz no llegue tarde.
+setInterval(() => { if (document.visibilityState === 'visible') cargarConectadas(); }, 30_000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') cargarConectadas(); });
 
 (async () => {
-  try { mostrar(await iniciar()); contarPendientes(); } catch (e) { console.error(e); S.falla = mensaje(e, 'no se pudo abrir'); mostrar('error'); }
+  try { mostrar(await iniciar()); contarPendientes(); cargarConectadas(); } catch (e) { console.error(e); S.falla = mensaje(e, 'no se pudo abrir'); mostrar('error'); }
 })();

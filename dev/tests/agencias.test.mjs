@@ -807,3 +807,50 @@ test('vendedores: la Mutual los da de alta, cada uno ve solo lo suyo y pausar co
   assert.equal((await pedir(agencia, { accion: 'yo' })).status, 403);
   sql(`update public.agencias set activa = true where id = '${ag}'; delete from public.solicitudes_credito`);
 });
+
+test('agencias conectadas: el latido la muestra conectada unos minutos; la Mutual lo ve y las agencias no', async () => {
+  sql('update public.ajustes_agencias set habilitado = true; delete from public.agencia_presencia');
+  const ag = sql(`select id from public.agencias where email = 'salon@test.local'`);
+  const vt = sql(`select id from public.agencia_vendedores where email = 'salon@test.local'`);
+  const lista = async (jwt) => {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/agencias_conectadas`, {
+      method: 'POST', headers: { apikey: env.ANON_KEY, authorization: `Bearer ${jwt}`, 'content-type': 'application/json' }, body: '{}',
+    });
+    return { status: r.status, filas: r.ok ? await r.json() : [] };
+  };
+  const titular = async () => (await lista(emi)).filas.find((f) => f.vendedor_id === vt);
+  // Sin latido figura, pero desconectada y sin hora.
+  let f = await titular();
+  assert.equal(f.conectado, false);
+  assert.equal(f.hace_seg, null);
+  // La vista previa de la Mutual no cuenta como agencia.
+  assert.equal((await pedir(emi, { accion: 'latido' })).status, 200);
+  assert.equal(sql('select count(*) from public.agencia_presencia'), '0');
+  // El latido de la agencia la conecta.
+  assert.equal((await pedir(agencia, { accion: 'latido' })).status, 200);
+  f = await titular();
+  assert.equal(f.conectado, true);
+  assert.ok(f.hace_seg < 60);
+  // Con un latido de hace 2 minutos sigue conectada (un aviso perdido no la apaga); pasados 150 segundos, no.
+  sql(`update public.agencia_presencia set momento = now() - interval '120 seconds'`);
+  assert.equal((await titular()).conectado, true);
+  sql(`update public.agencia_presencia set momento = now() - interval '151 seconds'`);
+  f = await titular();
+  assert.equal(f.conectado, false);
+  assert.ok(f.hace_seg >= 150);
+  // Un latido nuevo la vuelve a conectar, pisando la fila: no queda historial de latidos.
+  assert.equal((await pedir(agencia, { accion: 'latido' })).status, 200);
+  assert.equal((await titular()).conectado, true);
+  assert.equal(sql(`select count(*) from public.agencia_presencia where vendedor_id = '${vt}'`), '1');
+  assert.equal(sql(`select count(*) from gestor.cambios where tabla = 'agencia_presencia'`), '0');
+  // Una agencia pausada no deja latido y no figura en la lista.
+  sql(`update public.agencias set activa = false where id = '${ag}'`);
+  assert.equal((await pedir(agencia, { accion: 'latido' })).status, 403);
+  assert.equal((await lista(emi)).filas.some((x) => x.agencia_id === ag), false);
+  sql(`update public.agencias set activa = true where id = '${ag}'`);
+  // La lista es solo de la Mutual: una agencia no la lee, ni la tabla.
+  assert.notEqual((await lista(agencia)).status, 200);
+  const tabla = await fetch(`${env.SUPABASE_URL}/rest/v1/agencia_presencia?select=*`, { headers: { apikey: env.ANON_KEY, authorization: `Bearer ${agencia}` } });
+  assert.notEqual(tabla.status, 200);
+  sql('delete from public.agencia_presencia');
+});

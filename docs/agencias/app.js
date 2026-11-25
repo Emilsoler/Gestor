@@ -93,6 +93,7 @@ async function cargarYo() {
     S.fase = 'app'; S.plazo = S.yo.plazos?.includes(S.plazo) ? S.plazo : S.yo.plazos?.[(S.yo.plazos?.length || 1) - 1] || 0;
     render();
     iniciarChat(fn, !!S.yo.chat);
+    latir();
     if (S.yo.miembro && !S.marcas) cargarMarcas();
     else mirarNovedades();
   } catch (e) {
@@ -1021,6 +1022,15 @@ async function mirarNovedades() {
 }
 setInterval(mirarNovedades, 60000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') mirarNovedades(); });
+
+/** «Agencias conectadas»: le avisa a la Mutual que el cotizador está abierto y a la vista (migración 0051). Solo manda la hora
+ *  de la sesión, nada de lo que se esté cotizando; con la pestaña escondida o el celular bloqueado no avisa. */
+async function latir() {
+  if (S.fase !== 'app' || !S.yo?.habilitado || S.yo.miembro || document.visibilityState !== 'visible') return;
+  try { await fn({ accion: 'latido' }); } catch { /* es solo un aviso: se reintenta al minuto */ }
+}
+setInterval(latir, 60000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') latir(); });
 const etqEstado = (e) => { const [t, c] = ESTADOS[e] || [e, '']; return `<span class="etq ${c}">${esc(t)}</span>`; };
 
 /** «Mis cotizaciones»: las últimas 50 del vendedor, para reenviarlas. Es lo que se calculó ese día: no se recalcula. */

@@ -952,6 +952,17 @@ Mutual y no nombra a InfoAuto.
 
 - **Estadísticas por agencia** (migración 0044, pedido de la persona del 23/11/2026): solapa «Estadísticas» de Créditos y Cobros → Agencias. Función `public.estadisticas_agencias(p_dias)` (SECURITY INVOKER: solo los miembros ven filas, por las políticas de las tablas; `null` = desde siempre) con, por agencia, cotizaciones, solicitudes mandadas, aprobadas, rechazadas, abiertas, monto aprobado y última cotización. La pantalla (`htmlAgencias`, `cargarEstadisticas` en `app.js`) ofrece 30 días, 90 días o desde siempre y muestra qué parte de las cotizaciones terminó en solicitud. Con gráficos de barras en SVG (`graficoBarras` en `agencias.js`, clases `.gr-*`): cotizaciones, solicitudes y aprobadas por agencia, y monto aprobado. Prueba: «estadísticas» de `agencias-admin.test.mjs`. Publicar: migración 0044 y subir la app (la función `agencias` no cambia).
 
+- **Agencias conectadas** (migración 0051, pedido de la persona del 25/11/2026): en Inicio y en la solapa Agencias de Créditos y Cobros, un cartel con una luz
+  («3 agencias conectadas», verde; «Ninguna agencia conectada», roja) que al tocarlo despliega la lista de agencias, cada una con su luz y «conectada ahora» o
+  «hace 10 min» (`htmlConectadas`, `resumenConectadas`, `haceTexto` en `docs/cobranzas/agencias.js`; el cartel se repinta solo, sin tocar lo que se escribe,
+  `cargarConectadas`/`pintarConectadas` en `app.js`, cada 30 s). **Conectada = tiene el cotizador abierto y a la vista ahora**: el cotizador manda un `latido`
+  (acción de la función `agencias`) al entrar y cada 60 s mientras la pestaña está visible (`latir` en `docs/agencias/app.js`; escondida o con el celular bloqueado no
+  avisa), y la función lo anota con `public.agencia_latido` en `public.agencia_presencia` (una fila por vendedor, solo la hora del último latido: **sin `sello`,
+  `auditar` ni historial a propósito**, un latido por minuto llenaría `gestor.cambios`). Conectado = último latido de hace menos de 150 s, decidido por la base
+  (`public.agencias_conectadas()`, SECURITY INVOKER: solo los miembros ven filas; un renglón por vendedor activo de una agencia activa). La vista previa de la Mutual y
+  las cuentas pausadas no cuentan. No se guarda nada de lo que se cotiza. Si la base todavía no tiene la función, el cartel no se muestra. Publicar: migración 0051,
+  `deploy_edge_function` de `agencias` (siete archivos) y subir la app. Pruebas: `agencias-conectadas-puro.test.mjs` (sin stack) y «agencias conectadas» de `agencias.test.mjs`.
+
 ### Documentación para el Registro del Automotor (nov 2026, pedido de la persona del 24/11/2026)
 
 En Créditos y Cobros → Agencias → Solicitudes, cada solicitud **aprobada** tiene un recuadro con dos botones: «Generar PRENDA»
