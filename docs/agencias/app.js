@@ -524,7 +524,8 @@ async function simularRapida() {
   if (!(cuotas >= 1 && cuotas <= 120)) { R.error = 'Las cuotas tienen que ser de 1 a 120.'; render(); return; }
   R.cargando = true; R.error = ''; render();
   try {
-    R.res = await fn({ accion: 'rapida', capital, cuotas, tasa: numAR(R.tasa), gastos: Object.fromEntries(GASTOS_RAPIDA.map(([k]) => [k, numAR(R.g[k])])) });
+    // Sin la pantalla completa solo viajan capital y cuotas: la tasa y los gastos los pone la Mutual.
+    R.res = await fn(S.yo?.rapida?.completa ? { accion: 'rapida', capital, cuotas, tasa: numAR(R.tasa), gastos: Object.fromEntries(GASTOS_RAPIDA.map(([k]) => [k, numAR(R.g[k])])) } : { accion: 'rapida', capital, cuotas });
   } catch (e) { R.cargando = false; R.res = null; R.error = e?.message || 'No se pudo calcular.'; render(); return; }
   R.cargando = false; render();
   $('#resultado')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -552,24 +553,26 @@ function vistaRapida() {
   };
   const gasto = ([k, etq, u]) => campo(`g.${k}`, `${etq} (${u})`, R.g[k], '', CON_MONTO.includes(k) ? (r ? r[k] ?? '' : '') : null);
   const visibles = GASTOS_RAPIDA.filter(([k]) => !GASTOS_PLEGADOS.includes(k) && !GASTOS_OCULTOS.includes(k)), plegados = GASTOS_RAPIDA.filter(([k]) => GASTOS_PLEGADOS.includes(k));
+  // Pedido del 25/11/2026: salvo las agencias con `completa`, solo se escriben capital y cuotas (tasa y gastos los pone la Mutual).
+  const completa = S.yo?.rapida?.completa === true;
   const form = `<section class="card no-imprimir">
     <div class="card-cab"><h2>Simulación rápida</h2></div>
-    <p class="hint">Sin CUIT ni vehículo: escribí el capital, las cuotas, la tasa y los gastos. Solo para tu cuenta.</p>
+    <p class="hint">${completa ? 'Sin CUIT ni vehículo: escribí el capital, las cuotas, la tasa y los gastos. Solo para tu cuenta.' : 'Sin CUIT ni vehículo: escribí el capital y las cuotas.'}</p>
     <div class="grilla">
       ${campo('capital', 'Capital ($)', R.capital, 'Ej.: 5.000.000')}
       ${campo('cuotas', 'Cantidad de cuotas', R.cuotas)}
-      ${campo('tasa', 'Tasa mensual (%)', R.tasa)}
+      ${completa ? campo('tasa', 'Tasa mensual (%)', R.tasa) : ''}
     </div>
-    <h3>Gastos</h3>
+    ${completa ? `<h3>Gastos</h3>
     <div class="grilla">${visibles.map(gasto).join('')}</div>
     <details class="plegado" id="rapOtros"${R.otros ? ' open' : ''}>
       <summary>Gastos que se reparten en las cuotas <span class="hint">(seguro ${esc(R.g.seguro)} %, administrativos $ ${esc(R.g.administrativos)}, cuota social $ ${esc(R.g.cuotaSocial)}, IGR ${esc(R.g.igr)} %)</span></summary>
       <div class="grilla">${plegados.map(gasto).join('')}</div>
-    </details>
+    </details>` : ''}
     ${R.error ? `<p class="aviso m0" role="alert">${esc(R.error)}</p>` : ''}
     <div class="acciones">
       <button class="btn primario" type="button" id="btnRapida" ${R.cargando ? 'disabled' : ''}>${R.cargando ? 'Calculando…' : 'Simular'}</button>
-      <button class="btn" type="button" id="btnRapidaReset">Volver a los valores de la Mutual</button>
+      ${completa ? '<button class="btn" type="button" id="btnRapidaReset">Volver a los valores de la Mutual</button>' : ''}
     </div>
   </section>`;
   if (!r) return form;

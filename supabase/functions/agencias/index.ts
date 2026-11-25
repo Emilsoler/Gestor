@@ -30,6 +30,9 @@
 // pedido, a la carpeta privada `solicitudes` del almacenamiento, y `enviar` la deja pendiente para la Mutual.
 // En los registros no quedan el CUIT ni los datos del cliente.
 import { simularCredito, montoMaximo, tasasDelCredito, anioMinimo, tasaPara } from './credito.js';
+
+/** Tasa mensual (%) de la simulación rápida para las agencias sin `simulacion_completa`: la de los parámetros, 6 si no está. */
+const tasaRapida = (a: Record<string, unknown>): number => { const t = Number(a?.tasa_rapida); return t >= 0 && t <= 50 ? t : 6; };
 // Copia exacta de ../bcra/bcra.ts (las pruebas lo controlan): el mismo semáforo que Cobranzas.
 import { ErrorBCRA, consultar, cuitValido, resumir, sinCuit, soloDigitos, ultimoPeriodo } from './bcra.ts';
 // Copia exacta de docs/agencias/solicitud.js (las pruebas lo controlan): documentos y controles de la solicitud.
@@ -699,7 +702,8 @@ export async function manejar(req: Request): Promise<Response> {
         relacion_max: Number(a.relacion_max) || 45,
         chat: !!a.chat_habilitado && !ag.miembro,
         // Solo la agencia marcada (la de prueba de la persona): los valores con que arranca la simulación rápida.
-        ...(ag.simulacion_rapida ? { rapida: { tasa: tasaPara('0km', a, new Date().getFullYear()), gastos: a.gastos || {} } } : {}),
+        // `completa`: escribe también la tasa y los gastos; si no, solo capital y cuotas (tasa fija de los parámetros, migración 0050).
+        ...(ag.simulacion_rapida ? { rapida: { completa: ag.simulacion_completa === true, tasa: ag.simulacion_completa === true ? tasaPara('0km', a, new Date().getFullYear()) : tasaRapida(a), gastos: a.gastos || {} } } : {}),
       }, 200, cors);
     }
     if (accion === 'clave_definida') {
@@ -776,13 +780,16 @@ export async function manejar(req: Request): Promise<Response> {
       // (migración 0036); a las demás se les contesta como a un pedido que no existe. No usa InfoAuto ni se registra.
       if (!ag.simulacion_rapida) throw new Falla('Pedido desconocido.', 400, 'accion');
       const capital = Math.round(Number(pedido.capital) || 0), cuotas = Math.trunc(Number(pedido.cuotas));
-      const tasa = Number(pedido.tasa);
+      // Sin `simulacion_completa` (0050) la tasa y los gastos no los pone la agencia: se ignora lo que mande.
+      const completa = ag.simulacion_completa === true;
+      const tasa = completa ? Number(pedido.tasa) : tasaRapida(a);
+      const gastosPedidos = completa ? pedido.gastos : a.gastos;
       if (!(capital > 0)) throw new Falla('Escribí el capital.', 400, 'capital');
       if (!(cuotas >= 1 && cuotas <= 120)) throw new Falla('Las cuotas tienen que ser de 1 a 120.', 400, 'cuotas');
       if (!(tasa >= 0 && tasa <= 100)) throw new Falla('Revisá la tasa mensual.', 400, 'tasa');
       const g: Record<string, number | null> = {};
       for (const k of ['sellado', 'arancel', 'arancelMin', 'contratos', 'envio', 'gestoria', 'seguro', 'administrativos', 'cuotaSocial', 'igr']) {
-        g[k] = Math.max(0, Number(pedido.gastos?.[k]) || 0);
+        g[k] = Math.max(0, Number(gastosPedidos?.[k]) || 0);
       }
       g.redondeo = null; // automático, como en el cotizador
       const sim = simularCredito({ capital, cuotas, g, tasa });

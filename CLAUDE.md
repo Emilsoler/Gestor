@@ -823,7 +823,10 @@ Mutual y no nombra a InfoAuto.
   Acción `rapida` de la función (a cualquier otra agencia o a la vista previa le contesta «Pedido desconocido»); no usa InfoAuto, no
   se registra en `cotizaciones_agencia` ni cuenta para el tope. `vistaRapida` y `simularRapida` en `docs/agencias/app.js`. Al lado del sellado y del arancel se ve el monto que dio la última simulación (la función devuelve `sellado` y `arancel`), y seguro, administrativos, cuota social e IGR van plegados en «Gastos que se reparten en las cuotas» (pedido del 19/11/2026). Para dársela
   o quitársela a otra cuenta: `update public.agencias set simulacion_rapida = … where email = '…'` (con `set_config('gestor.autor', 'Claude', true)`),
-  solo si la persona lo pide.
+  solo si la persona lo pide. **Versión básica** (migración 0050, pedido de la persona del 25/11/2026): las agencias con la simulación rápida **salvo las que tienen
+  `agencias.simulacion_completa = true`** (hoy: «Emiliano Soler», Dario Sosa, Tomás Malbrán y Nancy Ulla) escriben solo capital y cuotas; la tasa es
+  `ajustes_agencias.tasa_rapida` (6 % mensual) y los gastos, los de los parámetros. Lo decide la función (acción `rapida`: a una agencia sin la marca se le ignora la tasa y los
+  gastos que mande) y la pantalla oculta esos campos (`S.yo.rapida.completa`). El resultado sigue mostrando «Gastos de otorgamiento».
 - **Tablas** (migración 0025): `public.agencias` (nombre, email, cuenta, `activa`, `informada_infoauto` —fecha
   del aviso por escrito a InfoAuto; **opcional desde la migración 0034** (18/11/2026: InfoAuto dijo que no hace falta avisarles) y la
   app ya no la pide; queda la de las agencias viejas—, `clave_temporal`; tope de 20 activas y una cuenta

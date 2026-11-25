@@ -722,8 +722,22 @@ test('simulación rápida: solo la agencia marcada, con capital, cuotas, tasa y 
   assert.equal((await pedir(agencia, pedido)).status, 400);
   assert.equal((await pedir(emi, pedido)).status, 400, 'la vista previa de la Mutual tampoco');
 
-  sql(`select set_config('gestor.autor', 'Claude', false); update public.agencias set simulacion_rapida = true where email = 'salon@test.local';`);
+  // Sin `simulacion_completa` (0050) solo cuentan capital y cuotas: la tasa (`tasa_rapida`, 6) y los gastos son los de la Mutual.
+  sql(`select set_config('gestor.autor', 'Claude', false); update public.agencias set simulacion_rapida = true, simulacion_completa = false where email = 'salon@test.local';`);
+  const basica = (await pedir(agencia, { accion: 'yo' })).datos;
+  assert.equal(basica.rapida.completa, false);
+  assert.equal(basica.rapida.tasa, 6);
+  const ajustes = sql(`select gastos::text from public.ajustes_agencias`);
+  const gMutual = JSON.parse(ajustes);
+  const rb = await pedir(agencia, { accion: 'rapida', capital: 5_000_000, cuotas: 12, tasa: 1, gastos: { ...gastos, contratos: 999999 } });
+  assert.equal(rb.status, 200, rb.texto);
+  const espBasica = simularCredito({ capital: 5_000_000, cuotas: 12, g: { ...Object.fromEntries(Object.keys(gastos).map((k) => [k, Number(gMutual[k]) || 0])), redondeo: null }, tasa: 6 });
+  assert.equal(rb.datos.tasa, 6, 'la tasa que manda una agencia básica se ignora');
+  assert.equal(rb.datos.cuota, espBasica.cuota, 'los gastos que manda una agencia básica se ignoran');
+
+  sql(`select set_config('gestor.autor', 'Claude', false); update public.agencias set simulacion_completa = true where email = 'salon@test.local';`);
   const yo = (await pedir(agencia, { accion: 'yo' })).datos;
+  assert.equal(yo.rapida.completa, true);
   assert.equal(yo.rapida.tasa, 7);
   assert.equal(yo.rapida.gastos.contratos, 20000);
 
