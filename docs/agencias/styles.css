@@ -129,6 +129,7 @@ tr.elegido td{background:#e9e9e9;color:#000;font-weight:600}
 .bloque{display:grid;gap:10px}
 .bloque+.bloque{border-top:1px solid var(--line);padding-top:14px}
 .dato{font-size:16px;color:var(--fg)}
+.dato span{white-space:pre-wrap;overflow-wrap:anywhere}
 .doc{display:grid;gap:8px;background:var(--raised);border:1px solid var(--line);border-radius:12px;padding:12px}
 .doc-lista{list-style:none;margin:0;padding:0;display:grid;gap:6px}
 .doc-lista li{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:14px}

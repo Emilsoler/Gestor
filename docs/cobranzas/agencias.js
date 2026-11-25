@@ -165,6 +165,7 @@ function solicitud(x, A, est, notas) {
     <div class="ag-bloque"><span class="ag-rotulo">Trabajo e ingresos</span>
       ${trabajo.length ? `<div>${esc(trabajo.join(' · '))}</div>` : ''}
       ${x.ingreso ? `<div>Declara <b>${plata(x.ingreso)}</b> por mes · la cuota es el ${pct(x.relacion)}</div>` : '<div class="hint">No declaró ingresos</div>'}</div>
+    ${d.notas ? `<div class="ag-bloque"><span class="ag-rotulo">Notas y aclaraciones de la agencia</span><div class="ag-notas">${esc(d.notas)}</div></div>` : ''}
     <details class="ag-mas"><summary>Más datos del cliente y del crédito</summary>
       <div class="ag-tabla"><table class="tabla"><tbody>
         ${b ? fila('Deuda informada · entidades', `${plata(b.deuda_total)} · ${esc(b.entidades)}`) : ''}

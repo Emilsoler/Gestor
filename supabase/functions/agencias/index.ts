@@ -24,8 +24,8 @@
 // BCRA: la agencia consulta el CUIT de su cliente en la Central de Deudores (API pública). La consulta queda
 // guardada entera en consultas_bcra para la Mutual; a la agencia se le devuelven el color, el nombre y, del último
 // período, las entidades con su situación y deuda (sin lo histórico ni los cheques).
-// La solicitud de aprobación exige esa consulta (verde, o amarillo y sin antecedentes «sujeto a revisión»; rojo,
-// no apto), ingresos demostrables con la cuota dentro del tope de la relación cuota/ingreso, y recalcula el
+// La solicitud de aprobación exige esa consulta (verde; amarillo, rojo y sin antecedentes «sujeto a revisión»: desde el
+// 25/11/2026 el rojo ya no frena, la agencia lo aclara en las notas), ingresos demostrables con la cuota dentro del tope de la relación cuota/ingreso, y recalcula el
 // crédito acá (no se confía en los importes que mande el navegador). Después se suben los documentos, uno por
 // pedido, a la carpeta privada `solicitudes` del almacenamiento, y `enviar` la deja pendiente para la Mutual.
 // En los registros no quedan el CUIT ni los datos del cliente.
@@ -899,7 +899,7 @@ export async function manejar(req: Request): Promise<Response> {
         },
       });
       if (g?.error === 'consulta') throw new Falla('La consulta al BCRA de este cliente venció: consultá el CUIT de nuevo.', 400, 'consulta');
-      if (g?.error === 'semaforo') throw new Falla('El cliente no es apto según el BCRA: no se puede solicitar el crédito.', 400, 'semaforo');
+      if (g?.error === 'semaforo') throw new Falla('No se pudo tomar la consulta del BCRA de este cliente: consultá el CUIT de nuevo.', 400, 'semaforo');
       if (g?.error === 'repetida') throw new Falla('Ya hay una solicitud pendiente para este cliente.', 409, 'repetida');
       if (g?.error === 'relacion') throw new Falla(`La cuota supera el ${tope.toLocaleString('es-AR')} % del ingreso.`, 400, 'relacion');
       if (!g?.id) throw new Falla('No se pudo enviar la solicitud. Probá de nuevo.', 502, 'base');

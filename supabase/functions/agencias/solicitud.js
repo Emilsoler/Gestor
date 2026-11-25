@@ -175,10 +175,13 @@ export function revisarDatos(d, hoy, juridica = false) {
   }
   // Empleo, profesión o actividad del cliente, en palabras de la agencia (opcional; nov 2026, para la Mutual).
   const actividad = txt(d?.actividad, 200);
+  // Notas y aclaraciones de la agencia para la Mutual (opcional; 25/11/2026: por ejemplo, una deuda del Central que ya está paga).
+  // Conserva los saltos de línea.
+  const notas = String(d?.notas ?? '').replace(/[^\S\n]+/g, ' ').replace(/ ?\n ?/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, 1000);
   if (typeof d?.asociado !== 'boolean') errores.push('Indicá si el cliente es asociado a la Mutual.');
   if (errores.length) return { errores };
   return {
-    datos: { asociado: d.asociado, ...(actividad ? { actividad } : {}), dni, domicilio, ...partes, ...(porPartes ? { nacionalidad, nacimiento } : {}), estado_civil: estado, ...(estado === 'casado' ? { matrimonio_lugar: lugar, matrimonio_fecha: fecha, ...conyuge } : {}), celular, ...(cbu ? { cbu } : {}), ...(alias ? { alias } : {}), ...(hayCuenta ? { cuenta } : {}), ...tercero },
+    datos: { asociado: d.asociado, ...(actividad ? { actividad } : {}), ...(notas ? { notas } : {}), dni, domicilio, ...partes, ...(porPartes ? { nacionalidad, nacimiento } : {}), estado_civil: estado, ...(estado === 'casado' ? { matrimonio_lugar: lugar, matrimonio_fecha: fecha, ...conyuge } : {}), celular, ...(cbu ? { cbu } : {}), ...(alias ? { alias } : {}), ...(hayCuenta ? { cuenta } : {}), ...tercero },
   };
 }
 
@@ -220,10 +223,13 @@ function revisarDatosJuridica(d) {
     tercero = { cuenta_titular: titular, cuenta_cuit: cuit, ...(txt(d?.cuenta_relacion, 120) ? { cuenta_relacion: txt(d?.cuenta_relacion, 120) } : {}) };
   }
   const actividad = txt(d?.actividad, 200);
+  // Notas y aclaraciones de la agencia para la Mutual (opcional; 25/11/2026: por ejemplo, una deuda del Central que ya está paga).
+  // Conserva los saltos de línea.
+  const notas = String(d?.notas ?? '').replace(/[^\S\n]+/g, ' ').replace(/ ?\n ?/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, 1000);
   if (typeof d?.asociado !== 'boolean') errores.push('Indicá si la empresa es asociada a la Mutual.');
   if (errores.length) return { errores };
   return {
-    datos: { persona: 'juridica', asociado: d.asociado, ...(actividad ? { actividad } : {}), domicilio, ...partes, representante_nombre: repNombre, representante_dni: repDni, representante_cargo: repCargo,
+    datos: { persona: 'juridica', asociado: d.asociado, ...(actividad ? { actividad } : {}), ...(notas ? { notas } : {}), domicilio, ...partes, representante_nombre: repNombre, representante_dni: repDni, representante_cargo: repCargo,
       celular, ...(cbu ? { cbu } : {}), ...(alias ? { alias } : {}), ...(hayCuenta ? { cuenta } : {}), ...tercero },
   };
 }

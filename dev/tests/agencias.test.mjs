@@ -512,15 +512,16 @@ test('historial: eliminar oculta del historial pero no reinicia el tope ni borra
   assert.deepEqual(await lista(), []);
 });
 
-test('semáforo: rojo no apto; amarillo y sin antecedentes siguen, sujetos a revisión', async () => {
+test('semáforo: rojo, amarillo y sin antecedentes siguen, sujetos a revisión (las notas llegan a la Mutual)', async () => {
   sql(PARAMS_MUTUAL + "; delete from public.solicitudes_credito");
   await cargarCasosBCRA();
   const ref = (await pedir(agencia, { accion: 'versiones', marca: 1, grupo: 10 })).datos.versiones[0].ref;
   const base = { accion: 'solicitar', ref, anio: '2024', cuotas: 24, vehiculo: 'MARCA UNO SEDAN 1.6', ingresos: true, ingreso: 3_000_000, categoria: 'dependencia', datos: DATOS, consentimiento: true };
   const rojo = (await pedir(agencia, { accion: 'bcra', cuit: CUIT.rojo })).datos.consulta;
-  let r = await pedir(agencia, { ...base, consulta: rojo });
-  assert.equal(r.status, 400);
-  assert.equal(r.datos.error, 'semaforo');
+  let r = await pedir(agencia, { ...base, consulta: rojo, datos: { ...DATOS, notas: 'La deuda del Central ya está paga.\n\n\nAdjunto libre deuda.' } });
+  assert.equal(r.status, 200, r.texto);
+  assert.equal(sql(`select semaforo || ' ' || estado from public.solicitudes_credito where id = '${r.datos.id}'`), 'rojo cargando');
+  assert.equal(sql(`select datos->>'notas' from public.solicitudes_credito where id = '${r.datos.id}'`), 'La deuda del Central ya está paga.\n\nAdjunto libre deuda.');
   const amarillo = (await pedir(agencia, { accion: 'bcra', cuit: CUIT.amarillo })).datos;
   assert.equal(amarillo.semaforo, 'amarillo');
   r = await pedir(agencia, { ...base, consulta: amarillo.consulta });

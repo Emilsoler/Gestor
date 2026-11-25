@@ -9,7 +9,7 @@
 // (solicitudes, parámetros, agencias y cotizaciones) está en Créditos y Cobros → Agencias.
 //
 // El recorrido de la agencia: 1) CUIT del cliente → BCRA (verde «Continuar»; amarillo o sin antecedentes
-// «Continuar – Sujeto a revisión»; rojo «No apto»); 2) vehículo y crédito; 3) si quieren avanzar: ingresos
+// «Continuar – Sujeto a revisión»; rojo también «Continuar – Sujeto a revisión», desde el 25/11/2026); 2) vehículo y crédito; 3) si quieren avanzar: ingresos
 // demostrables (sin eso no sigue) y el ingreso mensual (la cuota no puede pasar el 45 %); cómo obtiene los
 // ingresos; 4) su documentación; 5) datos del cliente con la suya; y se envía todo a la Mutual.
 import { iniciarChat, apagarChat } from './chat.js?v=20261123b';
@@ -47,7 +47,7 @@ const S = {
 function nuevaSol() {
   return {
     abierta: false, ingresos: null, ingreso: '', categoria: '', docs: {}, chk: {},
-    actividad: '', dni: '', nacionalidad: '', nacimiento: '', dom_calle: '', dom_numero: '', dom_piso: '', dom_depto: '', dom_cp: '', dom_localidad: '', dom_departamento: '', dom_provincia: '', estado_civil: '', matrimonio_lugar: '', matrimonio_fecha: '', conyuge_nombre: '', conyuge_dni: '', conyuge_nacionalidad: '', conyuge_domicilio: '', conyuge_nacimiento: '', representante_nombre: '', representante_dni: '', representante_cargo: '', asociado: '', celular: '', cbu: '', alias: '', conformidad: false,
+    actividad: '', notas: '', dni: '', nacionalidad: '', nacimiento: '', dom_calle: '', dom_numero: '', dom_piso: '', dom_depto: '', dom_cp: '', dom_localidad: '', dom_departamento: '', dom_provincia: '', estado_civil: '', matrimonio_lugar: '', matrimonio_fecha: '', conyuge_nombre: '', conyuge_dni: '', conyuge_nacionalidad: '', conyuge_domicilio: '', conyuge_nacimiento: '', representante_nombre: '', representante_dni: '', representante_cargo: '', asociado: '', celular: '', cbu: '', alias: '', conformidad: false,
     cuenta: '', cuenta_titular: '', cuenta_cuit: '', cuenta_relacion: '',
     errores: [], error: '', enviando: false, progreso: '', preparando: 0, enviada: false, envio: null,
   };
@@ -144,13 +144,13 @@ function cuitValido(c) {
   return v !== 10 && v === +c[10];
 }
 const cuitLindo = (c) => (/^\d{11}$/.test(c) ? `${c.slice(0, 2)}-${c.slice(2, 10)}-${c.slice(10)}` : c);
-/** Lo que ve la agencia según el color del BCRA. Amarillo y sin antecedentes siguen, pero «sujeto a revisión». */
+/** Lo que ve la agencia según el color del BCRA. Amarillo, rojo y sin antecedentes siguen, pero «sujeto a revisión». */
 const SEMAFORO = {
   verde: { color: 'Verde', accion: 'Continuar', texto: 'sin atrasos informados en el sistema financiero.', sigue: true },
   amarillo: { color: 'Amarillo', accion: 'Continuar – Sujeto a revisión', texto: 'tiene alguna observación en el sistema financiero. La Mutual la va a revisar.', sigue: true },
   sin_datos: { color: 'Sin antecedentes', accion: 'Continuar – Sujeto a revisión', texto: 'no figura con deudas en el sistema financiero. La Mutual lo va a revisar.', sigue: true },
   sin_consulta: { color: 'Sin consulta', accion: 'Continuar sin consulta BCRA', texto: 'el BCRA no respondió. Es solo para probar: sin consulta no se puede enviar una solicitud.', sigue: true },
-  rojo: { color: 'Rojo', accion: 'No apto', texto: 'tiene atrasos o cheques rechazados informados. No se puede solicitar el crédito.', sigue: false },
+  rojo: { color: 'Rojo', accion: 'Continuar – Sujeto a revisión', texto: 'tiene atrasos o cheques rechazados informados. Podés seguir con la simulación y la solicitud: la Mutual lo va a revisar. Al final, en «Notas y aclaraciones», contanos si la deuda ya está paga o si hay algo para explicar.', sigue: true },
 };
 
 async function consultarCliente() {
@@ -303,7 +303,7 @@ const sinAdjuntar = () => docsRequeridos(S.sol.categoria, S.res.anio).filter((k)
 
 function revisarSolicitud() {
   const L = S.sol, errores = [];
-  const rd = revisarDatos({ actividad: L.actividad, dni: L.dni, nacionalidad: L.nacionalidad, nacimiento: L.nacimiento, dom_calle: L.dom_calle, dom_numero: L.dom_numero, dom_piso: L.dom_piso, dom_depto: L.dom_depto, dom_cp: L.dom_cp, dom_localidad: L.dom_localidad, dom_departamento: L.dom_departamento, dom_provincia: L.dom_provincia, estado_civil: L.estado_civil, matrimonio_lugar: L.matrimonio_lugar, matrimonio_fecha: L.matrimonio_fecha,
+  const rd = revisarDatos({ actividad: L.actividad, notas: L.notas, dni: L.dni, nacionalidad: L.nacionalidad, nacimiento: L.nacimiento, dom_calle: L.dom_calle, dom_numero: L.dom_numero, dom_piso: L.dom_piso, dom_depto: L.dom_depto, dom_cp: L.dom_cp, dom_localidad: L.dom_localidad, dom_departamento: L.dom_departamento, dom_provincia: L.dom_provincia, estado_civil: L.estado_civil, matrimonio_lugar: L.matrimonio_lugar, matrimonio_fecha: L.matrimonio_fecha,
     conyuge_nombre: L.conyuge_nombre, conyuge_dni: L.conyuge_dni, conyuge_nacionalidad: L.conyuge_nacionalidad, conyuge_domicilio: L.conyuge_domicilio, conyuge_nacimiento: L.conyuge_nacimiento,
     representante_nombre: L.representante_nombre, representante_dni: L.representante_dni, representante_cargo: L.representante_cargo, asociado: asociadoDe(L),
     celular: L.celular, cbu: L.cbu, alias: L.alias, cuenta: L.cuenta, cuenta_titular: L.cuenta_titular, cuenta_cuit: L.cuenta_cuit, cuenta_relacion: L.cuenta_relacion }, hoy(), juridica());
@@ -905,6 +905,8 @@ function vistaSolicitud() {
         <label class="f">CUIT o CUIL del titular<input data-campo="cuenta_cuit" inputmode="numeric" autocomplete="off" maxlength="20" value="${v('cuenta_cuit')}"></label>
         <label class="f ancho">Relación con el cliente (opcional)<input data-campo="cuenta_relacion" autocomplete="off" maxlength="120" placeholder="Ej.: agencia vendedora, cónyuge" value="${v('cuenta_relacion')}"></label></div>` : ''}
       ${L.cuenta === 'terceros' ? '<p class="hint m0">Si la cuenta es de un tercero, sumá a los archivos una constancia que muestre el CBU o alias y quién es el titular.</p>' : ''}</div>
+    <div class="bloque"><label class="f">Notas y aclaraciones (opcional)<textarea data-campo="notas" maxlength="1000" rows="4" placeholder="Ej.: el Central informa una deuda que ya está paga y todavía no se actualizó; te adjunto el libre deuda.">${v('notas')}</textarea></label>
+      <p class="hint m0">Escribí cualquier cosa que la Mutual tenga que saber para evaluar el crédito. Si hace falta un libre deuda u otro comprobante, subilo en la documentación (paso 4).</p></div>
     <label class="check"><input type="checkbox" id="chkConformidad" ${L.conformidad ? 'checked' : ''}> El cliente está de acuerdo con enviar estos datos y documentos a la Asociación Mutual Bell para que evalúe el crédito.</label>
     ${sinAdjuntar().length ? '<p class="hint m0">No adjuntaste ningún archivo. Podés enviar la solicitud igual y mandar los documentos a la Mutual por otra vía.</p>' : ''}
     ${L.errores.length ? `<div class="aviso m0" role="alert" id="erroresSol"><b>Antes de enviar, falta:</b><ul>${L.errores.map((e) => `<li>${esc(e)}</li>`).join('')}</ul></div>` : ''}
@@ -1108,7 +1110,7 @@ function vistaDetalle() {
     ${bloque('Cliente', [fila('Nombre', x.denominacion), fila('CUIT', cuitLindo(x.cuit)), fila('DNI', d.dni), fila('Celular', d.celular), fila('Empleo o actividad', d.actividad),
       fila('Nacionalidad', d.nacionalidad), fila('Fecha de nacimiento', fechaLinda(d.nacimiento)), fila(d.persona === 'juridica' ? 'Sede social' : 'Domicilio', d.domicilio), fila('Estado civil', ESTADO_CIVIL[d.estado_civil] || d.estado_civil),
       fila('Representante', d.representante_nombre), fila('DNI del representante', d.representante_dni), fila('Cargo', d.representante_cargo),
-      fila('Asociado a la Mutual', d.asociado === true ? 'Sí' : d.asociado === false ? 'No' : '')])}
+      fila('Asociado a la Mutual', d.asociado === true ? 'Sí' : d.asociado === false ? 'No' : ''), fila('Notas y aclaraciones', d.notas)])}
     ${d.estado_civil === 'casado' ? bloque('Matrimonio y cónyuge', [fila('Lugar del matrimonio', d.matrimonio_lugar), fila('Fecha del matrimonio', fechaLinda(d.matrimonio_fecha)), fila('Cónyuge', d.conyuge_nombre),
       fila('DNI del cónyuge', d.conyuge_dni), fila('Nacionalidad del cónyuge', d.conyuge_nacionalidad), fila('Nacimiento del cónyuge', fechaLinda(d.conyuge_nacimiento)), fila('Domicilio del cónyuge', d.conyuge_domicilio)]) : ''}
     ${bloque('Crédito', [fila('Vehículo', x.vehiculo ? `${x.vehiculo} (${etiquetaAnio(x.anio)})` : ''), fila('Monto', plata(x.monto)), fila('Cuotas', `${x.cuotas} × ${plata(x.cuota)}`),
@@ -1130,7 +1132,7 @@ function vistaSolicitudes() {
       <div class="card-cab"><b>${esc(x.denominacion || cuitLindo(x.cuit))}</b>${etqEstado(x.estado)}</div>
       ${DICE_ESTADO[x.estado] ? `<div class="hint">${esc(DICE_ESTADO[x.estado])}${S.novedades?.has(x.id) ? ' <b>Novedad</b>' : ''}</div>` : S.novedades?.has(x.id) ? '<div class="hint"><b>Novedad</b></div>' : ''}
       <div class="acciones no-imprimir"><button class="btn chico" type="button" data-versol="${esc(x.id)}">Ver mi solicitud</button></div>
-      <div class="hint">${esc(fechaHora(x.momento))} · <span class="mono">${esc(cuitLindo(x.cuit))}</span>${['amarillo', 'sin_datos'].includes(x.semaforo) ? ' · sujeta a revisión' : ''}</div>
+      <div class="hint">${esc(fechaHora(x.momento))} · <span class="mono">${esc(cuitLindo(x.cuit))}</span>${['amarillo', 'rojo', 'sin_datos'].includes(x.semaforo) ? ' · sujeta a revisión' : ''}</div>
       <div>${esc(x.vehiculo)} <span class="hint">${esc(etiquetaAnio(x.anio))}</span></div>
       <div class="mono">${plata(x.monto)} · ${x.cuotas} × ${plata(x.cuota)}</div>
       ${x.nota ? `<p class="m0">Respuesta de la Mutual: ${esc(x.nota)}</p>` : ''}
