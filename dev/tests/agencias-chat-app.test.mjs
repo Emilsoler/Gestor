@@ -164,6 +164,43 @@ test('cerrar el chat, el punto de mensaje nuevo y «Nueva conversación»', asyn
   assert.equal(sql(`select count(*) from public.chats_agencia where estado <> 'cerrado'`), '0');
 });
 
+test('la Mutual inicia una conversación desde el panel, la agencia la recibe y la Mutual la elimina desde la lista', async () => {
+  const p = await pagina('mutual', { width: 1280, height: 900 });
+  await entrarCobranzas(p);
+  await p.evaluate(() => { location.hash = '#agencias-chats'; });
+  await p.waitForSelector('[data-a="ag-chat-nuevo"]');
+  await p.click('[data-a="ag-chat-nuevo"]');
+  await p.click('[data-a="ag-chat-iniciar"]');
+  assert.match(norm(await p.textContent('.ag-nuevo-chat')), /Elegí a quién escribirle/);
+  await p.selectOption('[data-k="ag.chat.nuevo.vendedor"]', { index: 1 });
+  await p.fill('[data-k="ag.chat.nuevo.texto"]', 'Hola, te escribe la Mutual por una solicitud.');
+  await p.click('[data-a="ag-chat-iniciar"]');
+  await toast(p, 'Mensaje enviado');
+  await p.waitForSelector('#agChatTexto');
+  assert.match(norm(await p.textContent('.ag-msg.mutual')), /te escribe la Mutual/);
+  assert.match(norm(await p.textContent('.ag-hilo h3')), /Salón Prueba.*En conversación/);
+  // La agencia ve el mensaje al abrir la «M».
+  await agenciaPag.reload();
+  await agenciaPag.waitForSelector('#btnM .punto', { timeout: 40000 });
+  await agenciaPag.click('#btnM');
+  await agenciaPag.waitForSelector('.msg.mutual:has-text("te escribe la Mutual")');
+  // Eliminar desde la lista, con confirmación.
+  await p.click('[data-a="ag-chat-volver"]');
+  await p.waitForSelector('.ag-chat-fila');
+  const antes = await p.locator('.ag-chat-fila').count();
+  const nueva = p.locator('.ag-chat-item', { hasText: 'te escribe la Mutual' });
+  await nueva.locator('[data-a="ag-chat-borrar-fila-preguntar"]').click();
+  await p.click('[data-a="ag-chat-borrar-fila-no"]');
+  assert.equal(await p.locator('.ag-chat-fila').count(), antes, 'Con «No» la conversación sigue');
+  await nueva.locator('[data-a="ag-chat-borrar-fila-preguntar"]').click();
+  await p.click('[data-a="ag-chat-borrar-fila"]');
+  await toast(p, 'Conversación eliminada');
+  await p.waitForFunction((n) => document.querySelectorAll('.ag-chat-fila').length === n, antes - 1);
+  assert.equal(sql(`select count(*) from public.chats_agencia where estado <> 'cerrado'`), '0');
+  await p.screenshot({ path: '/tmp/chat-mutual-nueva.png' });
+  await p.context().close();
+});
+
 test('con el chat apagado la agencia no ve la «M»; y la Mutual lo prende desde Parámetros con la hoja de respuestas', async () => {
   sql(`update public.ajustes_agencias set chat_habilitado = false`);
   const p = await pagina('agencia2', { width: 1100, height: 800 });

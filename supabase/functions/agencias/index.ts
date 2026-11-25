@@ -19,7 +19,7 @@
 // archivo), enviar {id}, solicitudes, solicitud {id}, rapida {capital, cuotas, tasa, gastos} (solo la agencia con simulacion_rapida); y para la Mutual, archivos {id}, eliminar {id} y crear_agencia {nombre, email, notas}.
 // Chat «M» (migración 0038): de la agencia, chat_leer {desde, leido}, chat_enviar {texto}, chat_audio (multipart: audio, seg; 0040),
 // chat_audio_ver {mensaje}, chat_representante y chat_cerrar;
-// de la Mutual, chats, chat_resumen, chat_ver, chat_responder, chat_audio_ver, chat_cerrar {chat}, chat_eliminar {chat}, push_clave, push_suscribir, push_quitar y push_probar.
+// de la Mutual, chats, chat_resumen, chat_ver, chat_responder, chat_audio_ver, chat_cerrar {chat}, chat_eliminar {chat}, chat_iniciar {vendedor, texto}, push_clave, push_suscribir, push_quitar y push_probar.
 //
 // BCRA: la agencia consulta el CUIT de su cliente en la Central de Deudores (API pública). La consulta queda
 // guardada entera en consultas_bcra para la Mutual; a la agencia se le devuelven el color, el nombre y, del último
@@ -571,6 +571,28 @@ async function accionChat(accion: string, pedido: any, ctx: { ag: any; a: any; u
     await rest('DELETE', `chats_agencia?id=eq.${pedido.chat}`);
     await borrarArchivos((audios || []).map((x: any) => String(x.audio_path)), CARPETA_AUDIOS);
     return ok({ ok: true });
+  }
+  if (accion === 'chat_iniciar' && ag.miembro) {
+    // La Mutual abre la conversación: un mensaje suyo a un vendedor. Queda «en conversación» (el asistente se calla) y la agencia
+    // la ve con el punto de «mensaje nuevo» al abrir el cotizador. Si ese vendedor ya tenía una conversación abierta, se escribe en ella.
+    if (!esUuid(pedido.vendedor)) throw new Falla('Elegí a quién escribirle.', 400, 'pedido');
+    const t = textoDeAgencia(pedido.texto);
+    if (!t) throw new Falla('Escribí el mensaje.', 400, 'pedido');
+    if (!a.chat_habilitado) throw new Falla('El chat está apagado: las agencias no ven el botón «M». Prendelo en Parámetros → «Chat con la Mutual».', 409, 'chat_apagado');
+    const [v] = await rest('GET', `agencia_vendedores?id=eq.${pedido.vendedor}&select=id,agencia_id,nombre,activo`);
+    if (!v || !v.activo) throw new Falla('Ese vendedor no existe o está pausado.', 404, 'vendedor');
+    const [g] = await rest('GET', `agencias?id=eq.${v.agencia_id}&select=id,nombre,activa`);
+    if (!g || !g.activa) throw new Falla('Esa agencia está pausada.', 409, 'agencia');
+    let c = await chatAbierto(v.id);
+    if (!c) {
+      try { [c] = await rest('POST', 'chats_agencia', { agencia_id: g.id, vendedor_id: v.id, agencia: String(g.nombre).slice(0, 120), vendedor: String(v.nombre || '').slice(0, 120), estado: 'humano' }); } catch (e) {
+        c = await chatAbierto(v.id); // dos pedidos a la vez
+        if (!c) throw e;
+      }
+    }
+    const m = await agregar(c.id, 'mutual', t);
+    await marcar(c.id, { estado: 'humano', espera_desde: null, sin_leer_agencia: true, sin_leer_mutual: false });
+    return ok({ chat: c.id, mensaje: m });
   }
   if (accion === 'chat_audio_ver' && ag.miembro) return ok(await audioDeMensaje(pedido.mensaje));
   if (accion === 'push_clave') {

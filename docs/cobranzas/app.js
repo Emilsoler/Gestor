@@ -6,7 +6,7 @@ import {
   consultarInfoAuto, consultarInfoAutoTodo, consultarBCRA, detalleConsulta, detalleGuardado, borrarConsulta, consultarCheque, entidadesCheques, borrarConsultaCheque, crearCasoRefi, actualizarCasoRefi, borrarCasoRefi, archivarCasoRefi,
   crearDescuento, guardarDescuento, borrarDescuento, estadoCheque,
   leerAgencias, leerConectadas, contarSolicitudes, guardarAjustesAgencias, altaAgencia, crearAgencia, crearVendedor, activarVendedor, activarAgencia, resolverSolicitud, documentosSolicitud, leerDocumentos, eliminarSolicitud, eliminarCotizaciones, estadisticasAgencias,
-  chatsAgencias, chatResumen, verChat, responderChat, cerrarChat, eliminarChat, claveAvisos, registrarAvisos, quitarAvisos, probarAvisos,
+  chatsAgencias, chatResumen, verChat, responderChat, cerrarChat, eliminarChat, iniciarChat, claveAvisos, registrarAvisos, quitarAvisos, probarAvisos,
 } from './datos.js';
 import { htmlAgencias, htmlConectadas, htmlFaltanGen, avisoInicio, parametrosEnTexto, leerParametros, TABS_AGENCIAS } from './agencias.js';
 import {
@@ -717,6 +717,26 @@ async function accionAgencias(act, b) {
   if (act === 'ag-ir-chats') { G.tab = 'chats'; G.chat.hilo = null; verVista('agencias'); return; }
   if (act === 'ag-chat-abrir') { await abrirHiloAgencia(id); return; }
   if (act === 'ag-chat-volver') { G.chat.hilo = null; G.chat.borrar = false; G.chat.error = ''; await cargarChats(true); render(); return; }
+  if (act === 'ag-chat-nuevo') { const C = G.chat; C.nuevo = C.nuevo ? null : { vendedor: '', texto: '', enviando: false, error: '' }; render(); return; }
+  if (act === 'ag-chat-iniciar') {
+    const N = G.chat.nuevo, texto = String(N?.texto || '').trim();
+    if (!N) return;
+    if (!N.vendedor) { N.error = 'Elegí a quién escribirle.'; render(); return; }
+    if (!texto) { N.error = 'Escribí el mensaje.'; render(); return; }
+    N.enviando = true; N.error = ''; render();
+    try {
+      const r = await iniciarChat(N.vendedor, texto);
+      G.chat.nuevo = null; toast('Mensaje enviado');
+      await abrirHiloAgencia(r.chat);
+    } catch (e) { N.error = mensaje(e, 'no se pudo iniciar la conversación'); N.enviando = false; render(); }
+    return;
+  }
+  if (act === 'ag-chat-borrar-fila-preguntar' || act === 'ag-chat-borrar-fila-no') { G.chat.borrarFila = act === 'ag-chat-borrar-fila-preguntar' ? id : ''; render(); return; }
+  if (act === 'ag-chat-borrar-fila') {
+    try { await eliminarChat(id); } catch (e) { G.chat.error = mensaje(e, 'no se pudo eliminar la conversación'); G.chat.borrarFila = ''; render(); return; }
+    G.chat.borrarFila = ''; G.chat.error = ''; toast('Conversación eliminada');
+    await cargarChats(true); await contarPendientes(); render(); return;
+  }
   if (act === 'ag-chat-enviar') {
     const C = G.chat, texto = String(C.texto || '').trim();
     if (!texto) { C.error = 'Escribí la respuesta.'; render(); return; }

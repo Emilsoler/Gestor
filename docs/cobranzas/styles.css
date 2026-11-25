@@ -862,6 +862,9 @@ body:has(#drawer:not([hidden])) #btnClaudeWeb,body:has(#menu:not([hidden])) #btn
 .ag-chats{display:grid;gap:8px}
 .ag-chat-fila{display:grid;gap:3px;text-align:left;width:100%;font:inherit;color:var(--fg);background:var(--sunken);border:1px solid var(--line-soft);border-radius:var(--r-s);padding:10px 12px;cursor:pointer}
 .ag-chat-fila:hover{border-color:var(--accent)}
+.ag-chat-item{display:grid;gap:6px}
+.ag-chat-x{justify-self:end}
+.ag-nuevo-chat{display:grid;gap:8px;margin-bottom:12px}
 .ag-chat-fila.espera{border-color:var(--warn);box-shadow:inset 3px 0 0 var(--warn)}
 .ag-chat-quien{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .ag-chat-ultimo{overflow-wrap:anywhere;font-size:14px}

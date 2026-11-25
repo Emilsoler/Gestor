@@ -307,7 +307,7 @@ export function htmlAgencias(A, est) {
   const msg = est.msg ? `<p class="aviso-chico" role="status">${esc(est.msg)}</p>` : '';
   let cuerpo;
   if (est.tab === 'chats') {
-    cuerpo = htmlChats(est.chat || {}, A.ajustes);
+    cuerpo = htmlChats(est.chat || {}, A.ajustes, A);
   } else if (est.tab === 'parametros') {
     const p = est.p, campo = (k, t, extra = '') => `<label class="f">${esc(t)}<input data-k="ag.p.${k}" value="${esc(p[k] ?? '')}" inputmode="decimal" autocomplete="off"${extra}></label>`;
     cuerpo = `<section class="card">
@@ -465,20 +465,41 @@ function htmlHilo(C) {
     ${C.error ? `<p class="aviso-chico" role="alert">${esc(C.error)}</p>` : ''}</section>`;
 }
 
-export function htmlChats(C, ajustes) {
+/** El formulario para escribirle primero a una agencia: elige el vendedor (agencia · vendedor) y el mensaje. */
+function htmlNuevoChat(C, A) {
+  const N = C.nuevo;
+  if (!N) return '';
+  const agencias = (A?.agencias || []).filter((x) => x.activa);
+  const opciones = agencias.flatMap((x) => {
+    const vs = vendedoresDe(A, x.id).filter((v) => v.activo);
+    return vs.map((v) => `<option value="${esc(v.id)}"${N.vendedor === v.id ? ' selected' : ''}>${esc(vendedoresDe(A, x.id).length > 1 ? `${x.nombre} · ${v.nombre}` : x.nombre)}</option>`);
+  }).join('');
+  return `<div class="ag-nuevo-chat">
+    <label class="f">Para<select data-k="ag.chat.nuevo.vendedor"><option value="">Elegí una agencia…</option>${opciones}</select></label>
+    <label class="f">Mensaje<textarea data-k="ag.chat.nuevo.texto" rows="3" maxlength="1500" placeholder="Escribí lo que querés decirle a la agencia">${esc(N.texto || '')}</textarea></label>
+    ${N.error ? `<p class="aviso-chico" role="alert">${esc(N.error)}</p>` : ''}
+    <div class="actions"><button class="btn primary" data-a="ag-chat-iniciar"${N.enviando ? ' disabled' : ''}>Enviar</button><button class="btn" data-a="ag-chat-nuevo">Cancelar</button></div></div>`;
+}
+
+export function htmlChats(C, ajustes, A) {
   if (C.hilo) return htmlHilo(C);
   const apagado = ajustes && !ajustes.chat_habilitado;
   const filas = (C.lista || []).map((x) => {
     const [t, clase] = ESTADO_CHAT[x.estado] || [x.estado, ''];
     const u = x.ultimo;
     const punto = x.sin_leer_mutual ? '<span class="sem-punto rojo" role="img" aria-label="Sin leer"></span>' : '';
-    return `<button class="ag-chat-fila${x.estado === 'espera' ? ' espera' : ''}" data-a="ag-chat-abrir" data-id="${esc(x.id)}">
-      <span class="ag-chat-quien"><b>${esc(x.agencia)}</b> ${punto}<span class="tag ${clase}">${esc(t)}</span></span>
+    const confirmar = C.borrarFila === x.id;
+    return `<div class="ag-chat-item"><button class="ag-chat-fila${x.estado === 'espera' ? ' espera' : ''}" data-a="ag-chat-abrir" data-id="${esc(x.id)}">
+      <span class="ag-chat-quien"><b>${esc(x.agencia)}</b>${x.vendedor && x.vendedor !== x.agencia ? ` <span class="hint">${esc(x.vendedor)}</span>` : ''} ${punto}<span class="tag ${clase}">${esc(t)}</span></span>
       <span class="ag-chat-ultimo">${u ? `<span class="hint">${esc(DE_CHAT[u.de] || '')}:</span> ${esc(corto(u.texto))}` : ''}</span>
-      <span class="hint">${esc(fechaHora(x.actualizado))}</span></button>`;
+      <span class="hint">${esc(fechaHora(x.actualizado))}</span></button>
+      ${confirmar
+        ? `<div class="aviso-chico ag-borrar" role="alert"><span>¿Eliminar la conversación con ${esc(x.agencia)}? No se puede deshacer.</span><div class="actions"><button class="btn danger small" data-a="ag-chat-borrar-fila" data-id="${esc(x.id)}">Sí, eliminar</button><button class="btn small" data-a="ag-chat-borrar-fila-no">No</button></div></div>`
+        : `<button class="btn small ag-chat-x" data-a="ag-chat-borrar-fila-preguntar" data-id="${esc(x.id)}" aria-label="Eliminar la conversación con ${esc(x.agencia)}">Eliminar</button>`}</div>`;
   }).join('');
   return `${htmlAvisos(C)}
-    <section class="card"><div class="card-cab"><h3>Conversaciones con las agencias</h3><button class="btn small" data-a="ag-recargar">Actualizar</button></div>
+    <section class="card"><div class="card-cab"><h3>Conversaciones con las agencias</h3><div class="actions"><button class="btn small primary" data-a="ag-chat-nuevo">${C.nuevo ? 'Cancelar' : 'Nueva conversación'}</button><button class="btn small" data-a="ag-recargar">Actualizar</button></div></div>
+      ${htmlNuevoChat(C, A)}
       ${apagado ? '<p class="aviso-chico m0">El chat está apagado: las agencias no ven el botón «M». Se prende en Parámetros → «Chat con la Mutual».</p>' : ''}
       ${C.error ? `<p class="aviso-chico" role="alert">${esc(C.error)}</p>` : ''}
       ${filas ? `<div class="ag-chats">${filas}</div>` : '<p class="hint m0">Todavía no hay conversaciones. Cuando una agencia te escriba desde el botón «M», aparece acá.</p>'}

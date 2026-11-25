@@ -283,6 +283,30 @@ test('la Mutual elimina una conversación con sus mensajes; una agencia no puede
   assert.equal(sql(`select count(*) from public.mensajes_agencia where chat_id = '${c.id}'`), '0');
 });
 
+test('la Mutual inicia una conversación con un vendedor: la agencia la ve sin leer y puede contestar; no se duplica', async () => {
+  const vend = sql(`select v.id from public.agencia_vendedores v join public.agencias a on a.id = v.agencia_id where a.email = 'otra@test.local'`).trim();
+  assert.match(vend, /^[0-9a-f-]{36}$/);
+  assert.equal((await pedir(agencia, { accion: 'chat_iniciar', vendedor: vend, texto: 'hola' })).status !== 200, true, 'una agencia no inicia');
+  assert.equal((await pedir(emi, { accion: 'chat_iniciar', vendedor: 'no-es-uuid', texto: 'hola' })).status, 400);
+  assert.equal((await pedir(emi, { accion: 'chat_iniciar', vendedor: vend, texto: '   ' })).status, 400);
+  const r = await pedir(emi, { accion: 'chat_iniciar', vendedor: vend, texto: 'Hola, te escribo de la Mutual.' });
+  assert.equal(r.status, 200);
+  assert.equal(sql(`select estado || '/' || sin_leer_agencia from public.chats_agencia where id = '${r.datos.chat}'`).trim(), 'humano/true');
+  const v = await pedir(otra, { accion: 'chat_leer', desde: 0 });
+  assert.equal(v.datos.chat.sin_leer, true);
+  assert.equal(v.datos.mensajes[0].de, 'mutual');
+  assert.equal((await pedir(agencia, { accion: 'chat_leer', desde: 0 })).datos.chat, null, 'otra agencia no ve nada');
+  // Si ya hay una abierta, se escribe en la misma.
+  const r2 = await pedir(emi, { accion: 'chat_iniciar', vendedor: vend, texto: 'Un segundo mensaje.' });
+  assert.equal(r2.datos.chat, r.datos.chat);
+  assert.equal(sql(`select count(*) from public.mensajes_agencia where chat_id = '${r.datos.chat}'`).trim(), '2');
+  // Con el chat apagado no se puede.
+  sql(`update public.ajustes_agencias set chat_habilitado = false`);
+  assert.equal((await pedir(emi, { accion: 'chat_iniciar', vendedor: vend, texto: 'x' })).status, 409);
+  sql(`update public.ajustes_agencias set chat_habilitado = true`);
+  assert.equal((await pedir(emi, { accion: 'chat_eliminar', chat: r.datos.chat })).status, 200);
+});
+
 function sqlUnica(q) { try { sql(q); return false; } catch { return true; } }
 
 test('pedir un representante sin haber escrito nada no se puede; los textos vacíos o larguísimos se acotan', async () => {
