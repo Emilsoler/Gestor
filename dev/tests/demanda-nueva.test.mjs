@@ -63,7 +63,7 @@ test('prendaria: lo leído llena el formulario de «haz DP» y las cuentas dan l
   assert.equal(e.moraFecha, '2025-08-30');
   const v = datosDemanda(F);
   assert.equal(v.dominio, 'KMN065');
-  assert.match(v.demandados, /^SOTO RAMÓN ÁNGEL, DNI Nº 20777888 con domicilio en calle Calle Cuatro nro\. 400 de la ciudad de Bell Ville/);
+  assert.match(v.demandados, /^SOTO RAMÓN ÁNGEL, DNI Nº 20.777.888 con domicilio en calle Calle Cuatro nro\. 400 de la ciudad de Bell Ville/);
 });
 
 test('prendaria: el Word sale con el modelo del estudio y sin campos sin completar; sin la cuota en mora avisa', async () => {
@@ -90,7 +90,7 @@ test('documentos: los datos salen como en la demanda ejemplo del estudio', () =>
   assert.equal(valores.titulos_intro, '9 (nueve) pagarés suscriptos por los demandados');
   assert.equal(valores.sea_condenado, 'sean condenados solidariamente');
   assert.equal(valores.al_demandado, 'a los demandados');
-  assert.match(valores.demandados, /^PÉREZ JUAN CARLOS, DNI Nº 20111222 con domicilio en calle Calle Uno nro\. 100 de la ciudad de Bell Ville, Provincia de Córdoba; GÓMEZ MARÍA LAURA/);
+  assert.match(valores.demandados, /^PÉREZ JUAN CARLOS, DNI Nº 20.111.222 con domicilio en calle Calle Uno nro\. 100 de la ciudad de Bell Ville, Provincia de Córdoba; GÓMEZ MARÍA LAURA/);
   assert.equal(renglones.length, 9);
   assert.equal(renglones[0], '- 1) Pagaré con fecha de libramiento el día 14 de julio de 2025 por la suma de Pesos Trescientos Cincuenta Mil ($ 350.000) con vencimiento el día 15 de septiembre de 2025.');
   assert.equal(renglones[3], '- 4) Pagaré con fecha de libramiento el día 14 de julio de 2025 por la suma de Pesos Trescientos Cincuenta Mil ($ 350.000) con vencimiento el día 15 de febrero de 2026.');

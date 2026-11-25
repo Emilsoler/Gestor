@@ -6,7 +6,7 @@
 // El modelo lo arma `dev/modelo-dp.mjs` (el texto de la demanda del estudio está ahí, al pie de la letra).
 import { liquidar, sumarMeses, ES_FECHA } from './calculo.js';
 import { enLetras, cifra, partirDomicilio, partirVehiculo } from '../oficio.js';
-import { fechaLarga } from './acuerdo.js';
+import { fechaLarga, dniConPuntos } from './acuerdo.js';
 import { r2 } from '../liquidacion.js';
 
 /** Cada campo del modelo con cómo se le dice a la persona cuando falta (queda "[DNI del demandado]" en el Word, a completar a mano). */
@@ -83,7 +83,7 @@ const calleDe = (t) => { const dom = partirDomicilio(t); return dom.numero ? `${
 /** Los datos de un demandado como van en el escrito; lo que falta queda entre corchetes. */
 function textoDemandado(x, i, varios) {
   const t = (v) => String(v ?? '').trim(), sufijo = varios ? ' ' + (i + 1) : '';
-  return `${t(x.nombre).toUpperCase() || `[nombre del demandado${sufijo}]`}, DNI Nº ${t(x.dni) || `[DNI del demandado${sufijo}]`} con domicilio en calle ${calleDe(x.calle) || `[domicilio del demandado${sufijo}]`} de la ciudad de ${t(x.ciudad) || `[ciudad del demandado${sufijo}]`}, Provincia de Córdoba`;
+  return `${t(x.nombre).toUpperCase() || `[nombre del demandado${sufijo}]`}, DNI Nº ${dniConPuntos(x.dni) || `[DNI del demandado${sufijo}]`} con domicilio en calle ${calleDe(x.calle) || `[domicilio del demandado${sufijo}]`} de la ciudad de ${t(x.ciudad) || `[ciudad del demandado${sufijo}]`}, Provincia de Córdoba`;
 }
 /** Los demandados de a uno, unidos con "y" (con tres o más, separados con punto y coma). */
 export function unirDemandados(xs) {
