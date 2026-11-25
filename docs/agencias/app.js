@@ -230,24 +230,28 @@ async function agregarArchivos(slot, files) {
 }
 
 /** Los documentos que se sacan con la cámara del celular, cada uno con su nombre (la Mutual los ve ordenados por ese nombre). */
+// Los tres primeros son fijos; el resto depende de cómo el cliente obtiene sus ingresos (`para`).
 const TIPOS_FOTO = [
-  { k: 'dni_frente', t: 'DNI (frente)' },
-  { k: 'dni_dorso', t: 'DNI (dorso)' },
+  { k: 'dni', t: 'DNI (ambos lados)' },
   { k: 'servicio', t: 'Impuesto o servicio' },
   { k: 'titulo', t: 'Título del automotor' },
-  { k: 'constancia', t: 'Constancia de CUIT o inscripción' },
-  { k: 'recibo', t: 'Recibos de sueldo (últimos 3)' },
-  { k: 'ddjj_iva', t: 'DDJJ de IVA (últimos 6 meses)' },
-  { k: 'ddjj_ganancias', t: 'DDJJ de Ganancias' },
+  { k: 'recibo', t: 'Recibos de sueldo (últimos 3)', para: 'dependencia' },
+  { k: 'constancia', t: 'Constancia de inscripción', para: ['monotributo', 'inscripto'] },
+  { k: 'pagos_mono', t: 'Últimos 3 pagos del monotributo', para: 'monotributo' },
+  { k: 'ddjj_ganancias', t: 'DDJJ de Ganancias (la última)', para: 'inscripto' },
+  { k: 'ddjj_iva', t: 'DDJJ de IVA (últimas 6)', para: 'inscripto' },
 ];
+const tiposFoto = (cat) => TIPOS_FOTO.filter((x) => !x.para || [].concat(x.para).includes(cat));
 
 /** Tilda sola la lista de control cuando ya se sacó la foto que corresponde (la agencia la puede destildar). */
 function tildarSegunFoto(k) {
-  const L = S.sol, c = (L.chk ||= {}), hay = (t) => (L.docs.documentacion || []).some((x) => x.tipo === t);
-  if (k === 'dni_frente' || k === 'dni_dorso') { if (hay('dni_frente') && hay('dni_dorso')) c.dni = true; }
+  const L = S.sol, c = (L.chk ||= {}), n = (t) => (L.docs.documentacion || []).filter((x) => x.tipo === t).length;
+  if (k === 'dni') { if (n('dni') >= 2) c.dni = true; }
   else if (k === 'servicio' || k === 'titulo') c[k] = true;
-  else if (k === 'recibo' && L.categoria === 'dependencia') c.ing0 = true;
-  else if (k === 'constancia' && L.categoria !== 'dependencia') c.ing0 = true;
+  else if (k === 'recibo') c.ing0 = true;
+  else if (k === 'constancia') c.ing0 = true;
+  else if (k === 'pagos_mono') c.ing1 = true;
+  else if (k === 'ddjj_ganancias' || k === 'ddjj_iva') { if (n('ddjj_ganancias') && n('ddjj_iva')) c.ing1 = true; }
 }
 
 /** Una foto sacada con la cámara: se achica como cualquier otra y queda con el nombre del documento («DNI (frente).jpg»). */
@@ -764,7 +768,7 @@ function checklistArchivos(L) {
 
 /** Botones para sacar la foto de cada documento directamente con la cámara (en la compu abren el selector de archivos). */
 function htmlCamara(xs) {
-  const botones = TIPOS_FOTO.map((t) => {
+  const botones = tiposFoto(S.sol.categoria).map((t) => {
     const n = xs.filter((x) => x.tipo === t.k).length;
     return `<label class="camara-btn ${n ? 'hecho' : ''}"><span class="camara-ico" aria-hidden="true">${n ? '✅' : '📷'}</span><span>${esc(t.t)}${n > 1 ? ` (${n})` : ''}</span><input class="oculto" type="file" accept="image/*" capture="environment" data-camara="${t.k}" aria-label="Sacar foto: ${esc(t.t)}"></label>`;
   }).join('');
