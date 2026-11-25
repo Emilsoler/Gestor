@@ -769,7 +769,7 @@ async function accionAgencias(act, b) {
   if (act === 'ag-push-probar') { await probarAvisosAca(); return; }
   if (act === 'ag-conx') { G.conx.abierto = !G.conx.abierto; pintarConectadas(); return; }
   if (act === 'ag-tab') {
-    G.tab = b.dataset.tab; G.msg = ''; G.nueva = null; G.borrarCot = ''; G.selCot.clear(); G.chat.hilo = null; G.chat.error = '';
+    G.tab = b.dataset.tab; G.msg = ''; G.nueva = null; G.borrarCot = ''; G.verCot = ''; G.selCot.clear(); G.chat.hilo = null; G.chat.error = '';
     try { localStorage.setItem('cb.agTab', G.tab); } catch { /* sin almacenamiento */ }
     render(); if (G.tab === 'estadisticas') cargarEstadisticas(); return;
   }
@@ -791,6 +791,7 @@ async function accionAgencias(act, b) {
     toast('Solicitud eliminada');
     await cargarAgencias(); return;
   }
+  if (act === 'ag-cot-ver' || act === 'ag-cot-ver-no') { G.verCot = act === 'ag-cot-ver' ? id : ''; render(); return; }
   if (act === 'ag-cot-preguntar' || act === 'ag-cot-no') { G.borrarCot = act === 'ag-cot-preguntar' ? id : ''; render(); return; }
   // Casilleros de la lista: uno por fila y uno arriba que tilda o destilda todas (las 200 que se ven).
   if (act === 'ag-cot-sel') { if (G.selCot.has(id)) G.selCot.delete(id); else G.selCot.add(id); G.borrarCot = ''; render(); return; }

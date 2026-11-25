@@ -902,3 +902,8 @@ body:has(#drawer:not([hidden])) #btnClaudeWeb,body:has(#menu:not([hidden])) #btn
 .ag-gen-leer{display:grid;gap:8px}
 .ag-gen-leido{display:grid;gap:6px;background:var(--sunken);border:1px solid var(--line-soft);border-radius:var(--r-s);padding:10px 12px;font-size:13.5px}
 .ag-gen-leido ul{padding-left:18px}
+
+.ag-ver{background:var(--sunken);border:1px solid var(--line, rgba(255,255,255,.12));border-radius:var(--r-s);padding:12px 14px;margin:0 0 12px}
+.ag-ver-datos{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px;margin:8px 0 0}
+.ag-ver-datos dt{color:var(--muted, #8a9a94);font-size:12.5px}
+.ag-ver-datos dd{margin:0}
