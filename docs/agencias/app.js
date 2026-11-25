@@ -237,7 +237,7 @@ const TIPOS_FOTO = [
   { k: 'titulo', t: 'Título del automotor' },
   { k: 'constancia', t: 'Constancia de CUIT o inscripción' },
   { k: 'recibo', t: 'Recibo de sueldo' },
-  { k: 'ddjj_iva', t: 'DDJJ de IVA (6)' },
+  { k: 'ddjj_iva', t: 'DDJJ de IVA (últimos 6 meses)' },
   { k: 'ddjj_ganancias', t: 'DDJJ de Ganancias' },
 ];
 
