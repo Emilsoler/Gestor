@@ -38,10 +38,10 @@ const CONCEPTOS = ['Tasa de justicia', 'Aportes Caja de Abogados', 'Martillero',
 const TABS = [['resumen', 'Resumen'], ['liquidacion', 'Liquidación'], ['pagos', 'Pagos'], ['plan', 'Plan'], ['gestiones', 'Gestiones'], ['mensaje', 'WhatsApp'], ['datos', 'Datos']];
 const CLASE = { mora: 's-bad', plan: 's-ok', 'plan-atrasado': 's-warn', 'plan-caer': 's-bad', 'plan-cumplido': 's-ok', juicio: 's-violet', 'al-dia': 's-info' };
 const CHIPS = [['activos', 'Activos'], ['mora', 'En mora'], ['plan', 'Con plan'], ['atrasados', 'Planes atrasados'], ['promesas', 'Promesas'], ['juicio', 'En juicio'], ['cerrados', 'Cancelados y archivados']];
-const VISTAS = { inicio: 'Inicio', deudores: 'Deudores', planes: 'Planes', creditos: 'Aprobación de créditos', agencias: 'Agencias' };
+const VISTAS = { inicio: 'Inicio', deudores: 'Deudores', planes: 'Planes', creditos: 'Aprobación de créditos', demanda: 'Demanda prendaria', agencias: 'Agencias' };
 const AYUDA_CUIT = 'La situación en cada banco o financiera, los últimos 24 meses y los cheques rechazados.';
 const AYUDA_CHEQUE = 'Si el cheque fue denunciado como extraviado, robado o adulterado.';
-const MODOS_CREDITO = [['cuit', 'Deudas por CUIT'], ['cheque', 'Cheques denunciados'], ['vehiculo', 'Vehículo'], ['simulacion', 'Simulación'], ['refi', 'Estado de Deuda y Refinanciación'], ['dp', 'Demanda prendaria'], ['descuento', 'Descuento de cheques']];
+const MODOS_CREDITO = [['cuit', 'Deudas por CUIT'], ['cheque', 'Cheques denunciados'], ['refi', 'Estado de Deuda y Refinanciación'], ['descuento', 'Descuento de cheques'], ['vehiculo', 'Vehículo'], ['simulacion', 'Simulación']];
 const JUICIOS = '../'; // el gestor de juicios, en la misma base
 
 const nuevaSim = () => ({ valor: '', capital: '', capitalManual: false, cuotas: '24', tasa: '7', g: { ...GASTOS_DEFECTO } });
@@ -84,7 +84,7 @@ const S = {
 };
 try { S.vista = VISTAS[localStorage.getItem('cb.vista')] ? localStorage.getItem('cb.vista') : 'inicio'; } catch { /* sin almacenamiento */ }
 try { if (localStorage.getItem('cb.simOrigen') === 'mano') S.cred.simOrigen = 'mano'; } catch { /* sin almacenamiento */ }
-try { const m = localStorage.getItem('cb.credModo'); if (m === 'cheque' || m === 'vehiculo' || m === 'refi' || m === 'simulacion' || m === 'dp' || m === 'descuento') S.cred.modo = m; } catch { /* sin almacenamiento */ }
+try { const m = localStorage.getItem('cb.credModo'); if (m === 'cheque' || m === 'vehiculo' || m === 'refi' || m === 'simulacion' || m === 'descuento') S.cred.modo = m; } catch { /* sin almacenamiento */ }
 try { S.maxi = localStorage.getItem('cb.maxi') === '1'; } catch { /* sin almacenamiento */ }
 try { const t = localStorage.getItem('cb.agTab'); if (TABS_AGENCIAS.some(([k]) => k === t)) S.ag.tab = t; } catch { /* sin almacenamiento */ }
 
@@ -297,11 +297,11 @@ function render() {
   const porAgencias = S.ag.pend + (S.ag.chat.atencion || 0);
   insignia('#nAgencias', porAgencias, 'pend', porAgencias === 1 ? 'cosa de agencias para atender (solicitud o chat)' : 'cosas de agencias para atender (solicitudes y chats)');
   main.innerHTML = {
-    inicio: (t) => htmlConectadas(S.ag.conx) + avisoInicio(S.ag.pend, S.ag.chat.atencion) + vistaInicio(t), deudores: vistaDeudores, planes: vistaPlanes, creditos: vistaCreditos, agencias: vistaAgencias,
+    inicio: (t) => htmlConectadas(S.ag.conx) + avisoInicio(S.ag.pend, S.ag.chat.atencion) + vistaInicio(t), deudores: vistaDeudores, planes: vistaPlanes, creditos: vistaCreditos, demanda: vistaDemandaAparte, agencias: vistaAgencias,
   }[S.vista](todos);
   aplicarAnchos(main);
   if (S.vista === 'inicio') ajustarNombre();
-  $('#fabNuevo').hidden = ['inicio', 'creditos', 'agencias'].includes(S.vista); // en el celular taparía el resultado, y ahí no hace falta (en Inicio está en las acciones rápidas)
+  $('#fabNuevo').hidden = ['inicio', 'creditos', 'demanda', 'agencias'].includes(S.vista); // en el celular taparía el resultado, y ahí no hace falta (en Inicio está en las acciones rápidas)
   // Los 24 meses se ven desde el más reciente: si no entran (celular), el corrimiento arranca a la derecha.
   main.querySelectorAll('.historia-caja').forEach((el) => { el.scrollLeft = el.scrollWidth; });
   devolverFoco(foco);
@@ -875,7 +875,7 @@ async function accionAgencias(act, b) {
 
 function vistaCreditos() {
   const modos = `<nav class="tabs cr-modos" role="tablist" aria-label="Qué consultar">${MODOS_CREDITO.map(([k, l]) => `<button role="tab" data-cr-modo="${k}" aria-selected="${S.cred.modo === k}">${esc(l)}</button>`).join('')}</nav>`;
-  return `<div class="creditos">${modos}${S.cred.modo === 'cheque' ? vistaCheques() : S.cred.modo === 'vehiculo' ? vistaVehiculo() : S.cred.modo === 'refi' ? vistaRefi() : S.cred.modo === 'dp' ? vistaDemanda() : S.cred.modo === 'descuento' ? vistaDescuento() : S.cred.modo === 'simulacion' ? vistaSimulacion() : vistaCuit()}</div>`;
+  return `<div class="creditos">${modos}${S.cred.modo === 'cheque' ? vistaCheques() : S.cred.modo === 'vehiculo' ? vistaVehiculo() : S.cred.modo === 'refi' ? vistaRefi() : S.cred.modo === 'descuento' ? vistaDescuento() : S.cred.modo === 'simulacion' ? vistaSimulacion() : vistaCuit()}</div>`;
 }
 
 function cambiarModo(m) {
@@ -2604,6 +2604,9 @@ function htmlEstadoDemanda(F) {
   return lineas + falta + av.map((a) => `<p class="aviso-chico" role="status">${esc(a)}</p>`).join('');
 }
 
+/** «Demanda prendaria» como pestaña propia del panel lateral (antes era una solapa de Créditos). */
+function vistaDemandaAparte() { return `<div class="creditos solo">${vistaDemanda()}</div>`; }
+
 function vistaDemanda() {
   const F = S.cred.dp, d = dpDeudor();
   subtitulo('Demanda prendaria');
@@ -2657,9 +2660,8 @@ function elegirDemanda(id) {
 /** Desde la ficha del deudor: abre esta pestaña con sus datos ya cargados. */
 function demandaDeLaFicha(id) {
   const d = deudor(id); if (!d) return;
-  S.cred.dp = demandaDesdeDeudor(d, hoy()); S.cred.dpElegir = false; S.cred.modo = 'dp';
-  try { localStorage.setItem('cb.credModo', 'dp'); } catch { /* sin almacenamiento */ }
-  cerrarFicha(); verVista('creditos');
+  S.cred.dp = demandaDesdeDeudor(d, hoy()); S.cred.dpElegir = false;
+  cerrarFicha(); verVista('demanda');
 }
 function accionDemanda(act, a) {
   if (act === 'dp-elegir') { S.cred.dpElegir = true; S.cred.dp.q = ''; render(); return; }

@@ -555,7 +555,7 @@ quitar las dos cosas. 0015 borró el certificado y el permiso guardados y le cer
 persona. Lo que ARCA había respondido se sacó de las consultas guardadas y del historial de cambios. No
 sumar nada de ARCA sin que la persona lo pida.
 
-### Estado de Deuda y Refinanciación (última pestaña de "Créditos", después de "Simulación")
+### Estado de Deuda y Refinanciación (pestaña de "Créditos"; desde el 25/11/2026 "Vehículo" y "Simulación" van al final)
 
 Es la planilla de Excel del estudio (`CALCULO_INTERESES`) con las cuentas de la app. Lo escrito no se guarda
 solo (como en Vehículo y Simulación), pero se puede **guardar como caso** (ver "Casos guardados", más abajo). Las cuentas y el HTML del resultado están en
@@ -608,11 +608,11 @@ solo (como en Vehículo y Simulación), pero se puede **guardar como caso** (ver
   - **Cambiar el texto legal**: reemplazar el .docx conservando los campos que se quieran completar (un campo nuevo se agrega en `datosAcuerdo` y en `CAMPOS_ACUERDO`) y subir `VERSION` en `sw.js`. Los números van entre paréntesis en el propio modelo: `veinticuatro ({{refi_cuotas}})`.
   - El modelo trae los datos de cobro de la Mutual (CUIT, alias y CBU): el repositorio es público, así que no sumar ahí datos de personas. Pruebas: `node --test tests/acuerdo.test.mjs`.
 
-### Demanda prendaria — "haz DP" (pestaña "Demanda prendaria" de "Créditos" y botón de la ficha)
+### Demanda prendaria — "haz DP" (pestaña propia del panel lateral, desde el 25/11/2026; y botón de la ficha)
 
 Arma la demanda ejecutiva prendaria en Word con el modelo del estudio. Los datos se escriben a mano (el formulario es
 siempre editable) o se toman de un deudor ya cargado: "Tomar los datos de un deudor" en la pestaña, o el botón
-"Demanda prendaria (DP)" de la ficha, que abre la pestaña con todo ya cargado. Lo escrito no se guarda.
+"Demanda prendaria (DP)" de la ficha, que abre esa pestaña del panel lateral con todo ya cargado. Lo escrito no se guarda.
 
 - **Código**: cuentas y datos en `docs/cobranzas/demanda.js` (`demandaDesdeDeudor`, `estadoDemanda`, `datosDemanda`,
   `avisosDemanda`, `CAMPOS_DEMANDA`); pantalla en `app.js` (`vistaDemanda`, `descargarDemanda`, estado en `S.cred.dp`).
@@ -633,7 +633,7 @@ siempre editable) o se toman de un deudor ya cargado: "Tomar los datos de un deu
 - **Lo que falta se avisa en pantalla**, arriba del botón de descarga: `faltanDemanda` (en `demanda.js`) lista por su nombre todo dato que va a salir entre corchetes, y `htmlEstadoDemanda` lo muestra y se actualiza al escribir. Salió de que el ejemplo en gris del Registro («Bell Ville N°1») se leía como un dato ya cargado y la demanda se bajó sin él; ahora el ejemplo dice «Ej.: …». **No poner valores por defecto** en el Registro ni en nada del contrato: cambian según la prenda y un dato equivocado va a un escrito judicial.
 - Lo que falte queda como `[nombre del dato]` en el Word. Pruebas: `node --test tests/demanda.test.mjs` (sin stack).
 
-### Descuento de cheques (última pestaña de «Créditos», migración 0035)
+### Descuento de cheques (pestaña de «Créditos», migración 0035)
 
 La Mutual le compra cheques a un cliente (un socio) y le paga hoy el valor menos lo que se descuenta (pedido de la persona
 del 18/11/2026): **interés por días, comisión, sellado y gastos fijos por cheque; sin IVA**. Tres partes:

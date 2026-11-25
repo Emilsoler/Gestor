@@ -58,6 +58,7 @@
   --i-alarma:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='13' r='7.5'/%3E%3Cpath d='M12 9v4.2l2.6 1.6M4.5 4.8 2.8 6.5M19.5 4.8l1.7 1.7'/%3E%3C/svg%3E");
   --i-bandera:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5.5 21V4M5.5 4.5h11l-2.3 4 2.3 4h-11'/%3E%3C/svg%3E");
   --i-auto:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 16.5V12l2-5.2A1.5 1.5 0 0 1 7.4 5.8h9.2a1.5 1.5 0 0 1 1.4 1L20 12v4.5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM4 12h16'/%3E%3Ccircle cx='7.8' cy='14.7' r='1.1'/%3E%3Ccircle cx='16.2' cy='14.7' r='1.1'/%3E%3Cpath d='M6 17.5v1.7M18 17.5v1.7'/%3E%3C/svg%3E");
+  --i-documento:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 2.8H7a1.7 1.7 0 0 0-1.7 1.7v15a1.7 1.7 0 0 0 1.7 1.7h10a1.7 1.7 0 0 0 1.7-1.7V7.5L14 2.8z'/%3E%3Cpath d='M14 2.8v4.7h4.7M8.6 12.2h6.8M8.6 15.6h6.8'/%3E%3C/svg%3E");
   --i-semaforo:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='7.5' y='2.5' width='9' height='19' rx='4.5'/%3E%3Ccircle cx='12' cy='7.5' r='1.6'/%3E%3Ccircle cx='12' cy='12' r='1.6'/%3E%3Ccircle cx='12' cy='16.5' r='1.6'/%3E%3C/svg%3E");
   /* Estos dos van como imagen de fondo de los campos: ya traen su color (el de --muted). */
   --i-buscar:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238aa9a2' stroke-width='1.9' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='6.5'/%3E%3Cpath d='m20 20-4.2-4.2'/%3E%3C/svg%3E");
@@ -122,7 +123,7 @@ body[data-vista="inicio"] .h-vista{display:inline}
 .seg button{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;min-width:0;border:0;background:none;color:var(--muted);padding:8px 6px;border-radius:999px;cursor:pointer;font-weight:500}
 .seg button:hover{color:var(--fg)}
 .seg button[aria-pressed="true"]{background:var(--grad);color:#fff}
-#v_inicio{--i:var(--i-inicio)} #v_deudores{--i:var(--i-personas)} #v_planes{--i:var(--i-agenda)} #v_cobros{--i:var(--i-billete)} #v_creditos{--i:var(--i-semaforo)} #v_agencias{--i:var(--i-auto)}
+#v_inicio{--i:var(--i-inicio)} #v_deudores{--i:var(--i-personas)} #v_planes{--i:var(--i-agenda)} #v_cobros{--i:var(--i-billete)} #v_creditos{--i:var(--i-semaforo)} #v_demanda{--i:var(--i-documento)} #v_agencias{--i:var(--i-auto)}
 .badge{display:inline-grid;place-items:center;flex:none;width:8px;height:8px;padding:0;border-radius:999px;overflow:hidden;color:transparent;background:var(--accent);font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
 .badge.urg{background:var(--bad)} .badge.pend{background:var(--warn)}
 
@@ -708,6 +709,7 @@ body.con-chat .toast{bottom:calc(var(--abajo) + 84px)}  /* que el aviso no tape 
 .tabla.sim-tabla{min-width:0;font-size:12.5px}
 .sim-tabla td{padding:3px 6px}
 @media (min-width:1140px){.cr-sim-vista{grid-row:2}}
+@media (min-width:1140px){.creditos.solo .cr-sim-vista{grid-row:1}}
 
 .sim-otros{margin-top:6px;border-top:1px solid var(--line-soft);padding-top:6px}
 .sim-otros summary{cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12.5px;font-weight:500;color:var(--soft)}
