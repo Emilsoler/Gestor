@@ -237,7 +237,8 @@ const TIPOS_FOTO = [
   { k: 'titulo', t: 'Título del automotor' },
   { k: 'constancia', t: 'Constancia de CUIT o inscripción' },
   { k: 'recibo', t: 'Recibo de sueldo' },
-  { k: 'otro', t: 'Otro documento' },
+  { k: 'ddjj_iva', t: 'DDJJ de IVA (6)' },
+  { k: 'ddjj_ganancias', t: 'DDJJ de Ganancias' },
 ];
 
 /** Tilda sola la lista de control cuando ya se sacó la foto que corresponde (la agencia la puede destildar). */
