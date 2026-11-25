@@ -805,7 +805,7 @@ function htmlCamara(xs) {
     const n = xs.filter((x) => x.tipo === t.k).length;
     return `<label class="camara-btn ${n ? 'hecho' : ''}"><span class="camara-ico" aria-hidden="true">${n ? '✅' : '📷'}</span><span>${esc(t.t)}${n > 1 ? ` (${n})` : ''}</span><input class="oculto" type="file" accept="image/*" capture="environment" data-camara="${t.k}" aria-label="Sacar foto: ${esc(t.t)}"></label>`;
   }).join('');
-  return `<div class="camara"><p class="m0"><b>Sacar fotos con la cámara</b> <span class="hint">Tocá el documento, sacale la foto y queda cargada. Podés repetir el mismo para sumar más (por ejemplo, varios recibos).</span></p>
+  return `<div class="camara"><p class="m0"><b>Opción 1 · Sacale las fotos ahora</b> <span class="hint">Tocá el botón del documento, sacale la foto y queda cargada. Si necesitás más fotos del mismo documento (por ejemplo, varios recibos), tocá el botón otra vez.</span></p>
     <div class="camara-grid">${botones}</div>
     <p class="hint m0">Para que se lea bien: apoyá el documento sobre una mesa lisa, con buena luz y sin sombras, y que se vean los cuatro bordes.</p></div>`;
 }
@@ -817,8 +817,10 @@ function casillero(slot) {
   const etq = xs.length ? `<span class="etq ok">${xs.length} ${xs.length === 1 ? 'archivo' : 'archivos'}</span>` : '<span class="etq">Sin adjuntar</span>';
   return `<div class="doc" id="doc-${slot}">
     <div class="card-cab"><b>${esc(d.titulo)}</b>${etq}</div>
+    ${lleno || L.enviando ? '' : '<p class="m0"><b>Elegí cómo cargarla</b> <span class="hint">Podés usar una opción o combinar las dos.</span></p>'}
     ${lleno || L.enviando ? '' : htmlCamara(xs)}
-    ${lleno || L.enviando ? '' : `<label class="canasta" data-canasta="${slot}"><span class="canasta-t">Arrastrá los archivos acá</span><span class="hint">o tocá para elegirlos (podés elegir varios de una vez)</span><input class="oculto" type="file" accept="application/pdf,image/*" multiple data-slot="${slot}"></label>`}
+    ${lleno || L.enviando ? '' : `<p class="m0"><b>Opción 2 · Subí archivos que ya tenés</b> <span class="hint">Si ya tenés las fotos o los PDF guardados, tocá el botón + Elegir archivos (podés elegir varios a la vez) o arrastralos hasta acá.</span></p>
+    <label class="canasta" data-canasta="${slot}"><span class="canasta-t">Arrastrá los archivos acá</span><span class="canasta-btn" aria-hidden="true">+ Elegir archivos</span><input class="oculto" type="file" accept="application/pdf,image/*" multiple data-slot="${slot}"></label>`}
     ${lleno ? `<p class="hint m0">Llegaste al máximo de ${d.max} archivos.</p>` : ''}
     ${xs.length ? `<ul class="doc-lista">${xs.map((x, i) => `<li><span class="doc-nombre">${esc(x.nombre)}</span><span class="hint">${tamano(x.file.size)}</span><button class="btn chico" type="button" data-quitar="${slot}" data-i="${i}" ${L.enviando ? 'disabled' : ''}>Quitar</button></li>`).join('')}</ul>` : ''}
   </div>`;
