@@ -103,7 +103,7 @@ export function datosDocumentos(lectura) {
   const total = Math.round(pagares.reduce((a, p) => a + (p.monto > 0 ? Math.round(p.monto * 100) : 0), 0)) / 100;
   const n = pagares.length;
   const valores = {
-    demandados: unirDemandados(xs), sea_condenado: varios ? 'sean condenados' : 'sea condenado', al_demandado: varios ? 'a los demandados' : 'al demandado',
+    demandados: unirDemandados(xs), sea_condenado: varios ? 'sean condenados solidariamente' : 'sea condenado', al_demandado: varios ? 'a los demandados' : 'al demandado',
     monto_letras: total > 0 ? enLetras(total) : '', monto: total > 0 ? cifra(total) : '',
     titulos_intro: n ? `${cantidad(n)} ${n === 1 ? 'pagaré suscripto por el demandado' : `pagarés suscriptos por ${varios ? 'los demandados' : 'el demandado'}`}` : '',
   };

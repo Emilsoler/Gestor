@@ -88,7 +88,7 @@ test('documentos: los datos salen como en la demanda ejemplo del estudio', () =>
   assert.equal(valores.monto, '3.150.000');
   assert.equal(valores.monto_letras, 'Tres Millones Ciento Cincuenta Mil');
   assert.equal(valores.titulos_intro, '9 (nueve) pagarés suscriptos por los demandados');
-  assert.equal(valores.sea_condenado, 'sean condenados');
+  assert.equal(valores.sea_condenado, 'sean condenados solidariamente');
   assert.equal(valores.al_demandado, 'a los demandados');
   assert.match(valores.demandados, /^PÉREZ JUAN CARLOS, DNI Nº 20111222 con domicilio en calle Calle Uno nro\. 100 de la ciudad de Bell Ville, Provincia de Córdoba; GÓMEZ MARÍA LAURA/);
   assert.equal(renglones.length, 9);
@@ -115,7 +115,7 @@ test('documentos: el modelo usa solo campos conocidos y el Word repite un rengl�
   assert.equal([...t.matchAll(/Pagaré con fecha de libramiento/g)].length, 9);
   assert.match(t, /vengo a promover demanda ejecutiva en contra de PÉREZ JUAN CARLOS/);
   assert.match(t, /Que se pretende ejecutar 9 \(nueve\) pagarés suscriptos por los demandados que se describen a continuación:/);
-  assert.match(t, /sean condenados al pago de la suma de Pesos Tres Millones Ciento Cincuenta Mil \(\$ 3\.150\.000\) con más intereses y costas\./);
+  assert.match(t, /sean condenados solidariamente al pago de la suma de Pesos Tres Millones Ciento Cincuenta Mil \(\$ 3\.150\.000\) con más intereses y costas\./);
   assert.match(t, /cite y emplace a los demandados a estar a derecho/);
   assert.deepEqual(r.faltan, []);
   // el orden: el renglón 1 antes que el 9, y todos antes del juramento
