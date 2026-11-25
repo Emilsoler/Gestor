@@ -229,6 +229,48 @@ async function agregarArchivos(slot, files) {
   render();
 }
 
+/** Los documentos que se sacan con la cámara del celular, cada uno con su nombre (la Mutual los ve ordenados por ese nombre). */
+const TIPOS_FOTO = [
+  { k: 'dni_frente', t: 'DNI (frente)' },
+  { k: 'dni_dorso', t: 'DNI (dorso)' },
+  { k: 'servicio', t: 'Impuesto o servicio' },
+  { k: 'titulo', t: 'Título del automotor' },
+  { k: 'constancia', t: 'Constancia de CUIT o inscripción' },
+  { k: 'recibo', t: 'Recibo de sueldo' },
+  { k: 'otro', t: 'Otro documento' },
+];
+
+/** Tilda sola la lista de control cuando ya se sacó la foto que corresponde (la agencia la puede destildar). */
+function tildarSegunFoto(k) {
+  const L = S.sol, c = (L.chk ||= {}), hay = (t) => (L.docs.documentacion || []).some((x) => x.tipo === t);
+  if (k === 'dni_frente' || k === 'dni_dorso') { if (hay('dni_frente') && hay('dni_dorso')) c.dni = true; }
+  else if (k === 'servicio' || k === 'titulo') c[k] = true;
+  else if (k === 'recibo' && L.categoria === 'dependencia') c.ing0 = true;
+  else if (k === 'constancia' && L.categoria !== 'dependencia') c.ing0 = true;
+}
+
+/** Una foto sacada con la cámara: se achica como cualquier otra y queda con el nombre del documento («DNI (frente).jpg»). */
+async function agregarFoto(k, files) {
+  const L = S.sol, tipo = TIPOS_FOTO.find((x) => x.k === k), slot = 'documentacion', d = DOCS[slot];
+  if (!tipo) return;
+  L.error = '';
+  for (const f of files) {
+    if ((L.docs[slot]?.length || 0) >= d.max) { L.error = `Van hasta ${d.max} archivos.`; break; }
+    L.preparando++; render();
+    try {
+      const listo = await prepararArchivo(f);
+      const usados = new Set((L.docs[slot] || []).map((x) => x.nombre));
+      const ext = listo.type === 'application/pdf' ? 'pdf' : 'jpg';
+      let n = 1, nombre = `${tipo.t}.${ext}`;
+      while (usados.has(nombre)) { n++; nombre = `${tipo.t} ${n}.${ext}`; }
+      (L.docs[slot] ||= []).push({ file: new File([listo], nombre, { type: listo.type }), nombre, tipo: k });
+      tildarSegunFoto(k);
+    } catch (e) { L.error = e.message; }
+    L.preparando--;
+  }
+  render();
+}
+
 function quitarArchivo(slot, i) {
   const L = S.sol;
   L.docs[slot]?.splice(i, 1);
@@ -719,6 +761,17 @@ function checklistArchivos(L) {
     <div class="checklist-lista">${item('dni', 'DNI, ambos lados')}${item('servicio', 'Impuesto o servicio (domicilio)')}${ingresos}${item('titulo', 'Título del automotor')}</div></div>`;
 }
 
+/** Botones para sacar la foto de cada documento directamente con la cámara (en la compu abren el selector de archivos). */
+function htmlCamara(xs) {
+  const botones = TIPOS_FOTO.map((t) => {
+    const n = xs.filter((x) => x.tipo === t.k).length;
+    return `<label class="camara-btn ${n ? 'hecho' : ''}"><span class="camara-ico" aria-hidden="true">${n ? '✅' : '📷'}</span><span>${esc(t.t)}${n > 1 ? ` (${n})` : ''}</span><input class="oculto" type="file" accept="image/*" capture="environment" data-camara="${t.k}" aria-label="Sacar foto: ${esc(t.t)}"></label>`;
+  }).join('');
+  return `<div class="camara"><p class="m0"><b>Sacar fotos con la cámara</b> <span class="hint">Tocá el documento, sacale la foto y queda cargada. Podés repetir el mismo para sumar más (por ejemplo, varios recibos).</span></p>
+    <div class="camara-grid">${botones}</div>
+    <p class="hint m0">Para que se lea bien: apoyá el documento sobre una mesa lisa, con buena luz y sin sombras, y que se vean los cuatro bordes.</p></div>`;
+}
+
 /** El recuadro donde la agencia suelta o elige todos los archivos juntos. */
 function casillero(slot) {
   const L = S.sol, d = DOCS[slot], xs = L.docs[slot] || [];
@@ -726,6 +779,7 @@ function casillero(slot) {
   const etq = xs.length ? `<span class="etq ok">${xs.length} ${xs.length === 1 ? 'archivo' : 'archivos'}</span>` : '<span class="etq">Sin adjuntar</span>';
   return `<div class="doc" id="doc-${slot}">
     <div class="card-cab"><b>${esc(d.titulo)}</b>${etq}</div>
+    ${lleno || L.enviando ? '' : htmlCamara(xs)}
     ${lleno || L.enviando ? '' : `<label class="canasta" data-canasta="${slot}"><span class="canasta-t">Arrastrá los archivos acá</span><span class="hint">o tocá para elegirlos (podés elegir varios de una vez)</span><input class="oculto" type="file" accept="application/pdf,image/*" multiple data-slot="${slot}"></label>`}
     ${lleno ? `<p class="hint m0">Llegaste al máximo de ${d.max} archivos.</p>` : ''}
     ${xs.length ? `<ul class="doc-lista">${xs.map((x, i) => `<li><span class="doc-nombre">${esc(x.nombre)}</span><span class="hint">${tamano(x.file.size)}</span><button class="btn chico" type="button" data-quitar="${slot}" data-i="${i}" ${L.enviando ? 'disabled' : ''}>Quitar</button></li>`).join('')}</ul>` : ''}
@@ -1062,6 +1116,7 @@ document.addEventListener('change', (e) => {
   else if (t.id === 'selModelo') elegirModelo(t.value);
   else if (t.id === 'selAnio') elegirAnio(t.value);
   else if (t.id === 'selPlazo') { S.plazo = Number(t.value); if (S.res) cotizar(); }
+  else if (t.dataset.camara && t.files?.length) { const xs = [...t.files]; t.value = ''; agregarFoto(t.dataset.camara, xs); }
   else if (t.dataset.slot && t.files?.length) { const xs = [...t.files]; t.value = ''; agregarArchivos(t.dataset.slot, xs); }
   else if (t.id === 'chkConformidad') S.sol.conformidad = t.checked;
 });

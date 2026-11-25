@@ -282,3 +282,11 @@ tr.elegido td{background:#e9e9e9;color:#000;font-weight:600}
 .sol-bloque h3{margin:0;font-size:15px}
 .dato{display:grid;grid-template-columns:minmax(120px,38%) 1fr;gap:8px;align-items:baseline;overflow-wrap:anywhere}
 @media (max-width:520px){.dato{grid-template-columns:1fr;gap:0}}
+
+/* Cámara: un botón por documento */
+.camara{display:grid;gap:8px}
+.camara-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.camara-btn{position:relative;display:flex;gap:8px;align-items:center;min-height:52px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:15px;font-weight:600;cursor:pointer}
+.camara-btn.hecho{background:var(--raised)}
+.camara-ico{font-size:20px;line-height:1}
+@media (min-width:720px){.camara-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
