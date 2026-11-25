@@ -436,6 +436,46 @@ export function actualizarCausa(expte, rev, campos) {
 }
 export const borrarCausa = (expte) => eliminar('causas', expte);
 
+/**
+ * Le pone a una causa cargada como «pendiente» (clave provisoria PEND-n) el N° de expediente que dio el SAC.
+ * Cambia la clave de la causa: la agenda la sigue sola (clave foránea en cascada); los acuerdos y el deudor de
+ * origen, que la guardan como texto, se actualizan acá. Devuelve { fila } o { conflicto: true, actual }.
+ */
+export async function asignarExpte(viejo, rev, nuevo) {
+  const r = await modificar('causas', viejo, rev, { expte: nuevo });
+  if (r.conflicto) return r;
+  quitarLocal('causas', viejo);
+  const c = ponerLocal('causas', r.fila);
+  await sb.from('acuerdos').update({ expte: nuevo }).eq('expte', viejo); // vínculo en texto: si falla, no frena el cambio
+  if (c?.deudor) await sb.from('deudores').update({ expte: nuevo }).eq('id', c.deudor);
+  return r;
+}
+
+/**
+ * Pide a la función `leer-demanda` que lea los PDF de la prenda o los pagarés. `archivos`: File[].
+ * Devuelve lo leído, ya controlado ({ demandados, contrato, vehiculo | pagares, avisos, leidos, omitidos }).
+ */
+export async function leerDemanda(tipo, archivos) {
+  if (!sb) throw Object.assign(new Error('La app no está conectada a su base de datos'), { codigo: 'sin_configurar' });
+  const lista = [];
+  for (const f of archivos) {
+    const b = new Uint8Array(await f.arrayBuffer());
+    let bin = ''; for (let i = 0; i < b.length; i += 0x8000) bin += String.fromCharCode(...b.subarray(i, i + 0x8000));
+    lista.push({ nombre: f.name, tipo: f.type === 'image/jpeg' || /\.jpe?g$/i.test(f.name) ? 'image/jpeg' : 'application/pdf', base64: btoa(bin) });
+  }
+  let r;
+  try { r = await sb.functions.invoke('leer-demanda', { body: { tipo, archivos: lista } }); } catch (e) { throw marcar(e); }
+  if (r.error) {
+    let detalle = null;
+    try { detalle = await r.error.context?.json(); } catch { /* sin cuerpo */ }
+    const e = new Error(detalle?.mensaje || (r.error.name === 'FunctionsFetchError' ? 'Sin conexión: no se pudieron leer los archivos' : 'No se pudieron leer los archivos. Probá de nuevo o completá los datos a mano.'));
+    e.codigo = detalle?.error || 'leer';
+    if (r.error.context?.status === 401) e.sinSesion = true;
+    throw e;
+  }
+  return r.data;
+}
+
 /** Un deudor de Cobranzas (misma base), para armar la causa cuando pasa a juicio. null si no existe. */
 export async function leerDeudor(id) {
   if (!sb) return null;

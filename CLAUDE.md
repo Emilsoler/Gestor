@@ -327,6 +327,30 @@ completo en castellano). No hay datos de causas ni de personas.
   persona. De Gómez Leo están cargados todos los capítulos (I a XVIII); los I a XI y el XVIII como resumen por apartado (`gomez-leo:resumen-b01` a `b25`, el texto del libro no es literal y es de 2004, anterior al CCyC), no las 955 páginas enteras. El art. 340 (cómputo de la perención) sí está, dentro de `cpcc-cba:txt-309`.
 - Las cuentas de usuario no ven la tabla ni sus estadísticas: no hace falta `gestor.sin_estadisticas()` (no hay datos del estudio).
 
+## Hacer demanda (Nueva causa, migración 0053)
+
+En **Causas → Nueva causa**, la sección «Hacer demanda» (pedido de la persona del 25/11/2026) elige **Prendaria** o **Documentos**,
+adjunta los PDF (o fotos JPG) de la prenda o de los pagarés y, al tocar «Crear causa»: la función `leer-demanda` los lee con Claude,
+la causa se carga con lo leído (demandados con DNI y domicilio, tipo, título reclamado) y se baja el Word de la demanda. También se
+puede completar todo a mano (sin elegir tipo, nada cambia).
+
+- **«HAZ Demanda Prendaria»** = haz DP (`docs/cobranzas/demanda.js` y su modelo, ver arriba). **«HAZ Demanda de Documentos»** = demanda
+  ejecutiva de pagarés: modelo `docs/cobranzas/modelos/demanda-documentos.docx`, que arma `node dev/modelo-dd.mjs` con el texto de las
+  demandas de pagarés del estudio (las de Drive, p. ej. «261008- DEMANDA»); solo se reemplazan datos, un renglón por pagaré (`{{pagare}}`,
+  que `armarAcuerdo(..., repetir)` repite). Lo único que cambia respecto del texto de Drive es la numeración (I a V, sin repetir el III).
+  **Pendiente de confirmar con la persona**: el formato del Word (se armó igual que el de la prendaria) y que no dice «solidariamente».
+- **Cuota en mora** (solo prendaria): es lo único que se pregunta a mano; el resto sale del Formulario 03 y del contrato.
+- **Expediente y juzgado «pendiente»**: una causa sin N° de SAC lleva la clave provisoria `PEND-<n>` (la base la acepta desde 0053) y se
+  ve como «pendiente» (`esPend`/`expteTxt` en `app.js`, `docs/demanda-nueva.js`); el juzgado también. Cuando hay número, la ficha tiene
+  «Asignar este N° de expediente» (`asignarExpte` en `datos.js`: cambia la clave; la agenda la sigue sola, y los acuerdos y el deudor de origen
+  se actualizan ahí mismo). Sin número y sin demanda elegida, «Crear causa» también la deja pendiente.
+- **La función** `supabase/functions/leer-demanda/` (`index.ts`, `leer.js`): mismo patrón que `leer-documentos`. Verifica la sesión, manda los
+  archivos a Claude (`DEMANDA_LECTURA_MODELO`, por defecto `claude-sonnet-5-5`; secreto `ANTHROPIC_API_KEY`), controla lo que contesta (DNI, fechas,
+  importes, patente: lo que no pasa queda en null con un aviso) y **no guarda nada**. Las fotos viajan a la API de Claude. Publicar:
+  `deploy_edge_function` con nombre `leer-demanda`, `verify_jwt: true` y sus dos archivos.
+- **Siempre se revisa el Word antes de presentar**: lo que no se pudo leer queda como «[dato]» y la app lo avisa al crear.
+- Pruebas: `node --test tests/demanda-nueva.test.mjs` (sin stack). Publicar: migración 0053, función `leer-demanda`, subir la app.
+
 ## Acciones cautelares (botón de la ficha)
 
 En la ficha, "Acción cautelar" pregunta "¿Solicitar embargo de haberes?" o "¿Solicitar oficio de

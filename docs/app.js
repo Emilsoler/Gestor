@@ -1,7 +1,7 @@
 // Interfaz del gestor. Los datos y la red viven en datos.js.
 import {
   D, iniciar, reconectar, entrar, salir, cambiarClave, alCambiar, mensaje, ultimaDe,
-  crearCausa, guardarCausa, actualizarCausa, borrarCausa,
+  crearCausa, guardarCausa, actualizarCausa, borrarCausa, asignarExpte, leerDemanda,
   crearAcuerdo, actualizarAcuerdo, borrarAcuerdo,
   crearPlantilla, guardarPlantilla, borrarPlantilla,
   crearEscrito, actualizarAgenda, preguntarAClaude, leerChat, guardarChat, leerDeudor,
@@ -37,9 +37,15 @@ const CLAVE_MIN = 10;
 const TAREA_SAC = 'https://claude.ai/scheduled-task/trig_01AFgigkwo8pfvJccpFYUx3n';
 const COBRANZAS = 'cobranzas/'; // la app de cobranzas, en la misma base y con la misma sesión
 
+// Una causa cargada antes de tener N° de SAC lleva la clave provisoria PEND-n y se muestra como «pendiente» (mismo criterio que demanda-nueva.js, que se carga recién al armar una demanda).
+const esPend = (e) => /^PEND-\d+$/.test(String(e ?? ''));
+const expteTxt = (e) => (esPend(e) ? 'pendiente' : String(e ?? ''));
+const DEM_VACIA = () => ({ modo: '', archivos: [], mora: '' }); // «Hacer demanda» de Nueva causa: prendaria | documentos, los archivos adjuntos y la cuota en mora
+
 const S = {
   pantalla: 'arranque',
   q: '', estado: '', nom: '', tag: TAG_INICIAL, quick: '', arch: false, view: 'inicio', sort: { k: 'dias', dir: -1 },
+  dem: DEM_VACIA(),
   open: null, isNew: false, confirmDel: false, choque: null, // ficha abierta
   fh: 'todo', // qué movimientos se ven en la ficha: todos o un tipo (TIPOS_MOV)
   planilla: false, liqSucia: false, // la planilla de liquidación está a la vista / tiene cambios sin guardar
@@ -291,7 +297,7 @@ function tagsHtml(c, antes = '') {
 }
 
 /** Juzgado como lo escribe el estudio: «Juzg. 1° Nom. Sec.2» (nominación y oficina o secretaría de la causa). */
-const juzgado = (c) => (c.nom ? `Juzg. ${c.nom}° Nom.${c.oficina ? ' ' + c.oficina : ''}` : c.oficina || '');
+const juzgado = (c) => (c.nom ? `Juzg. ${c.nom}° Nom.${c.oficina ? ' ' + c.oficina : ''}` : esPend(c.expte) ? 'pendiente' : c.oficina || '');
 
 // Cada causa es una tarjeta, en la computadora y en el celular: carátula, expediente y juzgado, la
 // última acción con su fecha, y los dos botones. La próxima acción y su vencimiento se ven en Agenda.
@@ -301,7 +307,7 @@ function renderCausas(rows) {
     return `<article class="causa" data-id="${id}" data-ub="${esc(c.ubicacion || '')}">
     <div class="causa-info">
       <h3>${esc(titulo(c))}</h3>
-      <div class="causa-linea"><b class="mono">Expte. N° ${id}</b>${j ? ' · ' + esc(j) : ''}</div>
+      <div class="causa-linea"><b class="mono">Expte. N° ${esc(expteTxt(c.expte))}</b>${j ? ' · ' + esc(j) : ''}</div>
       <div class="causa-ult">${c.ultima ? `<time>${fmt(c.fecha)}</time><span>${esc(c.ultima)}</span>` : '<span class="hint">Sin acción cargada</span>'}${n === null ? '<small class="age old">sin fecha</small>' : `<small class="age ${n > STALE ? 'old' : ''}">hace ${n} d</small>`}</div>
       ${c.proxima && c.proxima.trim() ? `<div class="causa-prox"><b>Próxima acción</b><span>${esc(c.proxima)}</span>${c.vence ? `<small>${esc(fmt(c.vence))}</small>` : ''}</div>` : ''}
       ${docsLinea(c)}
@@ -344,7 +350,7 @@ function renderAgenda(items) {
     const tarde = fecha && fecha < hoy;
     return `<article class="fila agitem" data-id="${esc(c.expte)}" tabindex="0" role="button" aria-label="Abrir la ficha de ${esc(titulo(c))}">
     <div class="fila-top"><span class="next">${esc(texto)}</span>${sac ? `<span class="pill ${clase}">SAC · ${esc(estado)}</span>` : ''}</div>
-    <div class="agcausa"><b>${esc(titulo(c))}</b> <span class="mono">${esc(c.expte)}${c.nom ? ' · ' + esc(c.nom) + '°' : ''}${c.oficina ? ' ' + esc(c.oficina) : ''}</span></div>
+    <div class="agcausa"><b>${esc(titulo(c))}</b> <span class="mono">${esc(expteTxt(c.expte))}${c.nom ? ' · ' + esc(c.nom) + '°' : ''}${c.oficina ? ' ' + esc(c.oficina) : ''}</span></div>
     <div class="fila-ult">${fecha ? `<span class="due ${tarde ? 'late' : fecha === hoy ? 'soon' : ''}">${sac ? 'Para el' : 'Vence el'} ${fmt(fecha)}</span>` : '<span class="hint">Sin fecha</span>'}${sac ? '' : `<button class="btn small donebtn" data-done="${esc(c.expte)}">¿Realizada?</button>`}</div>
   </article>`;
   };
@@ -450,7 +456,7 @@ function vistaLiq() {
   return `<div class="filas liqs">` + xs.map((c) => {
     const k = liqCalc(c.liquidacion);
     return `<article class="fila liqfila" data-id="${esc(c.expte)}" tabindex="0" role="button" aria-label="Abrir la ficha de ${esc(titulo(c))}">
-    <div class="fila-top"><span class="next">${esc(titulo(c))}</span><span class="mono">${esc(c.expte)}</span></div>
+    <div class="fila-top"><span class="next">${esc(titulo(c))}</span><span class="mono">${esc(expteTxt(c.expte))}</span></div>
     <dl class="cifras"><div><dt>Total</dt><dd>${pesos(k.tot)}</dd></div><div><dt>Cobrado</dt><dd>${pesos(k.pag)}</dd></div><div><dt>Saldo</dt><dd>${pesos(k.saldo)}</dd></div></dl></article>`;
   }).join('') + `</div>`;
 }
@@ -569,13 +575,13 @@ function openCausa(id, pre = null, pase = null) {
   S.open = id ? copia(D.causas.find((c) => c.expte === id) || blank()) : (pre || blank());
   S.base = copia(S.open); // la causa como se abrió: para saber qué se cambió en la ficha
   S.isNew = !id; S.confirmDel = false; S.choque = null; S.tpl = false; S.clave = false; S.tpSel = ''; S.fh = 'todo';
-  S.planilla = false; S.liqSucia = false; S.cau = null; S.pase = !id && pase ? pase : null;
+  S.planilla = false; S.liqSucia = false; S.cau = null; S.pase = !id && pase ? pase : null; S.dem = DEM_VACIA();
   cerrarFormsFicha();
   renderDrawer(true);
 }
 function closeDrawer() {
   S.open = null; S.tpl = false; S.clave = false; S.tpSel = ''; S.tplDel = ''; S.choque = null; S.confirmDel = false;
-  S.planilla = false; S.liqSucia = false; S.cau = null; S.pase = null;
+  S.planilla = false; S.liqSucia = false; S.cau = null; S.pase = null; S.dem = DEM_VACIA();
   cerrarFormsFicha();
   $('#drawer').hidden = true; $('#drawer').innerHTML = ''; document.body.style.overflow = '';
 }
@@ -1198,15 +1204,17 @@ function renderDrawer(entra = false) {
   const hist =(c.historial || []).map((h, i) => ({ ...h, i })).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '') || b.i - a.i);
   const meta = !S.isNew && c.actualizado ? ` · último cambio ${cuando(new Date(c.actualizado))}${c.actualizado_por ? ' (' + esc(c.actualizado_por) + ')' : ''}` : '';
   d.innerHTML = `<div class="scrim" data-act="close"></div><aside class="panel${entra ? ' entra' : ''}${S.maxi ? ' max' : ''}" role="dialog" aria-modal="true" aria-label="Ficha de la causa">
-  <div class="phead"><div><div class="hint">${S.isNew ? 'Nueva causa' : 'Expte. ' + esc(c.expte) + meta}${!S.isNew && c.deudor ? ` · <a href="cobranzas/#deudor=${esc(c.deudor)}" target="_blank" rel="noopener">Ver en Cobranzas</a>` : ''}</div><h2>${esc(S.isNew && !c.demandado ? 'Nueva causa' : caratula(c))}</h2></div><div class="btns"><button class="btn small" data-act="maxi" aria-pressed="${!!S.maxi}">${S.maxi ? 'Restaurar' : 'Maximizar'}</button><button class="btn small" data-act="close">Cerrar</button></div></div>
+  <div class="phead"><div><div class="hint">${S.isNew ? 'Nueva causa' : 'Expte. ' + esc(expteTxt(c.expte)) + meta}${!S.isNew && c.deudor ? ` · <a href="cobranzas/#deudor=${esc(c.deudor)}" target="_blank" rel="noopener">Ver en Cobranzas</a>` : ''}</div><h2>${esc(S.isNew && !c.demandado ? 'Nueva causa' : caratula(c))}</h2></div><div class="btns"><button class="btn small" data-act="maxi" aria-pressed="${!!S.maxi}">${S.maxi ? 'Restaurar' : 'Maximizar'}</button><button class="btn small" data-act="close">Cerrar</button></div></div>
   <div id="nota">${notaHtml()}</div>
+
+  ${S.isNew ? demandaHtml() : ''}
 
   <div class="sec"><h4>Datos de la causa</h4><div class="grid2">
    <label class="f">Actor<input id="c_actor" value="${esc(c.actor)}"></label>
    <label class="f">Demandado<input id="c_demandado" value="${esc(c.demandado)}" placeholder="Puede ir vacío"></label>
    <label class="f">Tipo<input id="c_tipo" list="tipos" value="${esc(c.tipo)}"></label>
-   <label class="f">N° de expediente<input id="c_expte" inputmode="numeric" value="${esc(c.expte)}" ${S.isNew ? '' : 'readonly'}></label>
-   <label class="f">Nominación<input id="c_nom" value="${esc(c.nom)}"></label>
+   <label class="f">N° de expediente<input id="c_expte" inputmode="numeric" value="${esc(esPend(c.expte) ? '' : c.expte)}" ${S.isNew || esPend(c.expte) ? 'placeholder="pendiente"' : 'readonly'}></label>${!S.isNew && esPend(c.expte) ? '<div class="f"><button class="btn small" data-act="asignar-expte">Asignar este N° de expediente</button></div>' : ''}
+   <label class="f">Nominación<input id="c_nom" value="${esc(c.nom)}" ${esPend(c.expte) ? 'placeholder="pendiente"' : ''}></label>
    <label class="f">Oficina / juzgado<input id="c_oficina" list="oficinas" value="${esc(c.oficina)}"></label>
    <label class="f">Ubicación${selector('c_ubicacion', UBICACIONES, c.ubicacion)}</label>
    <label class="f">Estado${selector('c_estado', ESTADOS, c.estado, '(sin estado)')}</label>
@@ -1264,9 +1272,47 @@ function rerenderDrawer() {
   if (sx && $('#pl_hoja')) $('#pl_hoja').scrollLeft = sx; // la planilla queda en la misma columna
 }
 
+/** «Hacer demanda» (solo en Nueva causa): elegir Prendaria o Documentos y adjuntar los PDF; «Crear causa» los lee, arma la causa y baja el Word. */
+function demandaHtml() {
+  const d = S.dem, solo = d.modo === 'prendaria' ? 'el Formulario 03 o el contrato de prenda' : 'los pagarés';
+  const lista = d.archivos.map((f, i) => `<li><span>${esc(f.name)}</span><button class="btn small" data-act="dem-quitar" data-i="${i}" aria-label="Quitar ${esc(f.name)}">Quitar</button></li>`).join('');
+  return `<div class="sec demanda"><h4>Hacer demanda</h4>
+  <p class="hint">Elegí el tipo y adjuntá los PDF: al tocar “Crear causa” se lee lo que traen, se carga la causa y se baja el Word de la demanda. El N° de expediente y el juzgado pueden quedar “pendiente”. También podés completar todo a mano.</p>
+  <div class="seg" role="group" aria-label="Tipo de demanda"><button type="button" data-act="dem-modo" data-modo="prendaria" aria-pressed="${d.modo === 'prendaria'}">Prendaria</button><button type="button" data-act="dem-modo" data-modo="documentos" aria-pressed="${d.modo === 'documentos'}">Documentos</button></div>
+  ${d.modo ? `<label class="f">Adjuntar ${solo} (PDF o foto JPG)<input id="dem_files" type="file" accept="application/pdf,image/jpeg,.pdf,.jpg,.jpeg" multiple></label>
+  ${lista ? `<ul class="dem-lista">${lista}</ul>` : ''}
+  ${d.modo === 'prendaria' ? `<label class="f">Cuota en que empezó la mora<input id="dem_mora" inputmode="numeric" value="${esc(d.mora)}" placeholder="Ej.: 3"></label>` : ''}` : ''}
+  </div>`;
+}
+
+/** Crea la causa desde «Hacer demanda»: lee los PDF, completa la causa con lo leído, la guarda y baja el Word. */
+async function crearConDemanda(c, boton) {
+  const M = await import('./demanda-nueva.js');
+  const falla = M.revisarArchivos(S.dem.archivos);
+  if (falla) { toast(falla); return; }
+  if (S.dem.modo === 'prendaria' && !/^\d+$/.test(S.dem.mora || '')) { toast('Poné en qué cuota empezó la mora (un número)'); return; }
+  if (!c.expte) c.expte = M.expteProvisorio(D.causas);
+  await conBoton(boton, 'Leyendo los PDF…', async () => {
+    let lectura;
+    try { lectura = await leerDemanda(S.dem.modo, S.dem.archivos); } catch (e) { toast(mensaje(e, 'no se pudieron leer los archivos')); return; }
+    Object.assign(c, M.causaDeLectura(S.dem.modo, lectura, c, { moraN: S.dem.mora }));
+    const avisos = [...(lectura.avisos || [])];
+    try { await crearCausa(c); } catch (e) { toast(e.code === '23505' ? 'Ya existe una causa con ese expediente' : mensaje(e)); return; }
+    let faltan = [];
+    try {
+      const modelo = new Uint8Array(await (await fetch(M.MODELOS_WORD[S.dem.modo])).arrayBuffer());
+      const r = await M.armarDemanda(S.dem.modo, lectura, modelo, { moraN: S.dem.mora, hoy: iso(today()) });
+      faltan = r.faltan; await entregar(r.blob, r.nombre);
+    } catch (e) { console.error(e); toast('La causa se creó, pero no se pudo armar el Word. Probá de nuevo desde la ficha.'); closeDrawer(); return; }
+    closeDrawer();
+    toast(`Causa creada${esPend(c.expte) ? ' (expediente pendiente)' : ''} y demanda descargada. ${faltan.length ? 'Falta completar en el Word: ' + faltan.join(', ') + '. ' : ''}${avisos.length ? 'Ojo: ' + avisos.join(' ') + ' ' : ''}Revisala antes de presentar.`);
+  });
+}
+
 function readForm() {
   guardarFormsAcu(); // el acuerdo que se esté cargando en la ficha
   const c = S.open;
+  const mora = $('#dem_mora'); if (mora) S.dem.mora = mora.value.trim();
   ['actor', 'demandado', 'tipo', 'expte', 'nom', 'oficina', 'ubicacion', 'estado', 'cautelar', 'situacion', 'proxima', 'vence', 'notas'].forEach((k) => { const el = $('#c_' + k); if (el) c[k] = el.value.trim(); });
   (c.demandados || []).forEach((d, i) => ['nombre', 'dni', 'telefono', 'domicilio', 'notas'].forEach((k) => { const el = $('#d_' + k + i); if (el) d[k] = el.value.trim(); }));
   (c.titulos || []).forEach((t, i) => {
@@ -1284,7 +1330,9 @@ function readForm() {
 async function save({ forzar = false, recrear = false } = {}) {
   const c = readForm();
   if (!c.demandado && !c.actor) { toast('Falta el actor o el demandado'); return; } // sin demandado se nombra por el actor
-  if (!/^\d+$/.test(c.expte)) { toast('El N° de expediente debe ser numérico'); return; }
+  if (S.isNew && S.dem.modo) { await crearConDemanda(c, $('.ppie [data-act=save]')); return; }
+  if (S.isNew && !c.expte) c.expte = (await import('./demanda-nueva.js')).expteProvisorio(D.causas); // sin número todavía: queda «pendiente»
+  if (!/^\d+$/.test(c.expte) && !(S.isNew && esPend(c.expte))) { toast('El N° de expediente debe ser numérico'); return; }
   if (S.isNew && D.causas.some((x) => x.expte === c.expte)) {
     if (S.pase) { S.pase.existe = c.expte; rerenderDrawer(); $('.panel').scrollTop = 0; return; } // viene de Cobranzas: ofrecer vincularla
     toast('Ya existe una causa con ese expediente'); return;
@@ -2171,6 +2219,21 @@ document.addEventListener('click', async (e) => {
   if (act === 'choque-ver') { const actual = D.causas.find((x) => x.expte === c.expte); if (!actual) { closeDrawer(); return; } S.open = copia(actual); S.base = copia(actual); S.choque = null; S.confirmDel = false; S.liqSucia = false; renderDrawer(); return; }
   readForm();
   if (act === 'choque-pisar' && S.planilla && S.choque?.actual) { await guardarPlanilla(a, true); return; }
+  if (act === 'dem-modo') { S.dem.modo = S.dem.modo === a.dataset.modo ? '' : a.dataset.modo; rerenderDrawer(); return; }
+  if (act === 'dem-quitar') { S.dem.archivos.splice(+a.dataset.i, 1); rerenderDrawer(); return; }
+  if (act === 'asignar-expte') {
+    const n = ($('#c_expte').value || '').trim();
+    if (!/^\d+$/.test(n)) { toast('Escribí el N° de expediente (solo números)'); return; }
+    if (D.causas.some((x) => x.expte === n)) { toast('Ya existe una causa con ese expediente'); return; }
+    await conBoton(a, 'Asignando…', async () => {
+      try {
+        const r = await asignarExpte(c.expte, c.rev, n);
+        if (r.conflicto) { toast('La causa cambió recién: cerrala y abrila de nuevo'); return; }
+        toast(`Expediente asignado: ${n}`); openCausa(n);
+      } catch (err) { toast(mensaje(err)); }
+    });
+    return;
+  }
   if (act === 'plexcel') { descargarPlanilla(); return; } // antes de cualquier espera: el menú de compartir del celular lo exige
   if (act === 'planilla') { abrirPlanilla(); return; }
   if (act === 'cautelar') { abrirCautelar(a.dataset.tipo || ''); return; }
@@ -2252,6 +2315,13 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.target.id === 'chatTexto' && !e.shiftKey && !movil.matches && !e.isComposing) { e.preventDefault(); $('#fChat').requestSubmit(); }
 });
 document.addEventListener('change', (e) => {
+  if (e.target.id === 'dem_files' && S.open && S.isNew) {
+    readForm();
+    const ok = [...e.target.files].filter((f) => /^application\/pdf$|^image\/jpeg$/.test(f.type) || /\.(pdf|jpe?g)$/i.test(f.name));
+    if (ok.length < e.target.files.length) toast('Solo se leen PDF y fotos JPG: se dejaron afuera los otros archivos');
+    S.dem.archivos.push(...ok.filter((f) => !S.dem.archivos.some((g) => g.name === f.name && g.size === f.size)));
+    rerenderDrawer(); return;
+  }
   if (e.target.id === 'cau_dem' && S.cau) { leerCautelar(); elegirDemandado(+e.target.value); return; }
   if (e.target.id === 'cau_enervar' && S.cau) { leerCautelar(); if (!S.cau.tocado) Object.assign(S.cau, escritoCau()); rerenderDrawer(); return; }
   if (/^t_tipo\d+$/.test(e.target.id)) { readForm(); rerenderDrawer(); return; }

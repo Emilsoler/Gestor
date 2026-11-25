@@ -132,14 +132,31 @@ export async function leerZip(buf) {
 }
 
 /**
- * Completa el modelo Word con los datos y devuelve { blob, faltan }.
- * `modelo` son los bytes del .docx (Uint8Array).
+ * Un párrafo del modelo que lleva un {{campo}} se repite una vez por elemento de `items` (cada uno, con su texto en lugar
+ * del campo). Sirve para listas de largo variable, como los pagarés de una demanda. Con `items` vacío, el párrafo queda con
+ * el campo sin completar (y sale como "[nombre]" para completar a mano).
  */
-export async function armarAcuerdo(modelo, valores, nombres = CAMPOS_ACUERDO) {
+export function expandirParrafos(xml, campo, items) {
+  const marca = `{{${campo}}}`, i = xml.indexOf(marca);
+  if (i < 0 || !items.length) return xml;
+  const ini = Math.max(xml.lastIndexOf('<w:p>', i), xml.lastIndexOf('<w:p ', i));
+  const fin = xml.indexOf('</w:p>', i) + 6;
+  if (ini < 0 || fin < 6) return xml;
+  const par = xml.slice(ini, fin);
+  return xml.slice(0, ini) + items.map((t) => par.replace(marca, () => xmlEsc(t))).join('') + xml.slice(fin);
+}
+
+/**
+ * Completa el modelo Word con los datos y devuelve { blob, faltan }.
+ * `modelo` son los bytes del .docx (Uint8Array). `repetir` ({ campo: [textos] }) repite el párrafo de cada campo de lista.
+ */
+export async function armarAcuerdo(modelo, valores, nombres = CAMPOS_ACUERDO, repetir = {}) {
   const partes = await leerZip(modelo), dec = new TextDecoder(), enc = new TextEncoder(), faltan = new Set();
   const salida = partes.map((x) => {
     if (!/^word\/[^/]+\.xml$/.test(x.nombre)) return x;
-    const r = rellenarXml(dec.decode(x.datos), valores, nombres);
+    let xml = dec.decode(x.datos);
+    for (const [campo, items] of Object.entries(repetir)) xml = expandirParrafos(xml, campo, items);
+    const r = rellenarXml(xml, valores, nombres);
     r.faltan.forEach((k) => faltan.add(k));
     return { nombre: x.nombre, datos: enc.encode(r.xml) };
   });

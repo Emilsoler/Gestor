@@ -15,7 +15,8 @@
     "test:creditos": "node --test tests/creditos.test.mjs && node --test tests/creditos-app.test.mjs",
     "test:vehiculos": "node --test tests/vehiculos.test.mjs",
     "test:prenda": "node --test tests/prenda.test.mjs && node --test tests/prenda-app.test.mjs",
-    "test:seguimiento": "node --test tests/seguimiento.test.mjs"
+    "test:seguimiento": "node --test tests/seguimiento.test.mjs",
+    "test:demanda-nueva": "node --test tests/demanda-nueva.test.mjs"
   },
   "devDependencies": {
     "@fontsource/caladea": "^5.3.0",

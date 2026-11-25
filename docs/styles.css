@@ -753,3 +753,9 @@ body:has(#drawer:not([hidden])) #btnChat,body:has(#drawer:not([hidden])) .fab,bo
 .tl-cedula{--tl-c:var(--violet);--tl-s:var(--violet-soft)}
 .tl-pago{--tl-c:var(--ok);--tl-s:var(--ok-soft)}
 .tl-otro{--tl-c:var(--muted);--tl-s:rgba(163,179,198,.12)}
+
+/* Hacer demanda (Nueva causa): tipo, archivos adjuntos y cuota en mora */
+.demanda .seg{margin:8px 0 12px;max-width:340px}
+.dem-lista{list-style:none;margin:6px 0 10px;padding:0;display:grid;gap:6px}
+.dem-lista li{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 10px;border:1px solid var(--line-soft);border-radius:10px;background:var(--surface);font-size:13px}
+.dem-lista li span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
