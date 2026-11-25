@@ -339,6 +339,7 @@ puede completar todo a mano (sin elegir tipo, nada cambia).
   demandas de pagarés del estudio (las de Drive, p. ej. «261008- DEMANDA»); solo se reemplazan datos, un renglón por pagaré (`{{pagare}}`,
   que `armarAcuerdo(..., repetir)` repite). Lo único que cambia respecto del texto de Drive es la numeración (I a V, sin repetir el III).
   **Pendiente de confirmar con la persona**: el formato del Word (se armó igual que el de la prendaria) y que no dice «solidariamente».
+- **Fotos del celular** (`docs/fotos.js`, pedido de la persona del 25/11/2026): las fotos JPG que se adjuntan se enderezan, se achican (lado mayor 1600 px, calidad 0,72) y se juntan en un solo PDF «Fotos AAAA-MM-DD.pdf», todo en el dispositivo (pdf-lib, sin sitios de terceros: son documentos de clientes). Los PDF que ya vienen en PDF se mandan tal cual (no se recomprimen). Prueba: `node --test tests/fotos.test.mjs`.
 - **Cuota en mora** (solo prendaria): es lo único que se pregunta a mano; el resto sale del Formulario 03 y del contrato.
 - **Expediente y juzgado «pendiente»**: una causa sin N° de SAC lleva la clave provisoria `PEND-<n>` (la base la acepta desde 0053) y se
   ve como «pendiente» (`esPend`/`expteTxt` en `app.js`, `docs/demanda-nueva.js`); el juzgado también. Cuando hay número, la ficha tiene

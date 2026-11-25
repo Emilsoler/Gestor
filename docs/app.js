@@ -2314,12 +2314,22 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.target.id === 'h_texto') document.querySelector('[data-act="histadd"]').click();
   if (e.key === 'Enter' && e.target.id === 'chatTexto' && !e.shiftKey && !movil.matches && !e.isComposing) { e.preventDefault(); $('#fChat').requestSubmit(); }
 });
-document.addEventListener('change', (e) => {
+document.addEventListener('change', async (e) => {
   if (e.target.id === 'dem_files' && S.open && S.isNew) {
     readForm();
-    const ok = [...e.target.files].filter((f) => /^application\/pdf$|^image\/jpeg$/.test(f.type) || /\.(pdf|jpe?g)$/i.test(f.name));
-    if (ok.length < e.target.files.length) toast('Solo se leen PDF y fotos JPG: se dejaron afuera los otros archivos');
-    S.dem.archivos.push(...ok.filter((f) => !S.dem.archivos.some((g) => g.name === f.name && g.size === f.size)));
+    const todos = [...e.target.files], ok = todos.filter((f) => /^application\/pdf$|^image\/jpeg$/.test(f.type) || /\.(pdf|jpe?g)$/i.test(f.name));
+    if (ok.length < todos.length) toast('Solo se leen PDF y fotos JPG: se dejaron afuera los otros archivos');
+    const fotos = ok.filter((f) => f.type === 'image/jpeg' || /\.jpe?g$/i.test(f.name)), pdfs = ok.filter((f) => !fotos.includes(f));
+    const nuevos = [...pdfs];
+    if (fotos.length) {
+      // Las fotos del celular pesan varios MB y vienen en JPG: se achican y se juntan en un PDF (en el dispositivo).
+      toast(`Pasando ${fotos.length} foto${fotos.length > 1 ? 's' : ''} a PDF…`);
+      try { nuevos.push(await (await import('./fotos.js')).fotosAPdf(fotos, iso(today()))); }
+      catch (err) { console.error(err); toast('No se pudieron pasar las fotos a PDF: probá con menos fotos o con PDF'); nuevos.push(...fotos); }
+    }
+    if (!S.open || !S.isNew) return; // se cerró la ficha mientras tanto
+    let n = 0;
+    for (const f of nuevos) if (!S.dem.archivos.some((g) => g.name === f.name && g.size === f.size)) { S.dem.archivos.push(f); n++; }
     rerenderDrawer(); return;
   }
   if (e.target.id === 'cau_dem' && S.cau) { leerCautelar(); elegirDemandado(+e.target.value); return; }
