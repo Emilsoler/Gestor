@@ -30,7 +30,7 @@ import { abrirChat } from './chat.js';
 import { datosDeSolicitud, textoVencimientos, armarFormularios, conDomicilioDelDeudor, aplicarLectura } from './prendaforms.js';
 import { nuevoDescuento, nuevoCheque, formDeFila, filaDeForm, liquidarDescuento, cartera, resumenCartera, cuandoVence, bancoDe, htmlLiquidacionDescuento, hojaDescuento, ESTADOS_CHEQUE } from './descuento.js';
 
-const VERSION = '1.11.2';
+const VERSION = '1.12.0';
 const CLAVE_MIN = 10;
 const TIPOS_GESTION = ['Llamada', 'WhatsApp', 'Visita', 'Email', 'Carta documento', 'Promesa de pago', 'Nota'];
 const MEDIOS = ['Efectivo', 'Transferencia', 'Depósito', 'Cheque', 'Débito', 'Otro'];
@@ -1299,8 +1299,8 @@ function accionRefi(act, a) {
 
 
 // ───────────────────────── Descuento de cheques ─────────────────────────
-// La Mutual le compra cheques a un cliente y le paga hoy el valor menos interés por días, comisión, sellado y
-// gastos fijos (sin IVA). Tres partes: Liquidar (cargar y guardar una operación), Cartera (los cheques a cobrar,
+// La Mutual le compra cheques a un cliente y le paga hoy el valor menos interés por días, gastos cheque, IIBB,
+// impuesto al cheque y sellado (sin IVA). Tres partes: Liquidar (cargar y guardar una operación), Cartera (los cheques a cobrar,
 // por fecha, para marcarlos cobrados o rechazados) y Operaciones (las guardadas). Cuentas en descuento.js.
 
 const SUBS_DC = [['liquidar', 'Liquidar'], ['cartera', 'Cartera'], ['operaciones', 'Operaciones']];
@@ -1356,9 +1356,11 @@ function formDescuento() {
     <div class="sim-form">
       <label class="f">Fecha de la liquidación<input type="date" data-k="${k('fecha')}" value="${esc(F.fecha)}"></label>
       ${campo('tasa', 'Interés (% mensual)', ' placeholder="ej.: 4"')}
-      ${campo('comision', 'Comisión (%)', ' placeholder="0"')}
+      ${campo('comision', 'Gastos Cheque (% del capital)', ' placeholder="0"')}
+      ${campo('iibb', 'IIBB (% de interés + gastos cheque)', ' placeholder="0"')}
+      ${campo('imp_cheque', 'Impuesto al cheque (%)', ' placeholder="0"')}
       ${campo('sellado', 'Sellado (%)', ' placeholder="0"')}
-      ${campo('gastos', 'Gastos por cheque ($)', ' data-importe placeholder="0"')}
+      ${F.gastos ? campo('gastos', 'Gastos fijos por cheque ($)', ' data-importe') : ''}
       ${campo('dias', 'Días extra de clearing (0 a 5)', ' maxlength="1" placeholder="0"', 'numeric')}
     </div>
     <p class="hint m0">Los días de cada cheque se cuentan solos, de la fecha de la liquidación a la fecha de pago. «Días extra de clearing» es solo lo que tarda el banco en acreditarlo después de esa fecha (casi siempre 0, 1 o 2). El interés es simple, por cada 30 días, sobre el valor del cheque. Sin IVA.</p>

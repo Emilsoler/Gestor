@@ -688,7 +688,8 @@ siempre editable) o se toman de un deudor ya cargado: "Tomar los datos de un deu
 ### Descuento de cheques (pestaña de «Créditos», migración 0035)
 
 La Mutual le compra cheques a un cliente (un socio) y le paga hoy el valor menos lo que se descuenta (pedido de la persona
-del 18/11/2026): **interés por días, comisión, sellado y gastos fijos por cheque; sin IVA**. Tres partes:
+del 18/11/2026): **interés por días, Gastos Cheque, IIBB, impuesto al cheque y sellado; sin IVA** (conceptos del 26/11/2026,
+migración 0056: antes eran interés, comisión, sellado y gastos fijos). Tres partes:
 **Liquidar** (en tres pasos, pedido de la persona del 23/11/2026: **1 · Cheque** —librador, CUIT del librador, importe, fecha de pago, banco y N°, un bloque por cheque—, **2 · Socio** —nombre, CUIT, N° de socio y notas— y **3 · Liquidación** —fecha, condiciones y la liquidación en vivo—; «Guardar operación», «Descargar en Excel»),
 **Cartera** (los cheques sin cobrar de todas las operaciones, por fecha de pago, con «Cobrado», «Rechazado» y «Ver operación»;
 abajo, plegados, los rechazados con «¿Denunciado?» —abre la consulta de Cheques denunciados—, «BCRA del librador» y «Volver a
@@ -702,11 +703,14 @@ cartera») y **Operaciones** (las guardadas, con buscador; tocarla la abre en Li
 - **Cuentas** (`docs/cobranzas/descuento.js`, `liquidarDescuento`): por cheque, días = de la fecha de la liquidación a la fecha
   de pago (0 si ya venció) + días extra de clearing (0 a 5, `DIAS_EXTRA_MAX`; la columna Días muestra «30 + 2»: en nov 2026 la persona puso
   el plazo del cheque en ese campo y le daba el doble de días); interés = valor × tasa % mensual / 30 × días (simple, sobre el valor);
-  comisión y sellado = % sobre el valor; gastos = fijos por cheque; neto = valor − todo. Cada concepto se redondea a centavos
-  cheque por cheque. Las condiciones de una operación nueva arrancan como las de la última guardada (no hay tasas por defecto:
-  no inventarlas). **No se guardan cuentas**: con la misma fecha y condiciones da siempre lo mismo.
+  Gastos Cheque (columna `comision`, 1,5 %), impuesto al cheque (`imp_cheque`, 1,5 %) y sellado = % sobre el valor;
+  IIBB (`iibb`, 3 %) = % sobre (interés + Gastos Cheque); gastos fijos (`gastos`) solo en operaciones viejas (el campo
+  aparece únicamente si la operación abierta los tiene); neto = valor − todo. Cada concepto se redondea a centavos
+  cheque por cheque. En una operación nueva, interés y sellado arrancan como en la última guardada (no hay tasas por defecto:
+  no inventarlas) y Gastos Cheque, IIBB e impuesto al cheque en 1,5, 3 y 1,5 (`HABITUALES`). Las operaciones anteriores
+  a 0056 tienen `iibb` e `imp_cheque` en 0: sus importes no cambian. **No se guardan cuentas**: con la misma fecha y condiciones da siempre lo mismo.
 - **Tabla** `public.descuentos_cheques`: una fila por operación (`cliente`, `cuit`, `socio`, `fecha`, `tasa`, `comision`,
-  `sellado`, `gastos`, `dias_extra`, `notas`) y `cheques`, lista jsonb de
+  `sellado`, `iibb`, `imp_cheque`, `gastos`, `dias_extra`, `notas`) y `cheques`, lista jsonb de
   `{id, entidad, banco, numero, librador, cuit, importe, vence, estado, fecha_estado, nota}` con `estado` `cartera`, `cobrado` o
   `rechazado`. `entidad` es el código de banco del BCRA si el banco se eligió de la lista (sirve para consultar si está
   denunciado). Mismas barreras, `rev`, historial y `gestor.deshacer`. Tabla opcional en `datos.js` (`D.descuentos`): sin ella la

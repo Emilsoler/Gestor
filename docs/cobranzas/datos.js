@@ -135,7 +135,7 @@ const DE = {
   consultas_bcra: ({ resultado, ...f }) => ({ ...f, deuda_total: +f.deuda_total || 0, motivos: lista(f.motivos) }),
   casos_refi: (f) => ({ ...f, nombre: String(f.nombre ?? ''), deudor: f.deudor || '', archivado: f.archivado || '', datos: f.datos && typeof f.datos === 'object' && !Array.isArray(f.datos) ? f.datos : {} }),
   descuentos_cheques: (f) => ({ ...f, cliente: String(f.cliente ?? ''), cuit: f.cuit || '', socio: f.socio || '', notas: f.notas || '', tasa: +f.tasa || 0, comision: +f.comision || 0,
-    sellado: +f.sellado || 0, gastos: +f.gastos || 0, dias_extra: +f.dias_extra || 0, cheques: lista(f.cheques).filter((c) => c && typeof c === 'object') }),
+    sellado: +f.sellado || 0, iibb: +f.iibb || 0, imp_cheque: +f.imp_cheque || 0, gastos: +f.gastos || 0, dias_extra: +f.dias_extra || 0, cheques: lista(f.cheques).filter((c) => c && typeof c === 'object') }),
   consultas_cheques: (f) => ({ ...f, numero: String(f.numero ?? ''), resultado: f.resultado && typeof f.resultado === 'object' ? f.resultado : {} }),
 };
 export const ESTADOS = ['En gestión', 'En juicio', 'Cancelado', 'Incobrable', 'Archivado'];

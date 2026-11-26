@@ -22,7 +22,7 @@ test('cada cheque: interés simple por días (tasa mensual / 30), comisión, sel
   // Un cheque ya vencido (al día) solo paga los días de acreditación.
   assert.equal(b.dias, 2);
   assert.equal(b.interes, 1333.33);
-  assert.deepEqual(e.total, { importe: 1_500_000, interes: 44_000, comision: 15_000, sellado: 18_000, gastos: 1000, descuento: 78_000, neto: 1_422_000 });
+  assert.deepEqual(e.total, { importe: 1_500_000, interes: 44_000, comision: 15_000, sellado: 18_000, iibb: 0, impCheque: 0, gastos: 1000, descuento: 78_000, neto: 1_422_000 });
   assert.equal(e.plazo, 22); // ponderado por valor: (32 × 1.000.000 + 2 × 500.000) / 1.500.000
   assert.deepEqual(e.problemas, []);
 });
@@ -37,6 +37,15 @@ test('sin IVA: los descuentos son exactamente interés + comisión + sellado + g
     }
     assert.equal(Math.round((e.total.importe - e.total.descuento) * 100), Math.round(e.total.neto * 100));
   }
+});
+
+test('gastos cheque sobre el valor, IIBB sobre interés + gastos cheque, impuesto al cheque y sellado sobre el valor', () => {
+  const o = op({ comision: 1.5, iibb: 3, imp_cheque: 1.5, gastos: 0, dias_extra: 0, cheques: [cheque(1_000_000, '2026-12-18')] }), e = liquidarDescuento(o), c = e.cheques[0];
+  assert.deepEqual([c.interes, c.comision, c.iibb, c.impCheque, c.sellado, c.neto], [40_000, 15_000, 1650, 15_000, 12_000, 916_350]);
+  const fila = hojaDescuento(o, e, HOY)[0].filas[13];
+  assert.equal(fila[9].f, 'ROUND((H14+I14)*$B$7/100,2)');
+  assert.equal(fila[13].f, 'G14-SUM(H14:M14)');
+  assert.match(htmlLiquidacionDescuento(e), /Gastos cheque.*IIBB.*Imp\. al cheque/);
 });
 
 test('los días extra de clearing se ven aparte («30 + 2») y no pasan de 5: el plazo sale de la fecha de pago', () => {
@@ -60,7 +69,8 @@ test('días entre fechas, sin husos horarios (también con el cambio de año)', 
 
 test('el formulario: se escribe a la argentina y se guarda en números; ida y vuelta da lo mismo', () => {
   const F = nuevoDescuento(HOY);
-  assert.deepEqual([F.tasa, F.comision, F.sellado, F.gastos, F.dias], ['', '', '', '', '']); // no se inventan condiciones
+  assert.deepEqual([F.tasa, F.sellado, F.gastos, F.dias], ['', '', '', '']); // no se inventan condiciones
+  assert.deepEqual([F.comision, F.iibb, F.imp_cheque], ['1,5', '3', '1,5']);
   Object.assign(F, { cliente: '  Pérez Juan ', cuit: '20-12345678-6', tasa: '4,5', comision: '1', sellado: '1,2', gastos: '1.500', dias: '2' });
   F.cheques = [{ ...nuevoCheque(), importe: '1.250.000,50', vence: '2027-01-15', numero: '00012345', banco: 'Banco de la Nación Argentina', entidad: '11', cuit: '30-50000000-1' }, nuevoCheque()];
   const f = filaDeForm(F);
@@ -73,7 +83,7 @@ test('el formulario: se escribe a la argentina y se guarda en números; ida y vu
   assert.deepEqual(g, f);
   // La operación siguiente arranca con las condiciones de la última.
   const N = nuevoDescuento(HOY, f);
-  assert.deepEqual([N.tasa, N.comision, N.sellado, N.gastos, N.dias], ['4,5', '1', '1,2', '1.500', '2']);
+  assert.deepEqual([N.tasa, N.comision, N.iibb, N.imp_cheque, N.sellado, N.gastos, N.dias], ['4,5', '1,5', '3', '1,5', '1,2', '', '2']);
 });
 
 test('lo que falta para guardar se dice en palabras', () => {
@@ -100,9 +110,9 @@ test('la planilla de Excel tiene las mismas cifras que la pantalla, con fórmula
   const [h] = hojaDescuento(o, e, HOY);
   const fila = h.filas.find((r) => r[0]?.v === 'Neto a pagar al cliente');
   assert.equal(fila[1].v, 1_422_000);
-  const ch = h.filas[11];
+  const ch = h.filas[13];
   assert.equal(ch[2].v, 'ACME SA');
-  assert.equal(ch[7].f, 'ROUND(G12*$B$5/100/30*F12,2)');
+  assert.equal(ch[7].f, 'ROUND(G14*$B$5/100/30*F14,2)');
   assert.equal(ch[7].v, 42_666.67);
   assert.equal(h.filas[4][1].v, 4, 'B5 es la tasa');
   assert.match(htmlLiquidacionDescuento(e), /1\.422\.000/);
