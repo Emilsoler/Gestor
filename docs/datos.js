@@ -476,18 +476,7 @@ export async function leerDemanda(tipo, archivos) {
   return r.data;
 }
 
-/** La firma del abogado (bytes del JPEG) para la demanda en PDF, o null si no está cargada o no se pudo leer. */
-export async function leerFirma() {
-  if (!sb) return null;
-  try {
-    const { data, error } = await sb.from('ajustes_firma').select('imagen').eq('id', 1).maybeSingle();
-    if (error || !data?.imagen) return null;
-    const bin = atob(data.imagen);
-    return Uint8Array.from(bin, (c) => c.charCodeAt(0));
-  } catch { return null; }
-}
-
-/** La firma suelta (PNG transparente) que acompaña al número de foja, o null si no está cargada. */
+/** La firma suelta (PNG transparente) con la que se arma el sello de las fojas y del pie del PDF, o null si no está cargada. */
 export async function leerTrazo() {
   if (!sb) return null;
   try {

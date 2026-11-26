@@ -1,8 +1,8 @@
 // La demanda en PDF con la firma del abogado (botón «Hacer demanda» de Nueva causa).
 //
 // Se arma a partir del mismo Word que se descarga: se leen sus párrafos (alineación, sangría, negrita, subrayado) y se
-// vuelven a escribir en una hoja carta con los márgenes del modelo. La firma (imagen JPEG) va debajo del último párrafo.
-// La imagen NO está en el repositorio (es público): vive en la tabla privada `ajustes_firma` y la app la pide al armar el PDF.
+// vuelven a escribir en una hoja carta con los márgenes del modelo. Debajo del último párrafo va la firma con el sello, la misma
+// imagen que acompaña el número de foja (`componerSello` de foja.js; la firma NO está en el repositorio, que es público).
 //
 // Tipografía: Times (estándar del PDF, sin archivos extra). El Word usa Garamond, que es más angosta, así que el PDF puede
 // ocupar alguna página más; el texto es el mismo. pdf-lib (docs/vendor/pdf-lib.js, MIT) se carga recién al usarlo.
@@ -14,10 +14,10 @@ const cargarLib = async () => (lib ||= await import('./vendor/pdf-lib.js'));
 
 const PAGINA = { ancho: 612, alto: 792 };                                   // carta
 const MARGEN = { izq: 141.75, der: 42.55, sup: ALTO_FOJA + 4, inf: 56.7 };    // los del modelo; arriba, lo que ocupa el foliado
-export const FOJAS_DEMANDA = 2;
-// La demanda va en las fojas 1 y 2: se prueba con la letra del modelo (12, interlineado 1,5) y, si no entra, se aprieta de a poco.
+export const PAGINAS_DEMANDA = 2; // frente y dorso: la foja 1
+// La demanda va en una sola hoja: se prueba con la letra del modelo (12, interlineado 1,5) y, si no entra, se aprieta de a poco.
 const AJUSTES = [[12, 20.5, 8], [12, 19, 6], [11.5, 18, 5], [11, 17, 4], [11, 16, 3], [10.5, 15, 3]]; // [letra, renglón, entre párrafos]
-const FIRMA_ANCHO = 105;                                                    // pt (unos 3,7 cm)
+const FIRMA_ANCHO = 100;                                                    // pt (unos 3,5 cm)
 
 const xmlDesesc = (s) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
 const pt = (twips) => (Number(twips) || 0) / 20;
@@ -62,21 +62,23 @@ function seguro(fuente, t) {
 }
 
 /**
- * El PDF (Uint8Array) de la demanda. `parrafos` sale de `parrafosDeDocx`; `firma` son los bytes de la imagen JPEG del pie o
- * null (sin firma, el PDF sale igual y la persona lo firma a mano o lo descarta); `sello` es el PNG de `componerSello` para
- * cada foja (sin él, cada hoja lleva solo el número). Si ni apretada entra en 2 fojas (muchos pagarés), sale con la letra
- * del modelo en las que necesite.
+ * El PDF (Uint8Array) de la demanda. `parrafos` sale de `parrafosDeDocx`; `sello` es el PNG de `componerSello`: va al pie de la
+ * demanda y junto al número del frente de cada hoja. Sin él, el PDF sale igual, solo con el número (la persona lo firma a mano
+ * o lo descarta). Si ni apretada entra en una hoja (muchos pagarés), sale con la letra del modelo en las que necesite.
  */
-export async function pdfDeDemanda(parrafos, firma, { titulo = 'Demanda', sello = null } = {}) {
+export async function pdfDeDemanda(parrafos, { titulo = 'Demanda', sello = null } = {}) {
   let doc = null;
   for (const ajuste of AJUSTES) {
-    const prueba = await componer(parrafos, firma, titulo, ajuste);
-    if (prueba.getPageCount() <= FOJAS_DEMANDA) { doc = prueba; break; }
+    const prueba = await componer(parrafos, sello, titulo, ajuste);
+    if (prueba.getPageCount() <= PAGINAS_DEMANDA) { doc = prueba; break; }
   }
-  doc ||= await componer(parrafos, firma, titulo, AJUSTES[0]);
+  doc ||= await componer(parrafos, sello, titulo, AJUSTES[0]);
   await foliarDoc(doc, sello, 1);
   return doc.save();
 }
+
+/** El ancho tal como se dibuja: pdf-lib descuenta el «kerning» al medir pero no lo aplica al escribir («VOLKSWAGENdominio»). */
+const anchoReal = (fuente, t, tam) => [...t].reduce((a, c) => a + fuente.widthOfTextAtSize(c, tam), 0);
 
 async function componer(parrafos, firma, titulo, [TAM, RENGLON, ENTRE]) {
   const { PDFDocument, StandardFonts, rgb } = await cargarLib();
@@ -116,7 +118,7 @@ async function componer(parrafos, firma, titulo, [TAM, RENGLON, ENTRE]) {
     for (const w of palabras) {
       if (w.salto) { cerrar(true); pendienteEsp = null; continue; }
       if (w.esp) { pendienteEsp = w.f; continue; }
-      const ancho = w.f.widthOfTextAtSize(w.t, TAM);
+      const ancho = anchoReal(w.f, w.t, TAM);
       const suma = (linea.length ? sp(pendienteEsp || w.f) : 0) + ancho;
       if (linea.length && ocupado + suma > limite + 0.01) cerrar(false);
       ocupado += (linea.length ? sp(pendienteEsp || w.f) : 0) + ancho;
@@ -146,7 +148,7 @@ async function componer(parrafos, firma, titulo, [TAM, RENGLON, ENTRE]) {
 
   if (firma && firma.length) {
     let img = null;
-    try { img = await doc.embedJpg(firma); } catch { img = null; }
+    try { img = await doc.embedPng(firma); } catch { img = null; }
     if (img) {
       const alto = FIRMA_ANCHO * (img.height / img.width);
       lugar(alto + 6);
@@ -158,7 +160,7 @@ async function componer(parrafos, firma, titulo, [TAM, RENGLON, ENTRE]) {
 }
 
 /** Atajo: el PDF a partir del .docx ya armado (Blob o bytes). */
-export async function pdfDesdeWord(word, firma, opciones) {
+export async function pdfDesdeWord(word, opciones) {
   const bytes = word instanceof Uint8Array ? word : new Uint8Array(await word.arrayBuffer());
-  return pdfDeDemanda(await parrafosDeDocx(bytes), firma, opciones);
+  return pdfDeDemanda(await parrafosDeDocx(bytes), opciones);
 }

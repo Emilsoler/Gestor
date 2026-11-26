@@ -1,7 +1,7 @@
 // Interfaz del gestor. Los datos y la red viven en datos.js.
 import {
   D, iniciar, reconectar, entrar, salir, cambiarClave, alCambiar, mensaje, ultimaDe,
-  crearCausa, guardarCausa, actualizarCausa, borrarCausa, asignarExpte, leerDemanda, leerFirma, leerTrazo, guardarEnDrive,
+  crearCausa, guardarCausa, actualizarCausa, borrarCausa, asignarExpte, leerDemanda, leerTrazo, guardarEnDrive,
   crearAcuerdo, actualizarAcuerdo, borrarAcuerdo,
   crearPlantilla, guardarPlantilla, borrarPlantilla,
   crearEscrito, actualizarAgenda, preguntarAClaude, leerChat, guardarChat, leerDeudor,
@@ -1304,20 +1304,19 @@ async function crearConDemanda(c, boton) {
       word = await M.armarDemanda(S.dem.modo, lectura, modelo, { moraN: S.dem.mora, hoy: iso(today()) });
       faltan = word.faltan;
     } catch (e) { console.error(e); toast('La causa se creó, pero no se pudo armar el Word. Probá de nuevo desde la ficha.'); closeDrawer(); return; }
-    // Foliado: número, firma y sello arriba a la derecha de cada hoja (Word, PDF y documental).
+    // Foliado: número, firma y sello arriba a la derecha del frente de cada hoja (Word, PDF y documental).
     const F = await import('./foja.js');
     let sello = null;
     try { const trazo = await leerTrazo(); if (trazo) sello = await F.componerSello(trazo); } catch (e) { console.error(e); }
     let foliado = true;
     try { word.blob = await F.foliarWord(word.blob, sello); } catch (e) { console.error(e); foliado = false; }
     // La demanda en PDF con la firma: si falla, el Word igual se entrega.
-    let sinFirma = false, fojasDemanda = 0;
+    let paginas = 0, fojasDemanda = 0;
     try {
-      const firma = await leerFirma();
-      sinFirma = !firma;
       const P = await import('./demanda-pdf.js');
-      pdf = await P.pdfDesdeWord(word.blob, firma, { titulo: word.nombre.replace(/\.docx$/i, ''), sello });
-      fojasDemanda = await F.contarPaginas(pdf);
+      pdf = await P.pdfDesdeWord(word.blob, { titulo: word.nombre.replace(/\.docx$/i, ''), sello });
+      paginas = await F.contarPaginas(pdf);
+      fojasDemanda = F.hojas(paginas);
     } catch (e) { console.error(e); }
     // La documental (los PDF adjuntos, los de fotos incluidos) va aparte, en un solo archivo foliado a continuación de la demanda.
     const documental = [], sueltos = [];
@@ -1326,9 +1325,9 @@ async function crearConDemanda(c, boton) {
     if (sueltos.length) {
       try {
         const unido = await (await import('./fotos.js')).unirPdfs(sueltos.map((x) => x.bytes));
-        // Si no se pudo armar el PDF de la demanda, se toman sus 2 fojas de siempre.
-        const r = await F.foliarPdf(unido, sello, (fojasDemanda || 2) + 1);
-        fojasDoc = r.paginas;
+        // La documental empieza en hoja nueva. Si no se pudo armar el PDF de la demanda, se toma su única foja de siempre.
+        const r = await F.foliarPdf(unido, sello, (fojasDemanda || 1) + 1);
+        fojasDoc = F.hojas(r.paginas);
         documental.push({ nombre: M.nombreDocumental(S.dem.modo, iso(today())), tipo: 'application/pdf', bytes: r.bytes });
       } catch (e) { console.error(e); documental.push(...sueltos); }
     }
@@ -1348,14 +1347,14 @@ async function crearConDemanda(c, boton) {
     if (!drive?.ok && fojasDoc) await entregar(new Blob([documental[0].bytes], { type: 'application/pdf' }), documental[0].nombre);
     const avisoFojas = [
       !foliado && 'El Word salió sin numerar.',
-      !sello && 'Las hojas salieron con el número pero sin firma y sello.',
-      fojasDemanda > 2 && `Ojo: la demanda ocupa ${fojasDemanda} fojas, no 2.`,
+      !sello && 'Las hojas salieron con el número pero sin firma y sello (tampoco al final del PDF).',
+      paginas > 2 && `Ojo: la demanda ocupa ${paginas} páginas (${fojasDemanda} hojas), no una hoja.`,
       sueltos.length && !fojasDoc && 'La documental no se pudo foliar (¿PDF protegido?): quedó sin numerar.',
-      fojasDemanda && fojasDoc && `Fojas para la cédula: ${fojasDemanda + fojasDoc} (demanda ${fojasDemanda} + documental ${fojasDoc}).`,
+      fojasDemanda && fojasDoc && `Fojas para la cédula: ${fojasDemanda + fojasDoc} (demanda ${fojasDemanda} + documental ${fojasDoc}). Imprimí todo frente y dorso.`,
     ].filter(Boolean).join(' ');
     closeDrawer();
     const dr = drive?.ok ? `Guardado en Drive (carpeta «${drive.carpeta}»${drive.creada ? ', nueva' : ''}). ` : drive ? `No se guardó en Drive: ${drive.mensaje}. ` : '';
-    toast(`Causa creada${esPend(c.expte) ? ' (expediente pendiente)' : ''} y demanda descargada${pdf ? ' (Word y PDF)' : ''}. ${dr}${sinFirma && pdf ? 'El PDF salió sin firma (falta cargarla). ' : ''}${avisoFojas ? avisoFojas + ' ' : ''}${faltan.length ? 'Falta completar en el Word: ' + faltan.join(', ') + '. ' : ''}${avisos.length ? 'Ojo: ' + avisos.join(' ') + ' ' : ''}Revisala antes de presentar.`);
+    toast(`Causa creada${esPend(c.expte) ? ' (expediente pendiente)' : ''} y demanda descargada${pdf ? ' (Word y PDF)' : ''}. ${dr}${avisoFojas ? avisoFojas + ' ' : ''}${faltan.length ? 'Falta completar en el Word: ' + faltan.join(', ') + '. ' : ''}${avisos.length ? 'Ojo: ' + avisos.join(' ') + ' ' : ''}Revisala antes de presentar.`);
   });
 }
 

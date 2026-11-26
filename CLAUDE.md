@@ -351,9 +351,9 @@ puede completar todo a mano (sin elegir tipo, nada cambia).
   `deploy_edge_function` con nombre `leer-demanda`, `verify_jwt: true` y sus dos archivos.
 - **Demanda en PDF con firma** (25/11/2026, pedido de la persona): además del Word, `docs/demanda-pdf.js` arma la demanda en PDF a partir del
   mismo Word (lee sus párrafos y los vuelve a escribir en hoja carta con los márgenes del modelo, Times, justificado) y pone la firma con sello
-  al pie. **La imagen de la firma no está en el repositorio** (es público): vive en `public.ajustes_firma` (migración 0054, una fila, JPEG en
-  base64, solo miembros) y la app la pide con `leerFirma` (`datos.js`). Para cambiarla: `update public.ajustes_firma set imagen = '<base64>'`
-  (verificar con `md5(imagen)`: copiar a mano 20 KB falla; la actual es una versión de 220 px, ~3 KB). Sin firma cargada, el PDF sale igual y la app avisa.
+  al pie (la de «Foliado», más abajo). **La imagen de la firma no está en el repositorio** (es público): vive en `public.ajustes_firma`
+  (migraciones 0054 y 0055, una fila, base64, solo miembros) y la app la pide con `leerTrazo` (`datos.js`). Si se cambia, verificar con `md5`
+  (copiar a mano muchos KB falla). Sin firma cargada, el PDF sale igual y la app avisa.
   Prueba: `node --test tests/demanda-pdf.test.mjs` (con `GUARDAR_PDF=<carpeta>` deja el PDF para mirarlo).
 - **Guardar en Drive** (25/11/2026): al crear la causa, la app manda a la carpeta del demandado (`J01. Asociacion Mutual Bell / EN TRÁMITE / APELLIDO NOMBRE`,
   la crea si no está) los PDF que se adjuntaron **unidos en un solo archivo** foliado («AAMMDD- PRENDA.pdf» o «AAMMDD- PAGARES.pdf») (`unirPdfs` de `docs/fotos.js`; si uno no se puede unir, van sueltos), el Word y el PDF firmado. **La app no puede escribir en Drive sola** (es una página web, sin
@@ -363,13 +363,17 @@ puede completar todo a mano (sin elegir tipo, nada cambia).
   Sin esos secretos la función contesta `sin_configurar` y la app avisa y descarga los archivos igual. El puente busca la carpeta del demandado sin
   mirar tildes ni mayúsculas, no pisa archivos (agrega «(2)») y no borra nada. Publicar: `deploy_edge_function` con nombre `guardar-demanda`,
   `verify_jwt: true` y su `index.ts`, y subir la app.
-- **Foliado** (`docs/foja.js`, pedido de la persona del 26/11/2026, migración 0055): en el Word, el PDF y la documental, cada hoja lleva
-  arriba a la derecha el número de foja en un círculo (siempre lo más cercano a la esquina) y al lado la firma con el sello. La demanda va
-  en las fojas **1 y 2** y la prenda o los pagarés siguen **desde la 3**. El sello lo dibuja `componerSello` (canvas); la firma sola está en
-  `ajustes_firma.trazo` (PNG transparente en base64, nunca en el repositorio). En el Word va en el encabezado (imagen anclada y campo PAGE),
-  con interlineado 1,1 y 1,5 cm abajo para que entre en 2 fojas; el PDF prueba letras e interlineados (`AJUSTES`). Si ni así entra, la app avisa.
-  El aviso al crear dice el total de «Fojas para la cédula» (demanda + documental), para la leyenda de la cédula al demandado. La demanda en PDF
-  conserva además la firma al pie. El «haz DP» de Cobranzas no se folia.
+- **Foliado** (`docs/foja.js`, pedido de la persona del 26/11/2026, migración 0055): **se numeran las hojas, no las páginas**: todo se imprime
+  frente y dorso y solo el frente (páginas 1, 3, 5…) lleva arriba a la derecha el número de foja, **solo el número, sin círculo** (siempre
+  lo más cercano a la esquina), y al lado la firma con el sello (`ESCALA` 0,196: la persona la pidió 30 % más chica; el número queda en
+  12 pt). La demanda (2 páginas) es la **foja 1** y la prenda o los pagarés siguen **desde la 2**, en hoja nueva. Las hojas de un archivo
+  son `hojas(páginas)` = páginas / 2 hacia arriba. El sello lo dibuja `componerSello` (canvas); la firma sola está en `ajustes_firma.trazo`
+  (PNG transparente en base64, nunca en el repositorio). **La demanda en PDF lleva al pie esa misma imagen** (firma y sello); la firma
+  anterior (`ajustes_firma.imagen`) ya no se usa. En el Word va en tres encabezados («primera página diferente» y pares distintas:
+  foja 1, dorso vacío y foja 2, con los números escritos fijos porque no todos los visores calculan campos), con interlineado 1,1 y
+  1,5 cm abajo para que entre en 2 páginas; el PDF prueba letras e interlineados (`AJUSTES`). Si ni así entra, la app avisa.
+  El aviso al crear dice el total de «Fojas para la cédula» (hojas de la demanda + hojas de la documental), para la leyenda de la cédula
+  al demandado. El «haz DP» de Cobranzas no se folia.
 - **Nombres** (mismo pedido): la demanda, Word y PDF, «AAMMDD- DEMANDA Apellido» (del primer demandado, `apellidoDe`); la documental
   unida y foliada, «AAMMDD- PRENDA.pdf» o «AAMMDD- PAGARES.pdf» (reemplazan los nombres anteriores). Sin Drive, también se descarga.
 - **Siempre se revisa el Word antes de presentar**: lo que no se pudo leer queda como «[dato]» y la app lo avisa al crear.
