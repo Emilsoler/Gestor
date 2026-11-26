@@ -1316,7 +1316,13 @@ async function crearConDemanda(c, boton) {
     if (carpeta) {
       try {
         const archivos = [];
-        for (const f of S.dem.archivos.filter((x) => x.type === 'application/pdf' || /\.pdf$/i.test(x.name))) archivos.push({ nombre: f.name, tipo: 'application/pdf', bytes: new Uint8Array(await f.arrayBuffer()) });
+        // Todos los PDF adjuntos (los de fotos incluidos) van a Drive juntos, como un solo archivo; si uno no se puede unir, van sueltos.
+        const adjuntos = [];
+        for (const f of S.dem.archivos.filter((x) => x.type === 'application/pdf' || /\.pdf$/i.test(x.name))) adjuntos.push({ nombre: f.name, tipo: 'application/pdf', bytes: new Uint8Array(await f.arrayBuffer()) });
+        if (adjuntos.length > 1) {
+          try { archivos.push({ nombre: `Documentación ${iso(today())}.pdf`, tipo: 'application/pdf', bytes: await (await import('./fotos.js')).unirPdfs(adjuntos.map((x) => x.bytes)) }); }
+          catch (e) { console.error(e); archivos.push(...adjuntos); }
+        } else archivos.push(...adjuntos);
         archivos.push({ nombre: word.nombre, tipo: word.blob.type, bytes: new Uint8Array(await word.blob.arrayBuffer()) });
         if (pdf) archivos.push({ nombre: M.nombrePdf(word.nombre), tipo: 'application/pdf', bytes: pdf });
         drive = await guardarEnDrive(carpeta, archivos);

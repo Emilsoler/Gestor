@@ -58,3 +58,18 @@ export async function fotosAPdf(archivos, fecha) {
   const bytes = await pdfDeJpegs(fotos);
   return new File([bytes], `Fotos${fecha ? ' ' + fecha : ''}.pdf`, { type: 'application/pdf' });
 }
+
+/**
+ * Junta varios PDF (en el orden dado) en uno solo. Para Drive: la documentación de una demanda queda en un único archivo.
+ * Si alguno no se puede leer (por ejemplo, tiene contraseña), tira el error y quien llama deja los archivos sueltos.
+ */
+export async function unirPdfs(listaBytes) {
+  const { PDFDocument } = await cargarLib();
+  const salida = await PDFDocument.create();
+  for (const bytes of listaBytes) {
+    const origen = await PDFDocument.load(bytes);
+    const paginas = await salida.copyPages(origen, origen.getPageIndices());
+    paginas.forEach((p) => salida.addPage(p));
+  }
+  return salida.save();
+}

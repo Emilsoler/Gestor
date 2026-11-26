@@ -356,7 +356,7 @@ puede completar todo a mano (sin elegir tipo, nada cambia).
   (verificar con `md5(imagen)`: copiar a mano 20 KB falla; la actual es una versión de 220 px, ~3 KB). Sin firma cargada, el PDF sale igual y la app avisa.
   Prueba: `node --test tests/demanda-pdf.test.mjs` (con `GUARDAR_PDF=<carpeta>` deja el PDF para mirarlo).
 - **Guardar en Drive** (25/11/2026): al crear la causa, la app manda a la carpeta del demandado (`J01. Asociacion Mutual Bell / EN TRÁMITE / APELLIDO NOMBRE`,
-  la crea si no está) los PDF que se adjuntaron, el Word y el PDF firmado. **La app no puede escribir en Drive sola** (es una página web, sin
+  la crea si no está) los PDF que se adjuntaron **unidos en un solo archivo** «Documentación AAAA-MM-DD.pdf» (`unirPdfs` de `docs/fotos.js`; si uno no se puede unir, van sueltos), el Word y el PDF firmado. **La app no puede escribir en Drive sola** (es una página web, sin
   credenciales de Google): lo hace un «puente», un Google Apps Script que vive en la cuenta de Drive de la persona (`dev/drive-puente.gs`, sin
   datos ni claves). La función `supabase/functions/guardar-demanda/` (verifica la sesión, controla los archivos) le pasa los archivos al
   puente con los secretos `DRIVE_PUENTE_URL` y `DRIVE_PUENTE_CLAVE` (nunca en el repositorio ni en el chat: los carga la persona en el panel de Supabase).
