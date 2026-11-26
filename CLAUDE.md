@@ -356,13 +356,22 @@ puede completar todo a mano (sin elegir tipo, nada cambia).
   (verificar con `md5(imagen)`: copiar a mano 20 KB falla; la actual es una versión de 220 px, ~3 KB). Sin firma cargada, el PDF sale igual y la app avisa.
   Prueba: `node --test tests/demanda-pdf.test.mjs` (con `GUARDAR_PDF=<carpeta>` deja el PDF para mirarlo).
 - **Guardar en Drive** (25/11/2026): al crear la causa, la app manda a la carpeta del demandado (`J01. Asociacion Mutual Bell / EN TRÁMITE / APELLIDO NOMBRE`,
-  la crea si no está) los PDF que se adjuntaron **unidos en un solo archivo** «Documentación AAAA-MM-DD.pdf» (`unirPdfs` de `docs/fotos.js`; si uno no se puede unir, van sueltos), el Word y el PDF firmado. **La app no puede escribir en Drive sola** (es una página web, sin
+  la crea si no está) los PDF que se adjuntaron **unidos en un solo archivo** foliado («AAMMDD- PRENDA.pdf» o «AAMMDD- PAGARES.pdf») (`unirPdfs` de `docs/fotos.js`; si uno no se puede unir, van sueltos), el Word y el PDF firmado. **La app no puede escribir en Drive sola** (es una página web, sin
   credenciales de Google): lo hace un «puente», un Google Apps Script que vive en la cuenta de Drive de la persona (`dev/drive-puente.gs`, sin
   datos ni claves). La función `supabase/functions/guardar-demanda/` (verifica la sesión, controla los archivos) le pasa los archivos al
   puente con los secretos `DRIVE_PUENTE_URL` y `DRIVE_PUENTE_CLAVE` (nunca en el repositorio ni en el chat: los carga la persona en el panel de Supabase).
   Sin esos secretos la función contesta `sin_configurar` y la app avisa y descarga los archivos igual. El puente busca la carpeta del demandado sin
   mirar tildes ni mayúsculas, no pisa archivos (agrega «(2)») y no borra nada. Publicar: `deploy_edge_function` con nombre `guardar-demanda`,
   `verify_jwt: true` y su `index.ts`, y subir la app.
+- **Foliado** (`docs/foja.js`, pedido de la persona del 26/11/2026, migración 0055): en el Word, el PDF y la documental, cada hoja lleva
+  arriba a la derecha el número de foja en un círculo (siempre lo más cercano a la esquina) y al lado la firma con el sello. La demanda va
+  en las fojas **1 y 2** y la prenda o los pagarés siguen **desde la 3**. El sello lo dibuja `componerSello` (canvas); la firma sola está en
+  `ajustes_firma.trazo` (PNG transparente en base64, nunca en el repositorio). En el Word va en el encabezado (imagen anclada y campo PAGE),
+  con interlineado 1,1 y 1,5 cm abajo para que entre en 2 fojas; el PDF prueba letras e interlineados (`AJUSTES`). Si ni así entra, la app avisa.
+  El aviso al crear dice el total de «Fojas para la cédula» (demanda + documental), para la leyenda de la cédula al demandado. La demanda en PDF
+  conserva además la firma al pie. El «haz DP» de Cobranzas no se folia.
+- **Nombres** (mismo pedido): la demanda, Word y PDF, «AAMMDD- DEMANDA Apellido» (del primer demandado, `apellidoDe`); la documental
+  unida y foliada, «AAMMDD- PRENDA.pdf» o «AAMMDD- PAGARES.pdf» (reemplazan los nombres anteriores). Sin Drive, también se descarga.
 - **Siempre se revisa el Word antes de presentar**: lo que no se pudo leer queda como «[dato]» y la app lo avisa al crear.
 - Pruebas: `node --test tests/demanda-nueva.test.mjs` (sin stack). Publicar: migración 0053, función `leer-demanda`, subir la app.
 

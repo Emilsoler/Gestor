@@ -75,7 +75,7 @@ test('prendaria: el Word sale con el modelo del estudio y sin campos sin complet
   assert.match(t, /DEMANDA\n/);
   assert.match(t, /automotor marca VOLKSWAGEN dominio KMN065/);
   assert.deepEqual(ok.faltan, []);
-  assert.equal(ok.nombre, '261125 - Demanda Ejecutiva Prendaria - Soto Ramón Ángel.docx'.replace('Soto Ramón Ángel', 'SOTO RAMÓN ÁNGEL'));
+  assert.equal(ok.nombre, '261125- DEMANDA Soto.docx');
   const sin = await armarDemanda('prendaria', lecturaPrenda, modelo('demanda-prendaria'), { moraN: '', hoy });
   assert.ok(sin.faltan.includes('cuota en que empezó la mora'));
   assert.match(await texto(sin.blob), /\[cuota en que empezó la mora\]/);
@@ -120,7 +120,7 @@ test('documentos: el modelo usa solo campos conocidos y el Word repite un rengl�
   assert.deepEqual(r.faltan, []);
   // el orden: el renglón 1 antes que el 9, y todos antes del juramento
   assert.ok(t.indexOf('- 1) Pagaré') < t.indexOf('- 9) Pagaré') && t.indexOf('- 9) Pagaré') < t.indexOf('Se declara bajo fe de juramento'));
-  assert.equal(r.nombre, '261125 - Demanda Ejecutiva Pagarés - PÉREZ JUAN CARLOS y GÓMEZ MARÍA LAURA y DÍAZ ROBERTO LUIS.docx');
+  assert.equal(r.nombre, '261125- DEMANDA Pérez.docx');
 });
 
 test('documentos: lo que no se leyó queda entre corchetes y se avisa por su nombre', async () => {
@@ -210,6 +210,6 @@ test('leer.js: los archivos y la respuesta del modelo', () => {
   assert.ok(INSTRUCCIONES.prendaria.includes('Certificado de Prenda') && INSTRUCCIONES.documentos.includes('pagarés'));
   assert.equal(numEs(143110.5), '143110,5');
   assert.equal(numEs(null), '');
-  assert.equal(nombreWord('prendaria', [], '2026-11-25'), '261125 - Demanda Ejecutiva Prendaria - demandado.docx');
+  assert.equal(nombreWord([], '2026-11-25'), '261125- DEMANDA demandado.docx');
   assert.equal(renglonPagare({ libramiento: null, monto: null, vencimiento: null }, 0), '- 1) Pagaré con fecha de libramiento el día [fecha de libramiento] por la suma de Pesos [importe] con vencimiento el día [fecha de vencimiento].');
 });

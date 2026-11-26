@@ -487,6 +487,16 @@ export async function leerFirma() {
   } catch { return null; }
 }
 
+/** La firma suelta (PNG transparente) que acompaña al número de foja, o null si no está cargada. */
+export async function leerTrazo() {
+  if (!sb) return null;
+  try {
+    const { data, error } = await sb.from('ajustes_firma').select('trazo').eq('id', 1).maybeSingle();
+    if (error || !data?.trazo) return null;
+    return Uint8Array.from(atob(data.trazo), (c) => c.charCodeAt(0));
+  } catch { return null; }
+}
+
 /**
  * Guarda archivos en la carpeta del demandado en Drive (función `guardar-demanda` → puente de Drive del estudio).
  * `archivos`: [{ nombre, tipo, bytes }]. Devuelve { ok: true, carpeta, url, creada, guardados } o { ok: false, motivo, mensaje }:

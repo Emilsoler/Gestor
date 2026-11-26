@@ -39,5 +39,35 @@ test('la carpeta de Drive es «APELLIDO NOMBRE» del primer demandado y el PDF s
   assert.equal(carpetaDemandado(lectura), 'SOTO RAMÓN ÁNGEL');
   assert.equal(carpetaDemandado({ demandados: [{ nombre: '  ' }, { nombre: 'Pérez / Juan: Carlos' }, { nombre: 'Otro' }] }), 'PÉREZ JUAN CARLOS');
   assert.equal(carpetaDemandado({ demandados: [] }), '');
-  assert.equal(nombrePdf('261125 - Demanda Ejecutiva Prendaria - SOTO.docx'), '261125 - Demanda Ejecutiva Prendaria - SOTO.pdf');
+  assert.equal(nombrePdf('261125- DEMANDA Soto.docx'), '261125- DEMANDA Soto.pdf');
+});
+
+test('nombres: «AAMMDD- DEMANDA Apellido» y la documental aparte', async () => {
+  const { apellidoDe, nombreDocumental } = await import('../../docs/demanda-nueva.js');
+  assert.equal(apellidoDe('SOTO RAMÓN ÁNGEL'), 'Soto');
+  assert.equal(apellidoDe('DE LA TORRE ANA'), 'De La Torre');
+  assert.equal(apellidoDe("O'CONNOR, Juan"), "O'Connor");
+  assert.equal(nombreDocumental('prendaria', '2026-11-26'), '261126- PRENDA.pdf');
+  assert.equal(nombreDocumental('documentos', '2026-11-26'), '261126- PAGARES.pdf');
+});
+
+test('la demanda entra en 2 fojas y la documental sigue desde la 3, también en hojas giradas', async () => {
+  const { foliarPdf, contarPaginas, foliarWord, enHoja } = await import('../../docs/foja.js');
+  const { leerZip } = await import('../../docs/cobranzas/acuerdo.js');
+  const { PDFDocument, degrees } = await import('../../docs/vendor/pdf-lib.js');
+  const r = await armarDemanda('prendaria', lectura, modelo('demanda-prendaria'), { moraN: '3', hoy: '2026-11-26' });
+  assert.equal(await contarPaginas(await pdfDesdeWord(r.blob, null)), 2);
+  const doc = await PDFDocument.create();
+  doc.addPage([595, 842]); doc.addPage([842, 595]).setRotation(degrees(90));
+  const f = await foliarPdf(await doc.save(), null, 3);
+  assert.equal(f.paginas, 2);
+  const caja = { x: 0, y: 0, width: 800, height: 600 };
+  assert.deepEqual(enHoja(90, caja, 590, 790), { x: 10, y: 590 }); // arriba a la derecha de como se ve
+  assert.deepEqual(enHoja(270, caja, 590, 790), { x: 790, y: 10 });
+  const w = await leerZip(new Uint8Array(await (await foliarWord(r.blob, Uint8Array.from([137, 80, 78, 71]))).arrayBuffer()));
+  const txt = (n) => new TextDecoder().decode(w.find((p) => p.nombre === n).datos);
+  assert.match(txt('word/document.xml'), /<w:headerReference w:type="default" r:id="rIdFoja"\/>/);
+  assert.match(txt('word/header-foja.xml'), / PAGE /);
+  assert.match(txt('[Content_Types].xml'), /header-foja\.xml/);
+  assert.match(txt('[Content_Types].xml'), /Extension="png"/);
 });

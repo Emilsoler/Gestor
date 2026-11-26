@@ -7,13 +7,16 @@
 // Tipografía: Times (estándar del PDF, sin archivos extra). El Word usa Garamond, que es más angosta, así que el PDF puede
 // ocupar alguna página más; el texto es el mismo. pdf-lib (docs/vendor/pdf-lib.js, MIT) se carga recién al usarlo.
 import { leerZip } from './cobranzas/acuerdo.js';
+import { foliarDoc, ALTO_FOJA } from './foja.js';
 
 let lib;
 const cargarLib = async () => (lib ||= await import('./vendor/pdf-lib.js'));
 
 const PAGINA = { ancho: 612, alto: 792 };                                   // carta
-const MARGEN = { izq: 141.75, der: 42.55, sup: 76.55, inf: 56.7 };          // los del modelo (2835, 851, 1531 y 1134 twips)
-const TAM = 12, RENGLON = 20.5, ENTRE = 8;                                  // interlineado 1,5 y 8 pt entre párrafos
+const MARGEN = { izq: 141.75, der: 42.55, sup: ALTO_FOJA + 4, inf: 56.7 };    // los del modelo; arriba, lo que ocupa el foliado
+export const FOJAS_DEMANDA = 2;
+// La demanda va en las fojas 1 y 2: se prueba con la letra del modelo (12, interlineado 1,5) y, si no entra, se aprieta de a poco.
+const AJUSTES = [[12, 20.5, 8], [12, 19, 6], [11.5, 18, 5], [11, 17, 4], [11, 16, 3], [10.5, 15, 3]]; // [letra, renglón, entre párrafos]
 const FIRMA_ANCHO = 105;                                                    // pt (unos 3,7 cm)
 
 const xmlDesesc = (s) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
@@ -59,10 +62,23 @@ function seguro(fuente, t) {
 }
 
 /**
- * El PDF (Uint8Array) de la demanda. `parrafos` sale de `parrafosDeDocx`; `firma` son los bytes de la imagen JPEG o null
- * (sin firma, el PDF sale igual y la persona lo firma a mano o lo descarta).
+ * El PDF (Uint8Array) de la demanda. `parrafos` sale de `parrafosDeDocx`; `firma` son los bytes de la imagen JPEG del pie o
+ * null (sin firma, el PDF sale igual y la persona lo firma a mano o lo descarta); `sello` es el PNG de `componerSello` para
+ * cada foja (sin él, cada hoja lleva solo el número). Si ni apretada entra en 2 fojas (muchos pagarés), sale con la letra
+ * del modelo en las que necesite.
  */
-export async function pdfDeDemanda(parrafos, firma, { titulo = 'Demanda' } = {}) {
+export async function pdfDeDemanda(parrafos, firma, { titulo = 'Demanda', sello = null } = {}) {
+  let doc = null;
+  for (const ajuste of AJUSTES) {
+    const prueba = await componer(parrafos, firma, titulo, ajuste);
+    if (prueba.getPageCount() <= FOJAS_DEMANDA) { doc = prueba; break; }
+  }
+  doc ||= await componer(parrafos, firma, titulo, AJUSTES[0]);
+  await foliarDoc(doc, sello, 1);
+  return doc.save();
+}
+
+async function componer(parrafos, firma, titulo, [TAM, RENGLON, ENTRE]) {
   const { PDFDocument, StandardFonts, rgb } = await cargarLib();
   const doc = await PDFDocument.create();
   doc.setTitle(titulo);
@@ -138,7 +154,7 @@ export async function pdfDeDemanda(parrafos, firma, { titulo = 'Demanda' } = {})
       y -= alto;
     }
   }
-  return doc.save();
+  return doc;
 }
 
 /** Atajo: el PDF a partir del .docx ya armado (Blob o bytes). */

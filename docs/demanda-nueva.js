@@ -163,12 +163,25 @@ export function causaDeLectura(modo, lectura, ficha, { moraN = '' } = {}) {
 }
 
 // ───────────────────────── El Word ─────────────────────────
-/** Nombre del archivo, como los del estudio: «AAMMDD - Demanda Ejecutiva Prendaria - APELLIDO NOMBRE.docx». */
-export function nombreWord(modo, demandados, hoy) {
-  const quien = (demandados || []).map((d) => String(d.nombre || '').trim()).filter(Boolean).join(' y ') || 'demandado';
-  const tipo = modo === 'prendaria' ? 'Demanda Ejecutiva Prendaria' : 'Demanda Ejecutiva Pagarés';
-  return `${String(hoy).slice(2).replace(/-/g, '')} - ${tipo} - ${quien}.docx`.replace(/[\\/:*?"<>|]+/g, ' ');
+const PARTICULAS = new Set(['de', 'del', 'la', 'las', 'los', 'di', 'da', 'dal', 'dos', 'van', 'von', 'san', 'santa', 'mac', 'le']);
+/** El apellido de «APELLIDO NOMBRE» (así lo trae la lectura), con mayúscula inicial: «DE LA TORRE Ana» → «De La Torre». */
+export function apellidoDe(nombre) {
+  const palabras = String(nombre || '').replace(/,/g, ' ').trim().split(/\s+/).filter(Boolean);
+  let n = 0;
+  while (n < palabras.length - 1 && PARTICULAS.has(palabras[n].toLowerCase())) n++;
+  return palabras.slice(0, n + 1).map((p) => p.toLowerCase().replace(/(^|['’-])(\p{L})/gu, (_, a, l) => a + l.toUpperCase())).join(' ');
 }
+const aammdd = (hoy) => String(hoy).slice(2).replace(/-/g, '');
+const sinRaros = (t) => t.replace(/[\\/:*?"<>|]+/g, ' ');
+
+/** Nombre del Word (y del PDF) de la demanda, pedido de la persona: «AAMMDD- DEMANDA Apellido» (del primer demandado). */
+export function nombreWord(demandados, hoy) {
+  const quien = (demandados || []).map((d) => apellidoDe(d?.nombre)).find(Boolean) || 'demandado';
+  return sinRaros(`${aammdd(hoy)}- DEMANDA ${quien}.docx`);
+}
+
+/** Nombre del PDF de la documental, que se guarda aparte: «AAMMDD- PRENDA» o «AAMMDD- PAGARES». */
+export const nombreDocumental = (modo, hoy) => `${aammdd(hoy)}- ${modo === 'prendaria' ? 'PRENDA' : 'PAGARES'}.pdf`;
 
 /** La carpeta del demandado en Drive: «APELLIDO NOMBRE» del primer demandado (como las que ya hay en «EN TRÁMITE»). */
 export function carpetaDemandado(lectura) {
@@ -187,9 +200,9 @@ export async function armarDemanda(modo, lectura, modelo, { moraN = '', hoy }) {
   if (modo === 'prendaria') {
     const F = formularioPrendaria(lectura, moraN);
     const { blob } = await armarAcuerdo(modelo, datosDemanda(F), CAMPOS_DEMANDA);
-    return { blob, faltan: faltanDemanda(F), nombre: nombreWord(modo, F.demandados, hoy) };
+    return { blob, faltan: faltanDemanda(F), nombre: nombreWord(F.demandados, hoy) };
   }
   const { valores, renglones } = datosDocumentos(lectura);
   const { blob } = await armarAcuerdo(modelo, valores, CAMPOS_DOCUMENTOS, { pagare: renglones });
-  return { blob, faltan: faltanDocumentos(lectura), nombre: nombreWord(modo, (lectura.demandados || []).map((d) => ({ nombre: mayus(d.nombre) })), hoy) };
+  return { blob, faltan: faltanDocumentos(lectura), nombre: nombreWord(lectura.demandados, hoy) };
 }
