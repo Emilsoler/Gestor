@@ -13,7 +13,7 @@ let lib;
 const cargarLib = async () => (lib ||= await import('./vendor/pdf-lib.js'));
 
 const PAGINA = { ancho: 612, alto: 792 };                                   // carta
-const MARGEN = { izq: 141.75, der: 42.55, sup: ALTO_FOJA + 4, inf: 56.7 };    // los del modelo; arriba, lo que ocupa el foliado
+const MARGEN = { izq: 85.05, der: 42.55, sup: ALTO_FOJA + 4, inf: 56.7 };    // los del modelo; arriba, lo que ocupa el foliado
 export const PAGINAS_DEMANDA = 2; // frente y dorso: la foja 1
 // La demanda va en una sola hoja: se prueba con la letra del modelo (12, interlineado 1,5) y, si no entra, se aprieta de a poco.
 const AJUSTES = [[12, 20.5, 8], [12, 19, 6], [11.5, 18, 5], [11, 17, 4], [11, 16, 3], [10.5, 15, 3]]; // [letra, renglón, entre párrafos]
