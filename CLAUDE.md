@@ -673,7 +673,7 @@ siempre editable) o se toman de un deudor ya cargado: "Tomar los datos de un deu
 - **El modelo** lo genera `node dev/modelo-dp.mjs`: ahí está el texto de la demanda del estudio, al pie de la letra (el de
   CALDERON Pablo Gabriel, 260824), con los datos variables como `{{campos}}`. **No modificar ni ampliar el texto** (ni
   agregar cláusulas, citas ni párrafos): solo se reemplazan datos. Única corrección, pedida por la persona el 26/11/2026: en el apartado II se sacó la repetición «en contra en contra de» (queda «en contra de»). Formato: Garamond 12, interlineado 1,5, justificado,
-  fondo lavanda `CCC0D9`, sangría de primera línea 2211 en los párrafos numerados, hoja carta con **margen izquierdo de 3 cm** (1701; la persona pidió el 26/11/2026 achicarlo 2 cm, eran 5; vale igual para la demanda de pagarés y para el PDF) y los demás márgenes de los oficios
+  fondo lavanda `CCC0D9`, sangría de primera línea 2211 en los párrafos numerados, hoja carta con **margen izquierdo de 4 cm** (2268; el 26/11/2026 la persona pidió achicarlo 2 cm, de 5 a 3, y después volver un poco, con la demanda en dos páginas; vale igual para la demanda de pagarés y para el PDF) y los demás márgenes de los oficios
   (esto último es una suposición: el original no se leyó en XML; si el Word del estudio usa otra hoja o márgenes, ajustar
   `SECT` en `dev/modelo-dp.mjs` y regenerar). Hay que subir `VERSION` en `sw.js` al cambiar el modelo.
 - **Cuentas**: lo reclamado es cuotas impagas × valor de la cuota; impagas = cantidad − (cuota en mora − 1); la fecha de la

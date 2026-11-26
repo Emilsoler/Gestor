@@ -55,7 +55,7 @@ const cuerpo = [
 ].join('');
 
 // Hoja carta, con los márgenes de los oficios del estudio.
-const SECT = '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1531" w:right="851" w:bottom="1134" w:left="1701" w:header="708" w:footer="708" w:gutter="0"/><w:cols w:space="720"/><w:docGrid w:linePitch="360"/></w:sectPr>';
+const SECT = '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1531" w:right="851" w:bottom="1134" w:left="2268" w:header="708" w:footer="708" w:gutter="0"/><w:cols w:space="720"/><w:docGrid w:linePitch="360"/></w:sectPr>';
 
 const dec = new TextDecoder(), enc = new TextEncoder();
 const partes = await leerZip(new Uint8Array(readFileSync(ESQUELETO)));
