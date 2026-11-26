@@ -52,7 +52,7 @@ test('el Word sale completo y con el texto del modelo', async () => {
   const { blob, faltan } = await armarAcuerdo(MODELO, datosDemanda(formulario()), CAMPOS_DEMANDA);
   assert.deepEqual(faltan, []);
   const t = await texto(blob);
-  assert.ok(t.includes('promover demanda de ejecución prendaria en contra en contra de CALDERON PABLO GABRIEL, DNI Nº 26.816.517 con domicilio en calle Intendente Da Silva nro. 745 de la ciudad de Bell Ville, Provincia de Córdoba, para que sea condenado al pago de la suma de Pesos CATORCE MILLONES QUINIENTOS NOVENTA Y SEIS MIL NOVECIENTOS ($ 14.596.900) con más intereses y costas.'));
+  assert.ok(t.includes('promover demanda de ejecución prendaria en contra de CALDERON PABLO GABRIEL, DNI Nº 26.816.517 con domicilio en calle Intendente Da Silva nro. 745 de la ciudad de Bell Ville, Provincia de Córdoba, para que sea condenado al pago de la suma de Pesos CATORCE MILLONES QUINIENTOS NOVENTA Y SEIS MIL NOVECIENTOS ($ 14.596.900) con más intereses y costas.'));
   assert.ok(t.includes('automotor marca VOLKSWAGEN dominio KMN065 modelo AMAROK 2.0L TDI 122 CV S22, motor CDB 012416, chasis 8AWDD42H1CA001746.'));
   assert.ok(t.includes('habiéndose abonado 2 cuotas. La mora se produjo a partir del vencimiento de la cuota n° 3, es decir, el 30 de agosto de 2025.'));
   assert.ok(t.includes('con vencimiento la primera el 30 de junio de 2025 y las restantes cada treinta días subsiguientes.'));
@@ -92,7 +92,7 @@ test('con más de un demandado se unen los datos y concuerdan «sean condenados�
   assert.equal(v.al_demandado, 'a los demandados');
   const { blob } = await armarAcuerdo(MODELO, v, CAMPOS_DEMANDA);
   const t = await texto(blob);
-  assert.ok(t.includes('en contra en contra de CALDERON PABLO GABRIEL, DNI Nº 26.816.517 con domicilio en calle Intendente Da Silva nro. 745 de la ciudad de Bell Ville, Provincia de Córdoba y GOMEZ ANA, DNI Nº 30.111.222 con domicilio en calle San Martín nro. 10 de la ciudad de Justiniano Posse, Provincia de Córdoba, para que sean condenados al pago de la suma de Pesos'));
+  assert.ok(t.includes('en contra de CALDERON PABLO GABRIEL, DNI Nº 26.816.517 con domicilio en calle Intendente Da Silva nro. 745 de la ciudad de Bell Ville, Provincia de Córdoba y GOMEZ ANA, DNI Nº 30.111.222 con domicilio en calle San Martín nro. 10 de la ciudad de Justiniano Posse, Provincia de Córdoba, para que sean condenados al pago de la suma de Pesos'));
   assert.ok(t.includes('otorgó un préstamo de dinero a los demandados.'));
   assert.ok(t.includes('Cite y emplace a los demandados a estar a derecho'));
   F.demandados.push({ nombre: 'Lopez Luis', dni: '', calle: '', ciudad: 'Bell Ville' });
