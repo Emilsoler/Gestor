@@ -62,7 +62,8 @@ test('liquidar: se cargan cliente, condiciones y dos cheques; la liquidación se
   await page.fill('#dc_cliente', 'Pérez Juan');
   await page.fill('#dc_cuit', '20-12345678-6');
   await page.fill('#dc_tasa', '4');
-  assert.deepEqual(await Promise.all(['comision', 'iibb', 'imp_cheque'].map((k) => page.inputValue('#dc_' + k))), ['1,5', '3', '1,5']);
+  assert.deepEqual(await Promise.all(['comision', 'iibb', 'imp_cheque', 'cuota_social', 'dias'].map((k) => page.inputValue('#dc_' + k))), ['0,15', '3', '1,5', '100', '2']);
+  await page.fill('#dc_dias', '0'); // sin clearing, para que las cifras de abajo salgan de los plazos solos
   await page.fill('#dc_sellado', '1,2');
   await page.fill('#dc_cheques_0_importe', '1.000.000');
   await page.fill('[data-k="cred.dc.f.cheques.0.vence"]', enDias(30));
@@ -72,16 +73,17 @@ test('liquidar: se cargan cliente, condiciones y dos cheques; la liquidación se
   await page.fill('#dc_cheques_1_importe', '500.000');
   await page.fill('[data-k="cred.dc.f.cheques.1.vence"]', enDias(0));
   const t = norm(await page.textContent('#dcResultado'));
-  // Interés 40.000; gastos cheque 15.000; IIBB 1.650; impuesto 15.000; sellado 12.000 → neto 916.350. El de hoy: 0 días.
-  assert.match(t, /\$ 916\.350/);
+  // Sin clearing, a 30 y 0 días: la cuota social va en el primer cheque y el redondeo al interés del último.
+  assert.match(t, /\$ 931\.739,61/);
   assert.match(t, /\$ 1\.500\.000/); // valor de los cheques
-  assert.match(t, /Se le paga al cliente ?\$ 1\.395\.125/); // 916.350 + 478.775
+  assert.match(t, /Se le paga al cliente ?\$ 1\.417\.467/); // 931.739,61 + 485.727,39
   await page.click('[data-a="dc-guardar"]');
   await toast(page, 'Operación guardada: se le pagan $');
   const fila = JSON.parse(sql(`select to_jsonb(d) from public.descuentos_cheques d`));
   assert.equal(fila.cliente, 'Pérez Juan');
   assert.equal(fila.cuit, '20123456786');
-  assert.deepEqual([+fila.tasa, +fila.comision, +fila.iibb, +fila.imp_cheque, +fila.sellado, +fila.gastos], [4, 1.5, 3, 1.5, 1.2, 0]);
+  assert.deepEqual([+fila.tasa, +fila.comision, +fila.iibb, +fila.imp_cheque, +fila.sellado, +fila.gastos], [4, 0.15, 3, 1.5, 1.2, 0]);
+  assert.deepEqual([+fila.cuota_social, +fila.calculo], [100, 2]);
   assert.equal(fila.cheques.length, 2);
   assert.deepEqual([fila.cheques[0].entidad, fila.cheques[0].numero, fila.cheques[0].estado], [11, '12345', 'cartera']);
   assert.equal(fila.actualizado_por, 'Emi');
@@ -110,7 +112,7 @@ test('cartera: los cheques por fecha, marcar cobrado y rechazado; el rechazado l
 
 test('operaciones: la lista abre la operación para editarla; eliminar pide confirmación', async () => {
   await page.click('[data-a="dc-sub"][data-sub="operaciones"]');
-  assert.match(norm(await page.textContent('#crDescuento')), /Pérez Juan.*2 cheques · 1 en cartera.*\$ 1\.395\.125/);
+  assert.match(norm(await page.textContent('#crDescuento')), /Pérez Juan.*2 cheques · 1 en cartera.*\$ 1\.417\.467/);
   await page.click('.cr-fila[data-a="dc-abrir"]');
   assert.equal(await page.inputValue('#dc_cliente'), 'Pérez Juan');
   assert.match(await page.textContent('.dc-cheque'), /En cartera|Cheque 1/);

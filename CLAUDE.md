@@ -702,15 +702,20 @@ cartera») y **Operaciones** (las guardadas, con buscador; tocarla la abre en Li
   una operación guardada solo se muestra la última consulta que exista: no se consulta sin que la persona escriba.
 - **Cuentas** (`docs/cobranzas/descuento.js`, `liquidarDescuento`): por cheque, días = de la fecha de la liquidación a la fecha
   de pago (0 si ya venció) + días extra de clearing (0 a 5, `DIAS_EXTRA_MAX`; la columna Días muestra «30 + 2»: en nov 2026 la persona puso
-  el plazo del cheque en ese campo y le daba el doble de días); interés = valor × tasa % mensual / 30 × días (simple, sobre el valor);
-  Gastos Cheque (columna `comision`, 1,5 %), impuesto al cheque (`imp_cheque`, 1,5 %) y sellado = % sobre el valor;
+  el plazo del cheque en ese campo y le daba el doble de días). **Desde el 26/11/2026 hay dos cálculos** (columna `calculo`):
+  en las operaciones nuevas (2), igual que el sistema que usa la persona, interés = valor − valor / (1 + tasa)^(días / 30)
+  (descontado y compuesto); además se suma la **cuota social** (`cuota_social`, $ 100, una vez por operación) y el total de
+  gastos se redondea para arriba al peso, sumando esos centavos al interés del último cheque (el IIBB se calcula antes del
+  redondeo). Control: $ 6.000.000, 34 + 2 días, 6,5 % y sellado 1,2 % → interés 436.710,71, IIBB 13.371,29, neto 5.378.818.
+  Las guardadas antes (1) siguen con interés = valor × tasa % mensual / 30 × días (simple), sin cuota social ni redondeo.
+  Gastos Cheque (columna `comision`, 0,15 %: son $ 9.000 cada $ 6.000.000), impuesto al cheque (`imp_cheque`, 1,5 %) y sellado = % sobre el valor;
   IIBB (`iibb`, 3 %) = % sobre (interés + Gastos Cheque); gastos fijos (`gastos`) solo en operaciones viejas (el campo
   aparece únicamente si la operación abierta los tiene); neto = valor − todo. Cada concepto se redondea a centavos
   cheque por cheque. En una operación nueva, interés y sellado arrancan como en la última guardada (no hay tasas por defecto:
-  no inventarlas) y Gastos Cheque, IIBB e impuesto al cheque en 1,5, 3 y 1,5 (`HABITUALES`). Las operaciones anteriores
+  no inventarlas) y Gastos Cheque, IIBB e impuesto al cheque en 0,15, 3 y 1,5 (`HABITUALES`). Las operaciones anteriores
   a 0056 tienen `iibb` e `imp_cheque` en 0: sus importes no cambian. **No se guardan cuentas**: con la misma fecha y condiciones da siempre lo mismo.
 - **Tabla** `public.descuentos_cheques`: una fila por operación (`cliente`, `cuit`, `socio`, `fecha`, `tasa`, `comision`,
-  `sellado`, `iibb`, `imp_cheque`, `gastos`, `dias_extra`, `notas`) y `cheques`, lista jsonb de
+  `sellado`, `iibb`, `imp_cheque`, `cuota_social`, `calculo`, `gastos`, `dias_extra`, `notas`) y `cheques`, lista jsonb de
   `{id, entidad, banco, numero, librador, cuit, importe, vence, estado, fecha_estado, nota}` con `estado` `cartera`, `cobrado` o
   `rechazado`. `entidad` es el código de banco del BCRA si el banco se eligió de la lista (sirve para consultar si está
   denunciado). Mismas barreras, `rev`, historial y `gestor.deshacer`. Tabla opcional en `datos.js` (`D.descuentos`): sin ella la

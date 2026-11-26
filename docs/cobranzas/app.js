@@ -1360,10 +1360,11 @@ function formDescuento() {
       ${campo('iibb', 'IIBB (% de interés + gastos cheque)', ' placeholder="0"')}
       ${campo('imp_cheque', 'Impuesto al cheque (%)', ' placeholder="0"')}
       ${campo('sellado', 'Sellado (%)', ' placeholder="0"')}
+      ${+F.calculo === 2 ? campo('cuota_social', 'Cuota social ($ por operación)', ' data-importe placeholder="0"') : ''}
       ${F.gastos ? campo('gastos', 'Gastos fijos por cheque ($)', ' data-importe') : ''}
       ${campo('dias', 'Días extra de clearing (0 a 5)', ' maxlength="1" placeholder="0"', 'numeric')}
     </div>
-    <p class="hint m0">Los días de cada cheque se cuentan solos, de la fecha de la liquidación a la fecha de pago. «Días extra de clearing» es solo lo que tarda el banco en acreditarlo después de esa fecha (casi siempre 0, 1 o 2). El interés es simple, por cada 30 días, sobre el valor del cheque. Sin IVA.</p>
+    <p class="hint m0">Los días de cada cheque se cuentan solos, de la fecha de la liquidación a la fecha de pago. «Días extra de clearing» es solo lo que tarda el banco en acreditarlo después de esa fecha (casi siempre 0, 1 o 2). ${+F.calculo === 2 ? 'El interés se descuenta del valor del cheque (compuesto cada 30 días) y el total de gastos se redondea para arriba al peso.' : 'Esta operación es anterior: conserva el interés simple, por cada 30 días, sobre el valor del cheque.'} Sin IVA.</p>
     <div id="dcResultado" aria-live="polite">${resultadoDescuento()}</div>
     <div class="actions">${accionesDescuento(abierta)}</div>`;
 }
