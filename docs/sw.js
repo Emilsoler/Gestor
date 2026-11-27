@@ -25,7 +25,8 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
-      .then((ks) => Promise.all(ks.filter((k) => k !== VERSION).map((k) => caches.delete(k))))
+      // Solo las copias propias: las de cobranzas y prenda son de sus service workers (mismo sitio, copias compartidas).
+      .then((ks) => Promise.all(ks.filter((k) => k.startsWith('gestor-') && k !== VERSION).map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   );
 });
