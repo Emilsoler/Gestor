@@ -10,6 +10,8 @@ import {
 import { htmlAgencias, htmlConectadas, htmlFaltanGen, parametrosEnTexto, leerParametros, TABS_AGENCIAS } from './panel.js';
 import { htmlMostrador, htmlRapida, nuevoMostrador, nuevaRapida, cargarMarcas, cambioMostrador, agregarDocs, accionMostrador, calcularRapida, textoRapida } from './mostrador.js';
 import { datosDeSolicitud, textoVencimientos, armarFormularios, conDomicilioDelDeudor, aplicarLectura } from './prendaforms.js';
+import { armarAsentimiento } from './asentimiento.js';
+import { completarCP } from '../cp.js';
 import { esc, hoy, cuantos } from '../../cobranzas/textos.js';
 
 const CLAVE_MIN = 10;
@@ -55,14 +57,19 @@ function devolverFoco(f) {
 function copiar(texto) {
   navigator.clipboard.writeText(texto).then(() => toast('Copiado'), () => toast('No se pudo copiar en este dispositivo'));
 }
-async function entregar(blob, archivo) {
-  const f = typeof File === 'function' ? new File([blob], archivo, { type: blob.type }) : null;
-  if (movil.matches && f && navigator.canShare?.({ files: [f] })) {
-    try { await navigator.share({ files: [f], title: archivo }); return true; } catch (e) { if (e.name === 'AbortError') return false; }
+// `otros` ([{blob, archivo}]) salen junto con el primero: en el celular se comparten todos de una vez, porque el
+// teléfono no deja abrir «compartir» dos veces con un solo toque.
+async function entregar(blob, archivo, otros = []) {
+  const todos = [{ blob, archivo }, ...otros];
+  const fs = typeof File === 'function' ? todos.map((x) => new File([x.blob], x.archivo, { type: x.blob.type })) : null;
+  if (movil.matches && fs && navigator.canShare?.({ files: fs })) {
+    try { await navigator.share({ files: fs, title: archivo }); return true; } catch (e) { if (e.name === 'AbortError') return false; }
   }
-  const url = URL.createObjectURL(blob);
-  const a = Object.assign(document.createElement('a'), { href: url, download: archivo });
-  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  for (const x of todos) {
+    const url = URL.createObjectURL(x.blob);
+    const a = Object.assign(document.createElement('a'), { href: url, download: x.archivo });
+    document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  }
   return true;
 }
 const verVista = () => render();
@@ -315,8 +322,11 @@ async function generarFormularios() {
     const nombre = String(g.p.deudor?.nombre || 'deudor').replace(/[\\/:*?"<>|]+/g, ' ').trim();
     const etiqueta = g.tipo === 'prenda' ? 'Formulario 03' : cuales.length === 2 ? 'Contratos de prenda' : cuales[0] === 'a' ? 'Contrato de prenda' : 'Contrato de prenda copia no negociable';
     const archivo = `${hoy().slice(2).replace(/-/g, '')} - ${etiqueta} - ${nombre}.pdf`;
-    if (!(await entregar(new Blob([bytes], { type: 'application/pdf' }), archivo))) return;
-    toast(`PDF listo: ${archivo}. Imprimilo sobre los formularios oficiales en blanco.`);
+    // Deudor casado/a: con la PRENDA sale también el asentimiento conyugal, en un PDF aparte porque va en papel común.
+    const otros = g.tipo === 'prenda' && g.p.deudor?.estadoCivil === 'casado'
+      ? [{ blob: new Blob([await armarAsentimiento(datosListos(g))], { type: 'application/pdf' }), archivo: `${hoy().slice(2).replace(/-/g, '')} - Asentimiento conyugal - ${nombre}.pdf` }] : [];
+    if (!(await entregar(new Blob([bytes], { type: 'application/pdf' }), archivo, otros))) return;
+    toast(otros.length ? `Listos dos PDF: el Formulario 03 (va sobre el formulario oficial en blanco) y el asentimiento conyugal (papel común).` : `PDF listo: ${archivo}. Imprimilo sobre los formularios oficiales en blanco.`);
   } catch (e) { console.error(e); toast('No se pudo armar el PDF'); }
 }
 
@@ -555,6 +565,11 @@ function escrito(el) {
 }
 document.addEventListener('input', (e) => {
   const k = escrito(e.target);
+  if (k === 'ag.mos.datos.dom_localidad' || k === 'ag.mos.datos.dom_provincia') {
+    const d = S.ag.mos.datos, x = completarCP(d.dom_cp, d.cpPuesto, d.dom_localidad, d.dom_provincia);
+    Object.assign(d, { dom_cp: x.cp, cpPuesto: x.puesto });
+    const c = $('[data-k="ag.mos.datos.dom_cp"]'); if (c) c.value = x.cp;
+  }
   if (k?.startsWith('ag.gen.')) { const f = $('#genFaltan'); if (f && S.ag.gen) f.innerHTML = htmlFaltanGen(S.ag.gen); }
 });
 document.addEventListener('change', (e) => {

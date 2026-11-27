@@ -69,7 +69,7 @@ test('cotizar por la cuota que quiere pagar y con precio y anticipo (celular)', 
   const t = norm(await p.textContent("#main"));
   assert.match(t, /Mis cotizaciones/);
   assert.match(t, /MARCA UNO/);
-  assert.ok((await p.locator('[data-wacot]').count()) >= 3);
+  assert.ok((await p.locator('[data-wacot]').count()) >= 1); // una sola cotización: «precio y anticipo» ya no existe
   await p.evaluate(() => { window.__abierto = ''; window.open = (u) => { window.__abierto = u; return null; }; });
   await p.locator('[data-wacot]').first().click();
   const abierto = decodeURIComponent(await p.evaluate(() => window.__abierto));

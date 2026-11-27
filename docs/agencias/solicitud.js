@@ -104,6 +104,11 @@ export const DOCS_NO_ASOCIADA = ['Estatuto social', 'Última acta de autoridades
 /** Qué parte del ingreso mensual se lleva la cuota, en % con dos decimales. null sin ingreso. */
 export const relacionCuota = (cuota, ingreso) => (Number(ingreso) > 0 ? Math.round((Number(cuota) / Number(ingreso)) * 10000) / 100 : null);
 
+/** En qué nupcias está casado/a: [valor, rótulo]. */
+export const NUPCIAS = [['1', '1ras. nupcias'], ['2', '2das. nupcias'], ['3', '3ras. nupcias'], ['4', '4tas. nupcias']];
+/** Código postal: los 4 números de siempre o el CPA de 8 (X2550XAB). */
+const cpValido = (cp) => /^(\d{4}|[A-Za-z]\d{4}[A-Za-z]{3})$/.test(cp);
+
 const fechaValida = (f) => /^\d{4}-\d{2}-\d{2}$/.test(f) && !Number.isNaN(Date.parse(`${f}T00:00:00Z`)) && new Date(`${f}T00:00:00Z`).toISOString().slice(0, 10) === f;
 
 /**
@@ -126,10 +131,11 @@ export function revisarDatos(d, hoy, juridica = false) {
     const localidad = txt(d?.dom_localidad, 100), departamento = txt(d?.dom_departamento, 100), provincia = txt(d?.dom_provincia, 100);
     if (calle.length < 2) errores.push('Escribí la calle del domicilio del cliente.');
     if (!numero) errores.push('Escribí el número del domicilio del cliente (o «S/N»).');
+    if (!cpValido(cp)) errores.push('Escribí el código postal del cliente (4 números, o el código nuevo de 8).');
     if (localidad.length < 2) errores.push('Escribí la localidad del cliente.');
     if (provincia.length < 2) errores.push('Escribí la provincia del cliente.');
     domicilio = `${calle} ${numero}${piso ? `, piso ${piso}` : ''}${depto ? `, depto. ${depto}` : ''}, ${localidad}`.slice(0, 300);
-    partes = { dom_calle: calle, dom_numero: numero, ...(piso ? { dom_piso: piso } : {}), ...(depto ? { dom_depto: depto } : {}), ...(cp ? { dom_cp: cp } : {}),
+    partes = { dom_calle: calle, dom_numero: numero, ...(piso ? { dom_piso: piso } : {}), ...(depto ? { dom_depto: depto } : {}), dom_cp: cp,
       dom_localidad: localidad, ...(departamento ? { dom_departamento: departamento } : {}), dom_provincia: provincia };
     nacionalidad = txt(d?.nacionalidad, 80);
     nacimiento = String(d?.nacimiento ?? '');
@@ -138,12 +144,14 @@ export function revisarDatos(d, hoy, juridica = false) {
   } else if (domicilio.length < 5) errores.push('Escribí el domicilio real del cliente.');
   const estado = d?.estado_civil;
   if (!['soltero', 'casado'].includes(estado)) errores.push('Elegí el estado civil.');
-  let lugar = '', fecha = '', conyuge = {};
+  let lugar = '', fecha = '', nupcias = '', conyuge = {};
   if (estado === 'casado') {
     lugar = txt(d?.matrimonio_lugar, 200);
     fecha = String(d?.matrimonio_fecha ?? '');
     if (lugar.length < 2) errores.push('Escribí el lugar del matrimonio.');
     if (!fechaValida(fecha) || fecha < '1930-01-01' || fecha > hoy) errores.push('Escribí la fecha del matrimonio.');
+    nupcias = String(d?.matrimonio_nupcias ?? ''); // sale en el asentimiento conyugal (27/11/2026)
+    if (!NUPCIAS.some(([k]) => k === nupcias)) errores.push('Elegí en qué nupcias está casado/a.');
     // Datos del cónyuge (nov 2026): salen en la copia no negociable del contrato de prenda.
     const cNombre = txt(d?.conyuge_nombre, 200), cDni = String(d?.conyuge_dni ?? '').replace(/\D/g, ''), cNac = txt(d?.conyuge_nacionalidad, 80);
     const cDom = txt(d?.conyuge_domicilio, 300), cFecha = String(d?.conyuge_nacimiento ?? '');
@@ -181,7 +189,7 @@ export function revisarDatos(d, hoy, juridica = false) {
   if (typeof d?.asociado !== 'boolean') errores.push('Indicá si el cliente es asociado a la Mutual.');
   if (errores.length) return { errores };
   return {
-    datos: { asociado: d.asociado, ...(actividad ? { actividad } : {}), ...(notas ? { notas } : {}), dni, domicilio, ...partes, ...(porPartes ? { nacionalidad, nacimiento } : {}), estado_civil: estado, ...(estado === 'casado' ? { matrimonio_lugar: lugar, matrimonio_fecha: fecha, ...conyuge } : {}), celular, ...(cbu ? { cbu } : {}), ...(alias ? { alias } : {}), ...(hayCuenta ? { cuenta } : {}), ...tercero },
+    datos: { asociado: d.asociado, ...(actividad ? { actividad } : {}), ...(notas ? { notas } : {}), dni, domicilio, ...partes, ...(porPartes ? { nacionalidad, nacimiento } : {}), estado_civil: estado, ...(estado === 'casado' ? { matrimonio_lugar: lugar, matrimonio_fecha: fecha, matrimonio_nupcias: nupcias, ...conyuge } : {}), celular, ...(cbu ? { cbu } : {}), ...(alias ? { alias } : {}), ...(hayCuenta ? { cuenta } : {}), ...tercero },
   };
 }
 
@@ -197,10 +205,11 @@ function revisarDatosJuridica(d) {
   const localidad = txt(d?.dom_localidad, 100), departamento = txt(d?.dom_departamento, 100), provincia = txt(d?.dom_provincia, 100);
   if (calle.length < 2) errores.push('Escribí la calle del domicilio o sede social.');
   if (!numero) errores.push('Escribí el número del domicilio o sede social (o «S/N»).');
+  if (!cpValido(cp)) errores.push('Escribí el código postal de la sede social (4 números, o el código nuevo de 8).');
   if (localidad.length < 2) errores.push('Escribí la localidad de la sede social.');
   if (provincia.length < 2) errores.push('Escribí la provincia de la sede social.');
   const domicilio = `${calle} ${numero}${piso ? `, piso ${piso}` : ''}${depto ? `, depto. ${depto}` : ''}, ${localidad}`.slice(0, 300);
-  const partes = { dom_calle: calle, dom_numero: numero, ...(piso ? { dom_piso: piso } : {}), ...(depto ? { dom_depto: depto } : {}), ...(cp ? { dom_cp: cp } : {}),
+  const partes = { dom_calle: calle, dom_numero: numero, ...(piso ? { dom_piso: piso } : {}), ...(depto ? { dom_depto: depto } : {}), dom_cp: cp,
     dom_localidad: localidad, ...(departamento ? { dom_departamento: departamento } : {}), dom_provincia: provincia };
   const repNombre = txt(d?.representante_nombre, 200), repDni = String(d?.representante_dni ?? '').replace(/\D/g, ''), repCargo = txt(d?.representante_cargo, 100);
   if (repNombre.length < 3) errores.push('Escribí el apellido y nombre de quien representa a la empresa.');

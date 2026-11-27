@@ -66,6 +66,7 @@ select:disabled,input:disabled{opacity:.55}
 
 .aviso{border-radius:10px;padding:10px 12px;background:var(--bad-soft);color:#7a1f10;font-size:14px}
 .aviso.suave{background:var(--warn-soft);color:#5c3f00}
+.aviso.relacion{font-size:16px;font-weight:600}
 
 .resultado{border-width:2px}
 .destacado{display:grid;gap:4px;background:#000;color:#fff;border-radius:8px;padding:14px 16px}

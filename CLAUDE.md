@@ -1023,6 +1023,22 @@ Mutual y no nombra a InfoAuto.
   las cuentas pausadas no cuentan. No se guarda nada de lo que se cotiza. Si la base todavía no tiene la función, el cartel no se muestra. Publicar: migración 0051,
   `deploy_edge_function` de `agencias` (siete archivos) y subir la app. Pruebas: `agencias-conectadas-puro.test.mjs` (sin stack) y «agencias conectadas» de `agencias.test.mjs`.
 
+### Ajustes del 27/11/2026 (pedido de la persona)
+
+- **Textos sacados** del cotizador (no volver a sumarlos sin que los pida): la leyenda bajo el resultado («No incluye IVA…»; la `leyenda`
+  de Parámetros ya no se muestra ahí), «Seguí con la solicitud…», el recuadro negro «Monto máximo que financia la Mutual» (queda el aviso
+  «Pediste X, pero la Mutual financia hasta Y»), «Elegí cómo cargarla…», «Para que se lea bien…», «que ya tenés», el rótulo «¿De quién es la
+  cuenta?» (quedan los dos botones) y «No adjuntaste ningún archivo…». «Valor del vehículo» (solo `ver_precios`) sale con el tamaño de la línea del crédito.
+- **Relación Cuota-Ingreso**: al escribir el ingreso aparece «Relación Cuota-Ingreso: X %», en verde hasta `relacion_max` (45, incluido) y en rojo si lo supera.
+- **Código postal obligatorio** (`revisarDatos`, 4 números o CPA) en la solicitud y en el mostrador; se completa solo con la localidad
+  (`docs/agencias/cp.js`: solo localidades de Córdoba en las que coincidieron dos listados publicados; no es una base oficial). Sin
+  consultas a sitios externos, no pisa lo escrito a mano y queda siempre editable. No agregar localidades sin confirmar el dato.
+- **Nupcias** (`datos.matrimonio_nupcias`, obligatorio si es casado/a; sin migración; las solicitudes anteriores no lo traen).
+- **Asentimiento conyugal** (`docs/agencias/master/asentimiento.js`): con «Generar PRENDA» de un deudor casado/a bajan dos PDF, el
+  Formulario 03 y el asentimiento (hoja completa A4, en papel común), con el texto del modelo de la persona. El N° de contrato de prenda
+  se escribe en la pantalla de revisión; lo que falta queda en blanco y se avisa; las firmas quedan vacías. El modelo que mandó la persona
+  tiene datos reales: no va al repositorio. Prueba sin stack: `asentimiento-cp-puro.test.mjs`.
+
 ### Documentación para el Registro del Automotor (nov 2026, pedido de la persona del 24/11/2026)
 
 En Créditos y Cobros → Agencias → Solicitudes, cada solicitud **aprobada** tiene un recuadro con dos botones: «Generar PRENDA»

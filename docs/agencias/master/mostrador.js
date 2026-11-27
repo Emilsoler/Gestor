@@ -6,7 +6,7 @@
 import { consultarBCRA, cotizadorMutual, aprobarMostrador, subirDocMostrador, mensaje } from '../../cobranzas/datos.js';
 import { simularCredito } from '../../cobranzas/vehiculos.js';
 import { esc, plata, hoy } from '../../cobranzas/textos.js';
-import { MAX_BYTES, cuitValido, dniDelCuit, esJuridica, revisarDatos, tipoArchivo } from '../solicitud.js';
+import { MAX_BYTES, NUPCIAS, cuitValido, dniDelCuit, esJuridica, revisarDatos, tipoArchivo } from '../solicitud.js';
 
 /** El identificador fijo de las solicitudes de mostrador (el mismo que usa la base). */
 const MAX_DOCS = 40;
@@ -137,14 +137,14 @@ function paso3(M, A) {
     <div class="grid2">${t('representante_nombre', 'Representante: apellido y nombre', ' maxlength="200"')}${t('representante_dni', 'Representante: DNI', ' inputmode="numeric"')}${t('representante_cargo', 'Cargo', ' maxlength="100"')}</div>`
     : `<div class="grid2">${t('dni', 'DNI', ' inputmode="numeric" maxlength="12"')}${t('nacionalidad', 'Nacionalidad', ' maxlength="80"')}${f('nacimiento', 'Fecha de nacimiento')}</div>`;
   const civil = juridica ? '' : `<div class="grid2">${s('estado_civil', 'Estado civil', [['soltero', 'Soltero/a'], ['casado', 'Casado/a']])}
-    ${v('estado_civil') === 'casado' ? t('matrimonio_lugar', 'Lugar del matrimonio') + f('matrimonio_fecha', 'Fecha del matrimonio') : ''}</div>
+    ${v('estado_civil') === 'casado' ? t('matrimonio_lugar', 'Lugar del matrimonio') + f('matrimonio_fecha', 'Fecha del matrimonio') + s('matrimonio_nupcias', '¿En qué nupcias?', NUPCIAS) : ''}</div>
     ${v('estado_civil') === 'casado' ? `<p class="hint m0"><b>Datos del cónyuge</b></p><div class="grid2">${t('conyuge_nombre', 'Apellido y nombre')}${t('conyuge_dni', 'DNI', ' inputmode="numeric"')}${t('conyuge_nacionalidad', 'Nacionalidad')}${f('conyuge_nacimiento', 'Fecha de nacimiento')}${t('conyuge_domicilio', 'Domicilio')}</div>` : ''}`;
   const hayCuenta = String(v('cbu')).trim() || String(v('alias')).trim();
   return `<section class="card"><div class="card-cab"><h3>3 · Datos del cliente</h3></div>
     ${persona}
     ${t('actividad', 'Empleo, profesión o actividad (opcional)', ' maxlength="200"')}
     <p class="hint m0"><b>${juridica ? 'Domicilio o sede social' : 'Domicilio real'}</b></p>
-    <div class="grid2">${t('dom_calle', 'Calle')}${t('dom_numero', 'Número', ' placeholder="o S/N"')}${t('dom_piso', 'Piso (opcional)')}${t('dom_depto', 'Depto. (opcional)')}${t('dom_cp', 'Código postal (opcional)')}${t('dom_localidad', 'Localidad')}${t('dom_departamento', 'Departamento (opcional)')}${t('dom_provincia', 'Provincia')}</div>
+    <div class="grid2">${t('dom_calle', 'Calle')}${t('dom_numero', 'Número', ' placeholder="o S/N"')}${t('dom_piso', 'Piso (opcional)')}${t('dom_depto', 'Depto. (opcional)')}${t('dom_localidad', 'Localidad')}${t('dom_cp', 'Código postal', ' maxlength="8"')}${t('dom_departamento', 'Departamento (opcional)')}${t('dom_provincia', 'Provincia')}</div>
     ${civil}
     <div class="grid2">${t('celular', 'Celular, con característica', ' type="tel" inputmode="tel" maxlength="25"')}
       ${s('asociado', juridica ? '¿La empresa es asociada a la Mutual?' : '¿Es asociado a la Mutual?', [['si', 'Sí'], ['no', 'No']])}

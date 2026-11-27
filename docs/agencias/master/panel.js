@@ -6,6 +6,7 @@ import { esc, plata, cuantos } from '../../cobranzas/textos.js';
 // Los casilleros de documentos y los nombres de las categorías son los del cotizador (un solo lugar).
 import { CATEGORIAS, DOCS, docsSinAdjuntar, dniDelCuit } from '../solicitud.js';
 import { faltanFormularios, textoVencimientos, conDomicilioDelDeudor } from './prendaforms.js';
+import { faltanAsentimiento } from './asentimiento.js';
 
 // La fila fija de las ventas en la Mutual (migración 0057). Las pantallas de «Nuevo crédito» y «Cotización rápida»
 // las pasa app.js: así este archivo no arrastra la conexión con la base.
@@ -179,7 +180,7 @@ function solicitud(x, A, est, notas) {
         ${d.domicilio ? fila(d.persona === 'juridica' ? 'Sede social' : 'Domicilio real', esc(d.domicilio)) : ''}
         ${d.nacionalidad || d.nacimiento ? fila('Nacionalidad · nacimiento', `${esc(d.nacionalidad || '')} · ${esc(String(d.nacimiento || '').split('-').reverse().join('/'))}`) : ''}
         ${d.dom_provincia ? fila('Localidad · departamento · provincia · CP', esc([d.dom_localidad, d.dom_departamento, d.dom_provincia, d.dom_cp].filter(Boolean).join(' · '))) : ''}
-        ${d.estado_civil ? fila('Estado civil', d.estado_civil === 'casado' ? `Casado/a · ${esc(d.matrimonio_lugar || '')}, ${esc(String(d.matrimonio_fecha || '').split('-').reverse().join('/'))}` : 'Soltero/a') : ''}
+        ${d.estado_civil ? fila('Estado civil', d.estado_civil === 'casado' ? `Casado/a${d.matrimonio_nupcias ? ` en ${esc(d.matrimonio_nupcias)}° nupcias` : ''} · ${esc(d.matrimonio_lugar || '')}, ${esc(String(d.matrimonio_fecha || '').split('-').reverse().join('/'))}` : 'Soltero/a') : ''}
         ${d.estado_civil === 'casado' && d.conyuge_nombre ? fila('Cónyuge', `${esc(d.conyuge_nombre)} · DNI ${esc(Number(d.conyuge_dni).toLocaleString('es-AR'))} · ${esc(d.conyuge_nacionalidad || '')} · nació el ${esc(String(d.conyuge_nacimiento || '').split('-').reverse().join('/'))} · ${esc(d.conyuge_domicilio || '')}`) : ''}
         ${x.cliente ? fila('Celular', esc(x.cliente)) : ''}
         ${d.cbu ? fila('CBU o CVU', `<span class="mono">${esc(d.cbu)}</span>`) : (d.alias ? '' : fila('CBU o CVU', '<span class="hint">No lo informó la agencia</span>'))}
@@ -212,6 +213,8 @@ const GEN_PRENDA = [
     ['deudor.calle', 'Calle', 't'], ['deudor.numero', 'Número', 't'], ['deudor.piso', 'Piso', 't'], ['deudor.dep', 'Depto.', 't'], ['deudor.cp', 'Código postal', 't'], ['deudor.localidad', 'Localidad', 't'], ['deudor.partido', 'Departamento', 't'], ['deudor.provincia', 'Provincia', 't']]],
   ['Vehículo (del título del automotor)', [['vehiculo.dominio', 'Dominio', 't'], ['vehiculo.marca', 'Marca', 't'], ['vehiculo.tipo', 'Tipo', 't'], ['vehiculo.modelo', 'Modelo', 't'], ['vehiculo.marcaMotor', 'Marca del motor', 't'], ['vehiculo.motor', 'N° de motor', 't'], ['vehiculo.marcaChasis', 'Marca del chasis', 't'], ['vehiculo.chasis', 'N° de chasis', 't']]],
 ];
+// Solo con la PRENDA de un deudor casado/a: lo que lleva el asentimiento conyugal y no está en los otros grupos.
+const GEN_ASENTIMIENTO = ['Asentimiento conyugal (sale junto con la PRENDA, en otro PDF)', [['asentimiento.contrato', 'Contrato de prenda N°', 't'], ['asentimiento.nupcias', 'Nupcias (1, 2…)', 't'], ['asentimiento.lugar', 'Lugar del matrimonio', 't'], ['asentimiento.fecha', 'Fecha del matrimonio', 'd'], ['conyuge.dni', 'DNI del cónyuge', 't'], ['conyuge.domicilio', 'Domicilio del cónyuge', 't'], ['vehiculo.anio', 'Año del vehículo', 't']]];
 // El tercer elemento (true) deja el grupo plegado: son datos que casi siempre son los mismos y vienen ya cargados.
 const GEN_CONTRATOS = [
   ['Datos del contrato', [['fecha', 'Fecha', 'd'], ['lugar', 'Lugar', 't'], ['monto', 'Monto del crédito ($)', 'n'], ['cuotas', 'Cantidad de cuotas', 'n'], ['cuota', 'Valor de la cuota ($)', 'n'], ['tna', 'Interés anual (TNA %)', 'n']]],
@@ -240,14 +243,15 @@ function htmlGenerarBloque(x, est) {
 
 function campoGen(g, [ruta, rotulo, tipo]) {
   const v = ruta.split('.').reduce((o, k) => (o == null ? undefined : o[k]), g.p) ?? '', k = `ag.gen.p.${ruta}`;
-  if (tipo === 's') return `<label class="f">${esc(rotulo)}<select data-k="${esc(k)}">${OPC_EC.map(([a, b]) => `<option value="${a}"${v === a ? ' selected' : ''}>${esc(b)}</option>`).join('')}</select></label>`;
+  if (tipo === 's') return `<label class="f">${esc(rotulo)}<select data-k="${esc(k)}" data-re="1">${OPC_EC.map(([a, b]) => `<option value="${a}"${v === a ? ' selected' : ''}>${esc(b)}</option>`).join('')}</select></label>`;
   if (tipo.startsWith('s:')) return `<label class="f">${esc(rotulo)}<select data-k="${esc(k)}">${OPC_GEN[tipo.slice(2)].map(([a, b]) => `<option value="${a}"${v === a ? ' selected' : ''}>${esc(b)}</option>`).join('')}</select></label>`;
   return `<label class="f">${esc(rotulo)}<input data-k="${esc(k)}" value="${esc(v)}"${tipo === 'd' ? ' type="date"' : ''}${tipo === 'n' ? ' inputmode="decimal"' : ''} autocomplete="off"></label>`;
 }
 
 /** Pantalla de revisión: todo lo que va a salir impreso, editable, con la lista de lo que falta. */
 export function htmlGenerar(g) {
-  const grupos = g.tipo === 'prenda' ? GEN_PRENDA : GEN_CONTRATOS;
+  const casado = g.tipo === 'prenda' && g.p.deudor?.estadoCivil === 'casado';
+  const grupos = g.tipo !== 'prenda' ? GEN_CONTRATOS : casado ? [...GEN_PRENDA, GEN_ASENTIMIENTO] : GEN_PRENDA;
   return `<div class="ag-gen-panel"><div class="card-cab"><h4>${g.tipo === 'prenda' ? 'Formulario 03 (PRENDA)' : 'Contrato de prenda y copia no negociable'}</h4><button class="btn small" data-a="ag-gen-cerrar">Cerrar</button></div>
     <p class="hint">Revisá los datos. Lo que dejes vacío sale en blanco, para completar a mano. Lo que no está en la solicitud (dominio, motor, chasis…) se lee del título del automotor.</p>
     ${htmlLectura(g)}
@@ -259,7 +263,7 @@ export function htmlGenerar(g) {
       <div class="grid2"><label class="f">Correr a la derecha (mm)<input data-k="ag.gen.dx" value="${esc(g.dx ?? '')}" inputmode="decimal" autocomplete="off"></label>
       <label class="f">Correr hacia abajo (mm)<input data-k="ag.gen.dy" value="${esc(g.dy ?? '')}" inputmode="decimal" autocomplete="off"></label></div>
       <p class="hint m0">Sirve para corregir lo que tu impresora corre el papel. Se recuerda en este dispositivo.</p></fieldset>
-    <div class="actions"><button class="btn primary" data-a="ag-gen-pdf" data-id="${esc(g.id)}">Descargar PDF para imprimir</button>
+    <div class="actions"><button class="btn primary" data-a="ag-gen-pdf" data-id="${esc(g.id)}">${casado ? 'Descargar PRENDA y asentimiento' : 'Descargar PDF para imprimir'}</button>
     </div></div>`;
 }
 
@@ -279,7 +283,9 @@ export function htmlLectura(g) {
 
 export function htmlFaltanGen(g) {
   const f = faltanFormularios({ ...conDomicilioDelDeudor(g.p), vencimientos: g.p.vencimientos || textoVencimientos(g.p) }, { soloF03: g.tipo === 'prenda' });
-  return f.length ? `<p class="aviso-chico" role="status"><b>Va a salir en blanco:</b> ${esc(f.join(', '))}.</p>` : '<p class="hint m0">No falta ningún dato.</p>';
+  const a = g.tipo === 'prenda' && g.p.deudor?.estadoCivil === 'casado' ? faltanAsentimiento(g.p) : [];
+  const aviso = (t, xs) => (xs.length ? `<p class="aviso-chico" role="status"><b>${t}:</b> ${esc(xs.join(', '))}.</p>` : '');
+  return f.length || a.length ? aviso('Va a salir en blanco', f) + aviso('En el asentimiento va a salir en blanco', a) : '<p class="hint m0">No falta ningún dato.</p>';
 }
 
 /**

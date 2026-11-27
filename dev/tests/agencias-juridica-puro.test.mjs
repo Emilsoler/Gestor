@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { DOCS_NO_ASOCIADA, esJuridica, revisarDatos } from '../../docs/agencias/solicitud.js';
 
 const HOY = '2026-11-25';
-const SEDE = { dom_calle: 'Bv. Colón', dom_numero: '135', dom_localidad: 'Bell Ville', dom_provincia: 'Córdoba' };
+const SEDE = { dom_calle: 'Bv. Colón', dom_numero: '135', dom_cp: '2550', dom_localidad: 'Bell Ville', dom_provincia: 'Córdoba' };
 const EMPRESA = { ...SEDE, representante_nombre: 'PEREZ JUAN', representante_dni: '20123456', representante_cargo: 'Presidente', celular: '3534 123456', asociado: false };
 const PERSONA = { dni: '11111111', estado_civil: 'soltero', celular: '3534123456', nacionalidad: 'Argentina', nacimiento: '1980-02-03', ...SEDE, asociado: true };
 
