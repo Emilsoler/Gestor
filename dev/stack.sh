@@ -42,7 +42,7 @@ stop_one() { # detiene el servicio y espera a que libere su puerto
 }
 
 down() {
-  stop_one gateway; stop_one postgrest; stop_one gotrue; stop_one chat; stop_one claude-falso; stop_one bcra; stop_one bcra-falso; stop_one ubicar; stop_one traccar-falso; stop_one agencias; stop_one infoauto-falso; stop_one storage-falso
+  stop_one gateway; stop_one postgrest; stop_one gotrue; stop_one chat; stop_one claude-falso; stop_one bcra; stop_one bcra-falso; stop_one ubicar; stop_one traccar-falso; stop_one agencias; stop_one infoauto-falso; stop_one storage-falso; stop_one mostrador
   if [ -d "$PGDATA" ]; then as_pg "$PGBIN/pg_ctl" -D "$PGDATA" -m fast stop >/dev/null 2>&1 || true; fi
 }
 
@@ -170,6 +170,15 @@ SQL
     DENO_SERVE_ADDRESS=tcp:127.0.0.1:54334 \
       nohup setsid "$DENO" run --allow-net --allow-env "$REPO/supabase/functions/agencias/index.ts" > "$LOGS/agencias.log" 2>&1 &
     echo $! > "$STACK/agencias.pid"
+  fi
+
+  # La función `mostrador` (documentos de la venta de mostrador del panel máster).
+  stop_one mostrador
+  if [ -x "$DENO" ]; then
+    SUPABASE_URL=http://127.0.0.1:54321 SUPABASE_ANON_KEY="$ANON_KEY" SUPABASE_SERVICE_ROLE_KEY="$SERVICE_KEY" \
+    DENO_SERVE_ADDRESS=tcp:127.0.0.1:54335 \
+      nohup setsid "$DENO" run --allow-net --allow-env "$REPO/supabase/functions/mostrador/index.ts" > "$LOGS/mostrador.log" 2>&1 &
+    echo $! > "$STACK/mostrador.pid"
   fi
 
   # Puerta de entrada

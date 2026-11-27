@@ -1126,6 +1126,22 @@ Desde SQL no se abren los documentos: los enlaces los da la función (botón «V
   Estadísticas. Las solicitudes pendientes se cuentan al entrar, cada minuto y al volver (aparecen en el título de la pestaña).
   Las pruebas de navegador `dev/tests/agencias-admin.test.mjs` y `agencias-chat-app.test.mjs` todavía entran por `cobranzas/`:
   **falta adaptarlas al panel**.
+- **Cuentas «solo panel máster»** (migración 0057, pedido de la persona del 27/11/2026: son dos las personas que otorgan créditos). Van en
+  `gestor.masters` y **no son miembros**: administran el cotizador desde `agencias/master/` y nada más (ni causas, ni Cobranzas, ni Prenda,
+  ni chat, ni cheques). `es_miembro()` y `mi_acceso()` no cambiaron; `gestor_puerta` les deja pasar solo una lista exacta de pedidos
+  (método y ruta) y solo las tablas del cotizador usan `es_panel()`. De `consultas_bcra` ven las suyas y las que respaldan una solicitud.
+  Si el panel necesita una tabla o RPC nueva: sumarla a la lista de la puerta **y** a la política de esa tabla, sin aflojar el resto.
+  El panel usa `panel_acceso` (`modoPanel()` en `cobranzas/datos.js`) y no carga datos de Cobranzas; `bcra` y `leer-documentos` también
+  preguntan con `panel_acceso`. La cuenta de login la crea la persona en el panel de Supabase (Add user, Auto Confirm; la contraseña no
+  pasa por el chat) y después: `select gestor.autorizar_master('mail', 'Nombre');` · baja: `select gestor.quitar_master('mail');`.
+  Una cuenta máster no puede ser agencia ni vendedor. Prueba: `panel-master.test.mjs` (correrla si se toca cualquier permiso).
+- **Venta de mostrador y cotización rápida** (`master/mostrador.js`, solapas «Nuevo crédito» y «Cotización rápida»): CUIT y BCRA → vehículo y
+  crédito → datos de la persona → «Aprobar crédito» (sin ingresos; documentos opcionales; «¿es asociado?» va con los datos). Puede salirse
+  del monto máximo o la tasa habituales, con el aviso «Fuera de lo habitual». `public.mostrador_aprobar` la guarda ya aprobada en
+  `solicitudes_credito` como «Mutual Bell · mostrador» (`agencia_id` todo ceros), con quién la aprobó, y desde ahí se generan prenda y
+  contratos. Exige una consulta al BCRA de ese CUIT de menos de 3 días. Los documentos los sube la función `mostrador`
+  (`supabase/functions/mostrador/index.ts`, `verify_jwt: true`). `panel.js` no importa `mostrador.js` (app.js le pasa las vistas).
+  La cotización rápida usa el mismo texto de WhatsApp que la de las agencias. Prueba: `panel-mostrador-app.test.mjs`.
 - **Crear agencia desde la app** (migración 0032, pedido de la persona del 17/11/2026): en la pestaña Agencias, «Crear agencia» pide
   nombre, email y notas (sin fecha de aviso a InfoAuto desde la migración 0034); la función `agencias` (acción `crear_agencia`, solo miembros) crea la cuenta
   con la API de administración del login (`/auth/v1/admin/users`, clave de servicio), con una **contraseña provisoria al azar de

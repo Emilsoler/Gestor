@@ -18,6 +18,7 @@ const ROUTES = [
   ['/functions/v1/bcra', { host: '127.0.0.1', port: +process.env.BCRA_PORT || 54332 }],
   ['/functions/v1/ubicar', { host: '127.0.0.1', port: +process.env.UBICAR_PORT || 54333 }],
   ['/functions/v1/agencias', { host: '127.0.0.1', port: +process.env.AGENCIAS_PORT || 54334 }],
+  ['/functions/v1/mostrador', { host: '127.0.0.1', port: +process.env.MOSTRADOR_PORT || 54335 }],
   ['/functions/v1', { host: '127.0.0.1', port: +process.env.FUNCIONES_PORT || 54330 }],
   // El almacenamiento (Storage): un doble con lo justo para los documentos de las agencias (storage-falso.mjs).
   ['/storage/v1', { host: '127.0.0.1', port: +process.env.STORAGE_FALSO_PORT || 54344 }],

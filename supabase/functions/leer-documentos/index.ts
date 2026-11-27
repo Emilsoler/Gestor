@@ -111,7 +111,7 @@ export async function manejar(req: Request): Promise<Response> {
   // 1. Quién pide: la sesión de la app, autorizada en la base (como en la función `bcra`).
   const jwt = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
   if (!jwt) return falla('sin_sesion', 'Falta iniciar sesión.', 401, cors);
-  const acceso = await base(jwt, 'rpc/mi_acceso', {}).catch(() => null);
+  const acceso = await base(jwt, 'rpc/panel_acceso', {}).catch(() => null);
   if (!acceso) return falla('base', 'No se pudo consultar la base de datos. Probá de nuevo en un momento.', 502, cors);
   if (acceso.status === 401 || /jwt/i.test(String(acceso.datos?.message || ''))) return falla('sin_sesion', 'La sesión venció: volvé a ingresar.', 401, cors);
   if (acceso.codigo === '42501' || (acceso.ok && !acceso.datos?.autorizado)) return falla('sin_acceso', 'Esta cuenta no está autorizada para usar la app.', 403, cors);

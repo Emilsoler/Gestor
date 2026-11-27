@@ -3,20 +3,23 @@
 // (pedido de la persona del 27/11/2026). Entra solo un miembro de la Mutual: lo controla la base, no esta pantalla.
 // La base (../../cobranzas/datos.js, con su sesión) y los estilos se comparten con Créditos y Cobros.
 import {
-  D, iniciar, reconectar, entrar, salir, cambiarClave, alCambiar, mensaje,
+  D, modoPanel, iniciar, reconectar, entrar, salir, cambiarClave, alCambiar, mensaje,
   leerAgencias, leerConectadas, contarSolicitudes, guardarAjustesAgencias, altaAgencia, crearAgencia, crearVendedor, activarVendedor, activarAgencia, resolverSolicitud, documentosSolicitud, leerDocumentos, eliminarSolicitud, eliminarCotizaciones, estadisticasAgencias,
   chatsAgencias, chatResumen, verChat, responderChat, cerrarChat, eliminarChat, iniciarChat, claveAvisos, registrarAvisos, quitarAvisos, probarAvisos,
 } from '../../cobranzas/datos.js';
 import { htmlAgencias, htmlConectadas, htmlFaltanGen, parametrosEnTexto, leerParametros, TABS_AGENCIAS } from './panel.js';
+import { htmlMostrador, htmlRapida, nuevoMostrador, nuevaRapida, cargarMarcas, cambioMostrador, agregarDocs, accionMostrador, calcularRapida, textoRapida } from './mostrador.js';
 import { datosDeSolicitud, textoVencimientos, armarFormularios, conDomicilioDelDeudor, aplicarLectura } from './prendaforms.js';
 import { esc, hoy, cuantos } from '../../cobranzas/textos.js';
 
 const CLAVE_MIN = 10;
 const agVacio = () => ({
+  mos: nuevoMostrador(), rap: nuevaRapida(),
   est: { dias: 30, filas: null, error: '' },
   datos: null, cargando: false, error: '', tab: 'solicitudes', msg: '', docs: new Map(), notas: {}, p: {}, alta: {}, vend: {}, pend: 0, conx: { filas: null, abierto: false }, borrar: '', borrarCot: '', selCot: new Set(), gen: null, nueva: null,
   chat: { lista: [], atencion: 0, espera: 0, error: '', hilo: null, mensajes: [], texto: '', enviando: false, push: 'cargando', pushMsg: '' },
 });
+modoPanel();
 const S = { pantalla: 'arranque', vista: 'agencias', falla: '', ag: agVacio() };
 try { const t = localStorage.getItem('cb.agTab'); if (TABS_AGENCIAS.some(([k]) => k === t)) S.ag.tab = t; } catch { /* sin almacenamiento */ }
 
@@ -98,7 +101,7 @@ function renderIngreso() {
       <label class="f">Email<input id="i_email" type="email" autocomplete="username" inputmode="email" autocapitalize="none" spellcheck="false"></label>
       <label class="f">Contraseña<input id="i_clave" type="password" autocomplete="current-password"></label>
       ${error}<button class="btn primary" type="submit">Ingresar</button></form>
-      <p class="hint">Es el mismo usuario que el de Créditos y Cobros. <a href="../">Volver al cotizador</a></p>`);
+      <p class="hint">Entrá con tu usuario de la Mutual. <a href="../">Volver al cotizador</a></p>`);
     $('#i_email').focus();
   } else if (S.pantalla === 'clave-temporal') {
     caja(`<h2>Elegí tu contraseña</h2><form id="fClave" novalidate>
@@ -125,7 +128,7 @@ function vistaAgencias() {
   }
   const pend = G.datos.solicitudes.filter((x) => x.estado === 'pendiente' || x.estado === 'en_analisis').length;
   subtitulo(`${pend ? cuantos(pend, 'solicitud pendiente', 'solicitudes pendientes') : 'Sin solicitudes pendientes'} · el cotizador está ${G.datos.ajustes?.habilitado ? 'habilitado' : 'apagado'}`);
-  return htmlConectadas(G.conx) + htmlAgencias(G.datos, G);
+  return htmlConectadas(G.conx) + htmlAgencias(G.datos, { ...G, vistas: { nuevo: htmlMostrador, rapida: htmlRapida } });
 }
 
 async function cargarAgencias() {
@@ -142,6 +145,7 @@ async function cargarAgencias() {
   }
   G.cargando = false;
   render();
+  if (G.tab === 'nuevo' && G.mos.bcra) cargarMarcas(ctxMostrador);
   if (G.tab === 'estadisticas') cargarEstadisticas(); // la solapa se recuerda: si se abrió en esa, se calcula al entrar
 }
 
@@ -376,7 +380,7 @@ async function accionAgencias(act, b) {
   if (act === 'ag-tab') {
     G.tab = b.dataset.tab; G.msg = ''; G.nueva = null; G.borrarCot = ''; G.verCot = ''; G.selCot.clear(); G.chat.hilo = null; G.chat.error = '';
     try { localStorage.setItem('cb.agTab', G.tab); } catch { /* sin almacenamiento */ }
-    render(); if (G.tab === 'estadisticas') cargarEstadisticas(); if (G.tab === 'chats') entrarAChats(); return;
+    render(); if (G.tab === 'estadisticas') cargarEstadisticas(); if (G.tab === 'chats') entrarAChats(); if (G.tab === 'nuevo' && G.mos.bcra) cargarMarcas(ctxMostrador); return;
   }
   if (act === 'ag-est-dias') { G.est.dias = b.dataset.dias === '' ? null : Number(b.dataset.dias); cargarEstadisticas(); return; }
   if (act === 'ag-docs') {
@@ -480,6 +484,32 @@ async function accionAgencias(act, b) {
 
 
 
+// ───────────────────────── Venta de mostrador y cotización rápida ─────────────────────────
+const ctxMostrador = {
+  estado: () => S.ag.mos,
+  ajustes: () => S.ag.datos?.ajustes || {},
+  render: () => render(),
+  reiniciar: () => { S.ag.mos = nuevoMostrador(); render(); },
+  /** El crédito ya quedó aprobado: se abre Solicitudes, con ese arriba entre las resueltas, para sacar la prenda y los contratos. */
+  async aprobado(fallaron) {
+    S.ag.mos = nuevoMostrador(); S.ag.tab = 'solicitudes';
+    toast(fallaron.length ? `Crédito aprobado, pero no se pudo guardar: ${fallaron.join(', ')}` : 'Crédito aprobado. Ya podés generar la prenda y los contratos.');
+    render();
+    await cargarAgencias();
+    window.scrollTo({ top: 0 });
+  },
+};
+
+function accionRapida(act) {
+  const R = S.ag.rap, a = ctxMostrador.ajustes();
+  if (act === 'mr-calcular') {
+    const r = calcularRapida(R, a);
+    R.res = r.res || null; R.error = r.error || ''; render();
+    $('#mrResultado')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } else if (R.res && act === 'mr-copiar') copiar(textoRapida(R.res, a));
+  else if (R.res && act === 'mr-whatsapp') window.open(`https://wa.me/?text=${encodeURIComponent(textoRapida(R.res, a))}`, '_blank', 'noopener');
+}
+
 // ───────────────────────── Eventos ─────────────────────────
 async function unaVez(boton, tarea) {
   if (boton.disabled) return;
@@ -511,7 +541,10 @@ document.addEventListener('click', async (e) => {
   }
   if (e.target.closest('#btnSalir')) { await salir(); mostrar('ingreso'); return; }
   const a = e.target.closest('[data-a]');
-  if (a?.dataset.a.startsWith('ag-')) await unaVez(a, (b) => accionAgencias(a.dataset.a, b));
+  const act = a?.dataset.a || '';
+  if (act.startsWith('ag-')) await unaVez(a, (b) => accionAgencias(act, b));
+  else if (act.startsWith('mo-')) await accionMostrador(ctxMostrador, act, a);
+  else if (act.startsWith('mr-')) accionRapida(act);
 });
 
 function escrito(el) {
@@ -524,7 +557,19 @@ document.addEventListener('input', (e) => {
   const k = escrito(e.target);
   if (k?.startsWith('ag.gen.')) { const f = $('#genFaltan'); if (f && S.ag.gen) f.innerHTML = htmlFaltanGen(S.ag.gen); }
 });
-document.addEventListener('change', (e) => { if (escrito(e.target) && e.target.dataset.re) render(); });
+document.addEventListener('change', (e) => {
+  if (e.target.id === 'moArchivos') { const fs = [...e.target.files]; e.target.value = ''; agregarDocs(ctxMostrador, fs); return; }
+  const k = escrito(e.target);
+  if (!k) return;
+  if (k.startsWith('ag.mos.') && k !== 'ag.mos.cuit') {
+    const que = e.target.dataset.mo;
+    if (que === 'cuotas' && S.ag.mos.base) { S.ag.mos.base = null; S.ag.mos.confirmar = false; render(); accionMostrador(ctxMostrador, 'mo-ver'); return; }
+    if (que) { cambioMostrador(ctxMostrador, que); return; }
+    S.ag.mos.confirmar = false;
+  }
+  // Se redibuja un instante después: si el toque que sacó el foco del campo cayó en un botón, ese botón recibe el clic.
+  if (e.target.dataset.re) setTimeout(render, e.target.tagName === 'SELECT' ? 0 : 150);
+});
 document.addEventListener('toggle', (e) => { if (e.target.matches?.('details[data-est]')) S.ag.est.abierto = e.target.open; }, true);
 
 alCambiar((que, detalle) => {

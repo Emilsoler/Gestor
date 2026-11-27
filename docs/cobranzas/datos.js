@@ -30,6 +30,11 @@ const SONDEO_RAPIDO = cfg.sondeoMs || 30_000; // sin tiempo real
 const SONDEO_LENTO = 5 * 60_000; // con tiempo real, por si se perdió algún aviso
 const CACHE = 'cb.cache';
 const CHAT = 'cb.chat'; // la conversación con Claude, en este dispositivo
+// El panel máster del cotizador usa este archivo para la sesión y la red, pero no lee las tablas de Cobranzas ni guarda
+// copia en el dispositivo; el permiso se pregunta con panel_acceso, que también reconoce las cuentas «solo panel».
+let PANEL = false;
+export function modoPanel() { PANEL = true; }
+const rpcAcceso = () => (PANEL ? 'panel_acceso' : 'mi_acceso');
 const FORMA = 2; // sube cuando cambia la forma de lo que se guarda en el dispositivo
 const TABLAS = ['deudores', 'modelos_mensaje', 'ajustes_cobranzas', 'consultas_bcra', 'consultas_cheques', 'casos_refi', 'descuentos_cheques'];
 // Las consultas al BCRA se leen sin `resultado` (lo que respondió el BCRA, que puede ser largo): el
@@ -175,7 +180,7 @@ function quitarLocal(t, id) {
 // ───────────────────────── Copia en el dispositivo ─────────────────────────
 
 function guardarCache() {
-  if (!D.usuario || !D.cargado) return;
+  if (PANEL || !D.usuario || !D.cargado) return;
   try {
     localStorage.setItem(CACHE, JSON.stringify({
       forma: FORMA, uid: D.usuario.id, email: D.usuario.email, ts: (D.leido || new Date()).getTime(),
@@ -226,8 +231,9 @@ async function leerSiHay(t) {
   }
 }
 
-async function recargar(tablas = TABLAS) {
-  const [acceso, ...listas] = await Promise.all([pedir(sb.rpc('mi_acceso')), ...tablas.map(leerSiHay)]);
+async function recargar(pedidas = TABLAS) {
+  const tablas = PANEL ? [] : pedidas;
+  const [acceso, ...listas] = await Promise.all([pedir(sb.rpc(rpcAcceso())), ...tablas.map(leerSiHay)]);
   D.acceso = acceso;
   if (!acceso.autorizado) return false;
   let cambio = D.deCache || !D.cargado;
@@ -281,7 +287,7 @@ function pedirSinc(t) {
 }
 
 function conectar() {
-  if (!canal) {
+  if (!canal && !PANEL) {
     try {
       canal = sb.channel('cobranzas');
       // Una tabla que la base todavía no tiene haría fallar el canal entero: se escucha solo si está.
@@ -325,7 +331,7 @@ async function trasIngreso() {
   if (!sesion) {
     if (haySesionGuardada() && (pareceRed(fallo) || !navigator.onLine)) {
       ponerEnLinea(false);
-      if (copia && !D.cargado) { D.usuario = { id: copia.uid, email: copia.email }; usarCache(copia); }
+      if (!PANEL && copia && !D.cargado) { D.usuario = { id: copia.uid, email: copia.email }; usarCache(copia); }
       if (!reloj) reloj = setInterval(latido, 5000);
       return D.cargado ? 'listo' : 'sin-red';
     }
@@ -335,11 +341,11 @@ async function trasIngreso() {
 
   D.usuario = { id: sesion.user.id, email: sesion.user.email };
   if (copia && copia.uid !== D.usuario.id) borrarCache();
-  else if (copia && !D.cargado) usarCache(copia);
+  else if (!PANEL && copia && !D.cargado) usarCache(copia);
   if (!reloj) reloj = setInterval(latido, 5000);
 
   try {
-    D.acceso = await pedir(sb.rpc('mi_acceso'));
+    D.acceso = await pedir(sb.rpc(rpcAcceso()));
     if (!D.acceso.autorizado) { sinAcceso(); return 'sin-acceso'; }
     if (D.acceso.clave_temporal) return 'clave-temporal';
     await recargar();
@@ -468,7 +474,7 @@ export const guardarAjustes = (rev, campos) => modificar('ajustes_cobranzas', 1,
 
 /** Un pedido a la función `bcra`. Los errores salen con el mensaje en palabras que manda la función. */
 async function invocarBCRA(cuerpo, fn = 'bcra') {
-  const quien = fn === 'bcra' ? 'al BCRA' : fn === 'agencias' ? 'al cotizador de agencias' : 'a InfoAuto';
+  const quien = fn === 'bcra' ? 'al BCRA' : fn === 'agencias' ? 'al cotizador de agencias' : fn === 'mostrador' ? 'al guardado de documentos' : 'a InfoAuto';
   if (!sb) throw Object.assign(new Error('La app no está conectada a su base de datos'), { codigo: 'sin_configurar' });
   let r;
   try { r = await sb.functions.invoke(fn, { body: cuerpo }); } catch (e) { throw marcar(e); }
@@ -561,6 +567,18 @@ export const eliminarCotizaciones = (id) => {
   if (Array.isArray(id)) return id.length ? pedir(sb.from('cotizaciones_agencia').delete().in('id', id)) : Promise.resolve();
   return pedir(id ? sb.from('cotizaciones_agencia').delete().eq('id', id) : sb.from('cotizaciones_agencia').delete().gte('id', 0));
 };
+
+// ── Venta de mostrador (panel máster, migración 0057) ──
+/** Una consulta al cotizador con la sesión de la Mutual: marcas, modelos, versiones, años y cotizar. */
+export const cotizadorMutual = (cuerpo) => invocarBCRA(cuerpo, 'agencias');
+/** Deja el crédito aprobado en Solicitudes y devuelve su id. Quién aprobó, la fecha y el color del BCRA los pone la base. */
+export const aprobarMostrador = (p) => pedir(sb.rpc('mostrador_aprobar', { p }));
+/** Un documento (PDF o JPG) de un crédito de mostrador. */
+export async function subirDocMostrador(id, archivo) {
+  const f = new FormData();
+  f.set('id', id); f.set('archivo', archivo, archivo.name);
+  return invocarBCRA(f, 'mostrador');
+}
 
 /** Elimina una solicitud de agencia y sus documentos (lo hace la función `agencias`: los archivos solo los toca ella). */
 export async function eliminarSolicitud(id) {

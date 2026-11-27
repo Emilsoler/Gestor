@@ -7,7 +7,10 @@ import { esc, plata, cuantos } from '../../cobranzas/textos.js';
 import { CATEGORIAS, DOCS, docsSinAdjuntar, dniDelCuit } from '../solicitud.js';
 import { faltanFormularios, textoVencimientos, conDomicilioDelDeudor } from './prendaforms.js';
 
-export const TABS_AGENCIAS = [['solicitudes', 'Solicitudes'], ['chats', 'Chats'], ['parametros', 'Parámetros'], ['agencias', 'Agencias'], ['cotizaciones', 'Cotizaciones'], ['estadisticas', 'Estadísticas']];
+// La fila fija de las ventas en la Mutual (migración 0057). Las pantallas de «Nuevo crédito» y «Cotización rápida»
+// las pasa app.js: así este archivo no arrastra la conexión con la base.
+export const MOSTRADOR = '00000000-0000-0000-0000-000000000000';
+export const TABS_AGENCIAS = [['nuevo', 'Nuevo crédito'], ['rapida', 'Cotización rápida'], ['solicitudes', 'Solicitudes'], ['chats', 'Chats'], ['parametros', 'Parámetros'], ['agencias', 'Agencias'], ['cotizaciones', 'Cotizaciones'], ['estadisticas', 'Estadísticas']];
 
 /** El color del BCRA como un círculo (pedido de la persona, nov 2026: sin el texto de lo que vio la agencia).
  *  Sin antecedentes va en amarillo, como la agencia lo ve («Sujeto a revisión»); el nombre queda para lectores de pantalla. */
@@ -17,7 +20,7 @@ const SEM = {
   sin_datos: ['amarillo', 'Sin antecedentes'],
   rojo: ['rojo', 'Rojo'],
 };
-const circulo = (s) => { const [c, nombre] = SEM[s] || ['', String(s ?? '')]; return `<span class="sem-punto ${c}" role="img" aria-label="BCRA: ${esc(nombre)}" title="${esc(nombre)}"></span>`; };
+export const circulo = (s) => { const [c, nombre] = SEM[s] || ['', String(s ?? '')]; return `<span class="sem-punto ${c}" role="img" aria-label="BCRA: ${esc(nombre)}" title="${esc(nombre)}"></span>`; };
 const ESTADO = { pendiente: ['Recibida', 't-prom'], en_analisis: ['En análisis', 't-prom'], aprobada: ['Aprobada', 't-plan'], rechazada: ['Rechazada', 't-mal'] };
 
 const etiqueta = ([texto, clase]) => `<span class="tag ${clase}">${esc(texto)}</span>`;
@@ -164,7 +167,7 @@ function solicitud(x, A, est, notas) {
       <div class="hint">${esc(x.vehiculo)} (${esc(anioTxt(x.anio))})</div></div>
     <div class="ag-bloque"><span class="ag-rotulo">Trabajo e ingresos</span>
       ${trabajo.length ? `<div>${esc(trabajo.join(' · '))}</div>` : ''}
-      ${x.ingreso ? `<div>Declara <b>${plata(x.ingreso)}</b> por mes · la cuota es el ${pct(x.relacion)}</div>` : '<div class="hint">No declaró ingresos</div>'}</div>
+      ${x.ingreso ? `<div>Declara <b>${plata(x.ingreso)}</b> por mes · la cuota es el ${pct(x.relacion)}</div>` : `<div class="hint">${x.agencia_id === MOSTRADOR ? 'Venta en la Mutual: no se cargan ingresos' : 'No declaró ingresos'}</div>`}</div>
     ${d.notas ? `<div class="ag-bloque"><span class="ag-rotulo">Notas y aclaraciones de la agencia</span><div class="ag-notas">${esc(d.notas)}</div></div>` : ''}
     <details class="ag-mas"><summary>Más datos del cliente y del crédito</summary>
       <div class="ag-tabla"><table class="tabla"><tbody>
@@ -307,7 +310,11 @@ export function htmlAgencias(A, est) {
   }).join('')}</nav>`;
   const msg = est.msg ? `<p class="aviso-chico" role="status">${esc(est.msg)}</p>` : '';
   let cuerpo;
-  if (est.tab === 'chats') {
+  if (est.tab === 'nuevo') {
+    cuerpo = est.vistas.nuevo(est.mos, A);
+  } else if (est.tab === 'rapida') {
+    cuerpo = est.vistas.rapida(est.rap, A);
+  } else if (est.tab === 'chats') {
     cuerpo = htmlChats(est.chat || {}, A.ajustes, A);
   } else if (est.tab === 'parametros') {
     const p = est.p, campo = (k, t, extra = '') => `<label class="f">${esc(t)}<input data-k="ag.p.${k}" value="${esc(p[k] ?? '')}" inputmode="decimal" autocomplete="off"${extra}></label>`;

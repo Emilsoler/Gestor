@@ -162,11 +162,11 @@ export async function manejar(req: Request): Promise<Response> {
   if (!jwt) return responder({ error: 'sin_sesion', mensaje: 'Falta iniciar sesión.' }, 401, cors);
   let acceso: any;
   try {
-    acceso = await base(jwt, 'rpc/mi_acceso', {});
+    acceso = await base(jwt, 'rpc/panel_acceso', {});
   } catch (e) {
     if (e instanceof ErrorBase && (e.status === 401 || /jwt/i.test(e.message))) return responder({ error: 'sin_sesion', mensaje: 'La sesión venció: volvé a ingresar.' }, 401, cors);
     if (e instanceof ErrorBase && e.codigo === '42501') return responder({ error: 'sin_acceso', mensaje: 'Esta cuenta no está autorizada para usar la app.' }, 403, cors);
-    console.error('mi_acceso:', e);
+    console.error('panel_acceso:', e);
     return responder({ error: 'base', mensaje: 'No se pudo consultar la base de datos. Probá de nuevo en un momento.' }, 502, cors);
   }
   if (!acceso?.autorizado) return responder({ error: 'sin_acceso', mensaje: 'Esta cuenta no está autorizada para usar la app.' }, 403, cors);

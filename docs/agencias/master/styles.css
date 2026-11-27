@@ -6,3 +6,13 @@ body.master{--side:#0a0a0a;--surface:#111;--raised:#1a1a1a;--hover:#171717;--sun
 .m-der{display:flex;gap:8px}.m-der[hidden]{display:none}
 .m-wrap{max-width:1100px;margin:0 auto;padding:var(--pad) var(--pad) calc(48px + var(--abajo))}
 .master .ingreso{max-width:420px;margin:24px auto}.master .ingreso form{display:grid;gap:12px}
+/* Venta de mostrador y cotización rápida */
+.mo-cuota{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
+.mo-cuota>div{display:grid;gap:2px;background:var(--raised);border:1px solid var(--line-soft);border-radius:12px;padding:10px 12px}
+.mo-cuota b{font-size:20px}
+.mo-fuera{border-color:var(--warn)}
+.mo-docs{display:grid;gap:8px}
+.mo-lista{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.mo-lista li{display:flex;gap:8px;align-items:center;justify-content:space-between;min-width:0}
+.mo-lista span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.master .mo-aprobar{width:100%;justify-content:center;min-height:48px;font-size:16px}

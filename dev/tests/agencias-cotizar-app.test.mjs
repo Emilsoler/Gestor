@@ -66,7 +66,7 @@ test('cotizar por la cuota que quiere pagar y con precio y anticipo (celular)', 
   // 2) Historial: las cotizaciones de este vendedor, con WhatsApp para reenviar.
   await p.click('[data-vista="historial"]');
   await p.waitForSelector('[data-wacot]');
-  t = norm(await p.textContent('#main'));
+  const t = norm(await p.textContent("#main"));
   assert.match(t, /Mis cotizaciones/);
   assert.match(t, /MARCA UNO/);
   assert.ok((await p.locator('[data-wacot]').count()) >= 3);

@@ -334,7 +334,7 @@ test('desde el chat: lo listo para presentar se ve como tal, y lo que se está p
 });
 
 test('sin la clave de la API, el chat lo dice en vez de fallar a ciegas', async () => {
-  const deno = process.env.DENO || '/home/claude/.stack/deno/node_modules/.bin/deno';
+  const deno = process.env.DENO || `${process.env.STACK || '/home/claude/.stack'}/deno/node_modules/.bin/deno`;
   const p = spawn(deno, ['run', '--allow-net', '--allow-env', new URL('../../supabase/functions/chat/index.ts', import.meta.url).pathname], {
     env: { ...process.env, SUPABASE_URL: env.SUPABASE_URL, SUPABASE_ANON_KEY: env.ANON_KEY, DENO_SERVE_ADDRESS: 'tcp:127.0.0.1:54331', ANTHROPIC_API_KEY: '' },
     stdio: 'ignore',

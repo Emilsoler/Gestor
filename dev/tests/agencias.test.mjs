@@ -395,7 +395,7 @@ test('las reglas de la solicitud: copia igual en la función, casilleros como en
   assert.equal(SOL.revisarDatos(nuevo, '2026-11-24').datos.domicilio, 'Sabato 1919, piso 2, Bell Ville');
   assert.equal(SOL.revisarDatos({ ...nuevo, dom_localidad: '' }, '2026-11-24').errores.length, 1);
   const { errores } = SOL.revisarDatos({ dni: '12', domicilio: 'x', estado_civil: 'casado', matrimonio_fecha: '2030-01-01', celular: '12', cbu: CBU.slice(0, 21) + '9' }, '2026-11-17');
-  assert.equal(errores.length, 12, errores.join(' | ')); // 7 de antes + los 5 datos del cónyuge
+  assert.equal(errores.length, 13, errores.join(' | ')); // 7 de antes + los 5 datos del cónyuge + «¿es asociado?»
   assert.deepEqual(SOL.revisarDatos({ ...DATOS, estado_civil: 'soltero' }, '2026-11-17').datos.matrimonio_lugar, undefined);
   assert.equal(SOL.revisarDatos({ ...DATOS, estado_civil: 'soltero' }, '2026-11-17').datos.conyuge_nombre, undefined);
   // Cuenta de un tercero: titular y su CUIT (válido); la relación es opcional.
