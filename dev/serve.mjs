@@ -29,7 +29,7 @@ http.createServer(async (req, res) => {
     const archivo = normalize(join(docs, ruta));
     if (!archivo.startsWith(docs)) { res.writeHead(403); return res.end(); }
     let cuerpo = await readFile(archivo);
-    if (ruta.endsWith('/index.html')) { // el gestor y la app de cobranzas
+    if (ruta.endsWith('.html')) { // las apps (cada una con su index.html) y «Nuevo crédito» del panel
       cuerpo = Buffer.from(String(cuerpo).replace("connect-src 'self'", "connect-src 'self' http://127.0.0.1:54321 ws://127.0.0.1:54321"));
     }
     res.writeHead(200, { 'content-type': TIPOS[extname(archivo)] || 'application/octet-stream', 'cache-control': 'no-cache' });

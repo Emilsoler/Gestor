@@ -17,9 +17,16 @@ import { CATEGORIAS, DOCS, DOCS_NO_ASOCIADA, MAX_BYTES, NUPCIAS, docsPermitidos,
 import { completarCP } from './cp.js?v=20261127f';
 
 const cfg = window.GESTOR_CONFIG || {};
+// «Nuevo crédito» del panel máster (master/nuevo.html): esta misma pantalla, para quien se presenta en la Mutual. Usa la
+// sesión del panel (no pide ingresar de nuevo), no tiene los pasos de ingresos ni de documentación y termina en
+// «Aprobar crédito» (pedido de la persona del 27/11/2026). Los permisos los controlan la base y las funciones.
+const MOSTRADOR = document.body.dataset.mostrador === '1';
+const [PANEL, MUTUAL, PESTANAS] = MOSTRADOR
+  ? await Promise.all([import('../cobranzas/datos.js'), import('./master/mostrador.js?v=20261127h'), import('./master/panel.js?v=20261127h')])
+  : [null, null, null];
 // Sesión propia, no la del gestor ('gestor.sesion', que comparten el gestor, Cobranzas y Prenda): así entrar acá
 // con la cuenta de una agencia no saca a la persona de sus apps en ese mismo navegador, ni al revés.
-const sb = window.supabase && cfg.url && cfg.key && window.top === window.self
+const sb = !MOSTRADOR && window.supabase && cfg.url && cfg.key && window.top === window.self
   ? window.supabase.createClient(cfg.url, cfg.key, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: 'agencias.sesion' } })
   : null;
 
@@ -41,6 +48,8 @@ const S = {
   cuit: '', bcra: null, bcraError: '', continuo: false, confirmarOtro: false, sols: null, cots: null, elimCot: '', elimTodas: false, novedades: null,
   sol: null, // la solicitud que se está armando (nuevaSol)
   rap: null, // simulación rápida (solo la agencia marcada; `nuevaRapida`)
+  mut: { monto: '', tasa: '', abierto: false, base: null, tasaUsada: null, pct: 0, avisos: [], error: '' }, // solo en «Nuevo crédito» del panel
+  ajustes: null, salirA: '',
 };
 
 /** Lo que la agencia va cargando de la solicitud. `docs`: casillero → [{file, nombre}] (los archivos quedan en el
@@ -56,7 +65,18 @@ function nuevaSol() {
 S.sol = nuevaSol();
 
 // ───────────────────────── Red ─────────────────────────
+/** En el panel, la consulta al BCRA es la que queda guardada (la aprobación la exige); acá se le da la forma que usa esta pantalla. */
+async function bcraDeLaMutual(cuit) {
+  const c = await PANEL.consultarBCRA(cuit);
+  const periodos = (await PANEL.detalleConsulta(c.id))?.deudas?.periodos || [];
+  const ultimo = periodos.reduce((a, p) => (!a || String(p.periodo) > String(a.periodo) ? p : a), null);
+  const bancos = (ultimo?.entidades || []).map((e) => ({ entidad: String(e?.entidad || 'Entidad sin nombre').trim(), situacion: Number(e?.situacion) || 0, monto: Math.round((Number(e?.monto) || 0) * 1000) }))
+    .sort((a, b) => b.situacion - a.situacion || b.monto - a.monto);
+  return { consulta: c.id, cuit, denominacion: c.denominacion, semaforo: c.semaforo, periodo: c.periodo, deuda_total: Number(c.deuda_total) || 0, bancos };
+}
+
 async function fn(cuerpo) {
+  if (MOSTRADOR) return cuerpo.accion === 'bcra' ? bcraDeLaMutual(cuerpo.cuit) : PANEL.cotizadorMutual(cuerpo);
   if (!sb) throw new Error('El cotizador no está configurado.');
   let r;
   try { r = await sb.functions.invoke('agencias', { body: cuerpo }); } catch { throw new Error('Sin conexión: probá de nuevo en un momento.'); }
@@ -79,7 +99,24 @@ function falla(e) {
 }
 
 // ───────────────────────── Sesión ─────────────────────────
+async function arrancarMostrador() {
+  try {
+    PANEL.modoPanel();
+    const estado = await PANEL.iniciar();
+    if (estado === 'sin-red') throw new Error('sin conexión');
+    if (estado !== 'listo') { location.replace('./'); return; } // el ingreso es el del panel
+    PANEL.alCambiar((que, d) => { if (que === 'sesion' && d !== 'listo') location.replace('./'); });
+    S.yo = await fn({ accion: 'yo' });
+    if (!S.yo.miembro) { location.replace('./'); return; }
+    S.ajustes = (await PANEL.leerAgencias()).ajustes || {};
+  } catch (e) { console.error(e); S.fase = 'error'; S.error = PANEL.mensaje(e, 'no se pudo abrir'); render(); return; }
+  S.fase = 'app'; S.plazo = S.yo.plazos?.[(S.yo.plazos?.length || 1) - 1] || 0;
+  render();
+  cargarMarcas();
+}
+
 async function arrancar() {
+  if (MOSTRADOR) return arrancarMostrador();
   if (!sb) { S.fase = 'ingreso'; S.error = 'El cotizador no está configurado.'; render(); return; }
   const { data } = await sb.auth.getSession();
   if (!data.session) { S.fase = 'ingreso'; render(); return; }
@@ -128,6 +165,7 @@ async function cambiarClave(a, b) {
 }
 
 async function salir() {
+  if (MOSTRADOR) { location.replace('./'); return; } // la sesión se maneja en el panel
   apagarChat();
   try { await sb?.auth.signOut(); } catch { /* igual se limpia */ }
   Object.assign(S, { fase: 'ingreso', yo: null, error: '', marcas: null, marca: '', modelos: null, modelo: '', versiones: null, version: '', anios: null, anio: '', buscaVer: '', res: null, vista: 'cotizar', cuit: '', bcra: null, bcraError: '', continuo: false, confirmarOtro: false, sols: null, cots: null, sol: nuevaSol(), rap: null });
@@ -306,7 +344,7 @@ function revisarSolicitud() {
     representante_nombre: L.representante_nombre, representante_dni: L.representante_dni, representante_cargo: L.representante_cargo, asociado: asociadoDe(L),
     celular: L.celular, cbu: L.cbu, alias: L.alias, cuenta: L.cuenta, cuenta_titular: L.cuenta_titular, cuenta_cuit: L.cuenta_cuit, cuenta_relacion: L.cuenta_relacion }, hoy(), juridica());
   if (rd.errores) errores.push(...rd.errores);
-  if (!L.conformidad) errores.push('Marcá que el cliente está de acuerdo con enviar sus datos y documentos a la Mutual.');
+  if (!MOSTRADOR && !L.conformidad) errores.push('Marcá que el cliente está de acuerdo con enviar sus datos y documentos a la Mutual.');
   return { errores, datos: rd.datos };
 }
 
@@ -457,6 +495,7 @@ async function cotizar() {
     S.res.vehiculo = vehiculoElegido();
     // Lo que escribió la agencia, para explicar el resultado.
     S.res.pidio = soloNumero(S.monto) || 0;
+    if (MOSTRADOR) { S.mut = { ...S.mut, monto: '', tasa: '', abierto: false, base: S.res }; S.sol.confirmar = false; aplicarMutual(); }
   } catch (e) { S.cargando = ''; S.res = null; falla(e); return; }
   S.cargando = ''; render();
   $('#resultado')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -487,6 +526,100 @@ function textoParaComprador(r, extra = '') {
     + `${r.cuotas} cuotas de ${plata(r.cuota)}\n\n`
     + (extra ? `${extra}\n\n` : '')
     + (leyenda ? `${leyenda}\n` : '') + (contacto ? `${contacto}\n` : '') + (S.yo?.agencia && !S.yo.miembro ? `\nAtentamente, ${S.yo.agencia}` : '');
+}
+
+// ───────────────────────── «Nuevo crédito» del panel máster ─────────────────────────
+/** Rehace el crédito con el monto y la tasa que haya escrito la Mutual (vacío = lo habitual). */
+function aplicarMutual() {
+  const U = S.mut;
+  if (!U.base?.financiable) return;
+  const x = MUTUAL.ajustarCredito(U.base, S.ajustes, U);
+  U.error = x.error || '';
+  if (x.error) return;
+  S.res = x.res; Object.assign(U, { tasaUsada: x.tasa, pct: x.pct, avisos: x.avisos });
+  S.sol.confirmar = false;
+}
+
+function htmlMutual() {
+  if (!MOSTRADOR || !S.res?.financiable) return '';
+  const U = S.mut;
+  return `<section class="card no-imprimir" id="condMutual">
+    <details class="plegado" id="mutOtros"${U.abierto || U.avisos.length ? ' open' : ''}><summary>Cambiar el monto o la tasa <span class="hint">(solo la Mutual)</span></summary>
+      <div class="grilla">
+        <label class="f">Monto del crédito ($)<input id="inMutMonto" inputmode="numeric" autocomplete="off" value="${esc(U.monto)}" placeholder="${esc(Math.round(U.base.monto).toLocaleString('es-AR'))}"></label>
+        <label class="f">Tasa mensual (%)<input id="inMutTasa" inputmode="decimal" autocomplete="off" value="${esc(U.tasa)}"></label>
+      </div>
+      <div class="acciones"><button class="btn" type="button" id="btnMutAplicar">Aplicar</button></div>
+    </details>
+    <p class="hint m0">Tasa ${pct(U.tasaUsada)} mensual${U.pct ? ` · se presta el ${porcentaje(U.pct)} % del valor` : ''}</p>
+    ${U.error ? `<p class="aviso m0" role="alert">${esc(U.error)}</p>` : ''}
+    ${U.avisos.map((t) => `<p class="aviso suave mo-fuera m0" role="status"><b>Fuera de lo habitual.</b> ${esc(t)}</p>`).join('')}
+  </section>`;
+}
+
+/** Lo que en la agencia va en otros pasos y acá queda junto a los datos: si es asociado y los documentos, que son opcionales. */
+function htmlExtrasMutual() {
+  const L = S.sol, A = L.asociado, xs = L.docs.documentacion || [];
+  return `<div class="bloque"><div class="f">${juridica() ? '¿La empresa es asociada a la Mutual?' : '¿El cliente es asociado a la Mutual?'}<div class="opciones2" role="radiogroup" aria-label="Asociado a la Mutual">
+      <button type="button" role="radio" data-asociado="si" aria-checked="${A === 'si'}">Sí</button>
+      <button type="button" role="radio" data-asociado="no" aria-checked="${A === 'no'}">No</button></div></div></div>
+    <div class="bloque"><label class="f">Adjuntar documentos (opcional: PDF o fotos)<input type="file" accept="application/pdf,image/*" multiple data-slot="documentacion"></label>
+      <p class="hint m0">Sirven para «Leer título y DNI» al armar la prenda. Sin archivos podés aprobar igual.</p>
+      ${xs.length ? `<ul class="doc-lista">${xs.map((x, i) => `<li><span class="doc-nombre">${esc(x.nombre)}</span><span class="hint">${tamano(x.file.size)}</span><button class="btn chico" type="button" data-quitar="documentacion" data-i="${i}">Quitar</button></li>`).join('')}</ul>` : ''}</div>`;
+}
+
+function htmlAprobar() {
+  const L = S.sol, r = S.res;
+  if (!L.confirmar) return `<div class="acciones"><button class="btn primario mo-aprobar" type="button" id="btnAprobar" ${L.preparando ? 'disabled' : ''}>Aprobar crédito</button></div>`;
+  return `<div class="aviso suave" role="alert"><p class="m0">¿Aprobar ${plata(r.monto)} en ${r.cuotas} ${r.cuotas === 1 ? 'cuota' : 'cuotas'} de ${plata(r.cuota)} a ${esc(S.bcra.denominacion || cuitLindo(S.bcra.cuit))}?${S.mut.avisos.length ? ' Está fuera de lo habitual.' : ''}</p>
+    <div class="acciones"><button class="btn primario" type="button" id="btnAprobarSi" ${L.enviando ? 'disabled' : ''}>${esc(L.enviando ? L.progreso : 'Sí, aprobar crédito')}</button>
+    <button class="btn" type="button" id="btnAprobarNo" ${L.enviando ? 'disabled' : ''}>Todavía no</button></div></div>`;
+}
+
+/** Primer toque: controla los datos y pide confirmar. */
+function pedirAprobacion() {
+  aplicarMutual(); // lo escrito en monto o tasa vale aunque no se haya tocado «Aplicar»: la confirmación muestra el resultado
+  const L = S.sol, { errores } = revisarSolicitud();
+  L.errores = errores; L.error = ''; L.confirmar = !errores.length && !S.mut.error;
+  if (S.mut.error) S.mut.abierto = true;
+  render();
+  if (errores.length) $('#erroresSol')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function aprobarCredito() {
+  const L = S.sol, r = S.res, U = S.mut;
+  if (L.enviando || L.preparando || !r?.financiable) return;
+  // Si el monto o la tasa se cambiaron después de pedir la confirmación, se muestra de nuevo con los números nuevos.
+  const antes = `${r.monto}|${U.tasaUsada}`;
+  aplicarMutual();
+  if (U.error || `${S.res.monto}|${U.tasaUsada}` !== antes) { L.confirmar = false; render(); return; }
+  L.confirmar = true;
+  const { errores, datos } = revisarSolicitud();
+  if (errores.length || U.error) { L.errores = errores; L.confirmar = false; render(); return; }
+  L.enviando = true; L.progreso = 'Aprobando…'; L.error = ''; render();
+  let id;
+  try {
+    id = await PANEL.aprobarMostrador({
+      cuit: S.bcra.cuit, consulta: S.bcra.consulta, vehiculo: r.vehiculo.slice(0, 200), anio: String(r.anio),
+      monto: r.monto, cuotas: r.cuotas, cuota: r.cuota, total: r.total, tasa: U.tasaUsada,
+      datos: { ...datos, ...(U.pct ? { pct_valor: U.pct } : {}) },
+    });
+  } catch (e) { L.enviando = false; L.progreso = ''; L.confirmar = false; L.error = PANEL.mensaje(e, 'no se aprobó'); render(); return; }
+  const fallaron = [], xs = L.docs.documentacion || [];
+  for (const [i, x] of xs.entries()) {
+    L.progreso = `Subiendo ${i + 1} de ${xs.length}…`; render();
+    try { await PANEL.subirDocMostrador(id, x.file); } catch (e) { console.error(e); fallaron.push(x.nombre); }
+  }
+  L.enviada = true;
+  try { sessionStorage.setItem('panel.aprobado', JSON.stringify(fallaron)); } catch { /* solo es el aviso */ }
+  location.assign('./#aprobado');
+}
+
+/** La barra de solapas del panel: «Nuevo crédito» es esta pantalla; las demás vuelven al panel. */
+function pestanasPanel() {
+  const tabs = PESTANAS.TABS_AGENCIAS.map(([k, t]) => (k === 'nuevo' ? `<a role="tab" aria-selected="true">${esc(t)}</a>` : `<a role="tab" aria-selected="false" href="./#ver-${k}" data-panel="${k}">${esc(t)}</a>`)).join('');
+  return `<nav class="tabs no-imprimir" role="tablist" aria-label="Panel máster">${tabs}</nav>`
+    + (S.salirA ? '<p class="aviso suave m0 no-imprimir" role="alert">Si salís se borra lo que cargaste de este cliente. Tocá de nuevo la solapa para confirmarlo.</p>' : '');
 }
 
 // ───────────────────────── Simulación rápida ─────────────────────────
@@ -642,7 +775,7 @@ function vistaCliente() {
   const B = S.bcra, c = S.cargando;
   if (!B) {
     return `<section class="card no-imprimir">
-      <div class="card-cab"><h2>1 · El cliente</h2>${S.yo.miembro ? '<span class="etq">Vista previa de la Mutual · no se registra</span>' : ''}</div>
+      <div class="card-cab"><h2>1 · El cliente</h2>${S.yo.miembro && !MOSTRADOR ? '<span class="etq">Vista previa de la Mutual · no se registra</span>' : ''}</div>
       <form id="fCliente" class="grilla" novalidate>
         <label class="f ancho">CUIT o CUIL del cliente<input id="inCuit" inputmode="numeric" autocomplete="off" maxlength="20" placeholder="Ej.: 20-12345678-6" value="${esc(S.cuit)}"></label>
         ${S.bcraError ? `<p class="aviso ancho m0" role="alert">${esc(S.bcraError)}</p>` : ''}
@@ -695,7 +828,7 @@ function resumenBCRA(B) {
 function vistaCotizar() {
   const Y = S.yo;
   if (!Y.habilitado && !Y.miembro) return `<section class="card"><h2>El cotizador todavía no está habilitado</h2><p class="hint m0">Consultá con la Asociación Mutual Bell.</p></section>`;
-  const aviso = Y.miembro ? `<p class="aviso suave m0 no-imprimir">Vista previa de la Mutual: probás el recorrido sin enviar nada.${Y.habilitado ? '' : ' Las agencias todavía no pueden usarlo.'}
+  const aviso = Y.miembro && !MOSTRADOR ? `<p class="aviso suave m0 no-imprimir">Vista previa de la Mutual: probás el recorrido sin enviar nada.${Y.habilitado ? '' : ' Las agencias todavía no pueden usarlo.'}
       Las solicitudes, los parámetros y las agencias se manejan en <a href="master/">el panel máster</a>.</p>` : '';
   if (!S.bcra || !S.continuo) return aviso + vistaCliente();
   const c = S.cargando;
@@ -724,7 +857,7 @@ function vistaCotizar() {
     ${S.error ? `<p class="aviso m0" role="alert">${esc(S.error)}</p>` : ''}
     <div class="acciones"><button class="btn primario" type="button" id="btnCotizar" ${!S.version || !S.anio || c ? 'disabled' : ''}>${c === 'cotizar' ? 'Calculando…' : 'Ver crédito'}</button></div>
   </section>`;
-  return aviso + vistaCliente() + form + (S.res ? vistaResultado(S.res) + vistaSolicitud() : '');
+  return aviso + vistaCliente() + form + (S.res ? vistaResultado(S.res) + htmlMutual() + vistaSolicitud() : '');
 }
 
 /** De todos los plazos, los que se muestran en la tabla: el elegido, el más largo y los "redondos". */
@@ -831,26 +964,28 @@ function casillero(slot) {
 function vistaSolicitud() {
   const L = S.sol, r = S.res;
   if (!L.abierta || L.enviada || !r?.financiable) return '';
-  let html = `<section class="card no-imprimir" id="pasoIngresos"><h2>3 · Ingresos</h2>
+  let html = MOSTRADOR ? '' : `<section class="card no-imprimir" id="pasoIngresos"><h2>3 · Ingresos</h2>
     ${juridica() ? '<p class="hint m0">Es una persona jurídica: sus ingresos se presentan como responsable inscripto.</p>' : `<div class="f">¿Tiene ingresos demostrables?<div class="opciones2" role="radiogroup" aria-label="Ingresos demostrables">
       <button type="button" role="radio" data-ingresos="si" aria-checked="${L.ingresos === true}">Sí</button>
       <button type="button" role="radio" data-ingresos="no" aria-checked="${L.ingresos === false}">No</button></div></div>`}`;
-  if (L.ingresos === false) html += '<p class="aviso m0" role="alert">Sin ingresos demostrables no se puede avanzar con la solicitud.</p>';
-  if (L.ingresos === true) {
+  if (!MOSTRADOR && L.ingresos === false) html += '<p class="aviso m0" role="alert">Sin ingresos demostrables no se puede avanzar con la solicitud.</p>';
+  if (!MOSTRADOR && L.ingresos === true) {
     html += `<label class="f">Ingreso mensual aproximado ($)<input id="inIngreso" inputmode="numeric" autocomplete="off" placeholder="Ej.: 1.500.000" value="${esc(L.ingreso)}"></label>
       <div id="bloqueRelacion" class="bloque">${htmlRelacion()}</div>`;
   }
-  html += '</section>';
-  if (!relacionOk() || !L.categoria) return html;
+  if (!MOSTRADOR) {
+    html += '</section>';
+    if (!relacionOk() || !L.categoria) return html;
+  }
 
   const v = (k) => esc(L[k] ?? '');
   const dniCuit = dniDelCuit(S.bcra?.cuit), dni = soloDigitos(L.dni);
-  html += `<section class="card no-imprimir"><h2>4 · Documentación</h2>
+  if (!MOSTRADOR) html += `<section class="card no-imprimir"><h2>4 · Documentación</h2>
     <div class="requisitos-caja">${requisitos()}</div>
     ${casillero('documentacion')}
     ${checklistArchivos(L)}
-  </section>
-  <section class="card no-imprimir" id="pasoDatos"><h2>5 · Datos del cliente</h2>
+  </section>`;
+  html += `<section class="card no-imprimir" id="pasoDatos"><h2>${MOSTRADOR ? 3 : 5} · Datos del cliente</h2>
     <div class="bloque"><label class="f">Empleo, profesión o actividad (opcional)<input data-campo="actividad" autocomplete="off" maxlength="200" placeholder="Ej.: empleado de comercio en Supermercado X; docente; productor agropecuario" value="${v('actividad')}"></label></div>
     ${juridica() ? `
     <div class="bloque"><div class="f">Razón social<div class="dato">${esc(S.bcra?.denominacion || S.bcra?.cuit || '')}</div></div>
@@ -905,12 +1040,12 @@ function vistaSolicitud() {
         <label class="f ancho">Relación con el cliente (opcional)<input data-campo="cuenta_relacion" autocomplete="off" maxlength="120" placeholder="Ej.: agencia vendedora, cónyuge" value="${v('cuenta_relacion')}"></label></div>` : ''}
       ${L.cuenta === 'terceros' ? '<p class="hint m0">Si la cuenta es de un tercero, sumá a los archivos una constancia que muestre el CBU o alias y quién es el titular.</p>' : ''}</div>
     <div class="bloque"><label class="f">Notas y aclaraciones (opcional)<textarea data-campo="notas" maxlength="1000" rows="4" placeholder="Ej.: el Central informa una deuda que ya está paga y todavía no se actualizó; te adjunto el libre deuda.">${v('notas')}</textarea></label>
-      <p class="hint m0">Escribí cualquier cosa que la Mutual tenga que saber para evaluar el crédito. Si hace falta un libre deuda u otro comprobante, subilo en la documentación (paso 4).</p></div>
-    <label class="check"><input type="checkbox" id="chkConformidad" ${L.conformidad ? 'checked' : ''}> El cliente está de acuerdo con enviar estos datos y documentos a la Asociación Mutual Bell para que evalúe el crédito.</label>
-    ${L.errores.length ? `<div class="aviso m0" role="alert" id="erroresSol"><b>Antes de enviar, falta:</b><ul>${L.errores.map((e) => `<li>${esc(e)}</li>`).join('')}</ul></div>` : ''}
+      <p class="hint m0">${MOSTRADOR ? 'Quedan guardadas con el crédito.' : 'Escribí cualquier cosa que la Mutual tenga que saber para evaluar el crédito. Si hace falta un libre deuda u otro comprobante, subilo en la documentación (paso 4).'}</p></div>
+    ${MOSTRADOR ? htmlExtrasMutual() : `<label class="check"><input type="checkbox" id="chkConformidad" ${L.conformidad ? 'checked' : ''}> El cliente está de acuerdo con enviar estos datos y documentos a la Asociación Mutual Bell para que evalúe el crédito.</label>`}
+    ${L.errores.length ? `<div class="aviso m0" role="alert" id="erroresSol"><b>Antes de ${MOSTRADOR ? 'aprobar' : 'enviar'}, falta:</b><ul>${L.errores.map((e) => `<li>${esc(e)}</li>`).join('')}</ul></div>` : ''}
     ${L.error ? `<p class="aviso m0" role="alert">${esc(L.error)}</p>` : ''}
     ${L.preparando ? '<p class="hint m0">Preparando las fotos…</p>' : ''}
-    ${S.yo.miembro ? '<p class="hint m0">Vista previa de la Mutual: la agencia ve acá el botón «Enviar solicitud a la Mutual».</p>'
+    ${MOSTRADOR ? htmlAprobar() : S.yo.miembro ? '<p class="hint m0">Vista previa de la Mutual: la agencia ve acá el botón «Enviar solicitud a la Mutual».</p>'
       : `<div class="acciones"><button class="btn primario" type="button" id="btnEnviarSol" ${L.enviando || L.preparando ? 'disabled' : ''}>${L.enviando ? esc(L.progreso || 'Enviando…') : 'Enviar solicitud a la Mutual'}</button></div>`}
   </section>`;
   return html;
@@ -924,7 +1059,7 @@ function hojaImprimir(r, vehiculo) {
   const foto = vehiculo ? `<figure class="hoja-foto" id="hojaFoto">${S.foto?.ref === S.version && S.foto.src ? `<img src="${S.foto.src}" alt="">` : ''}</figure>` : '';
   return `<div class="hoja-imprimir">
     <div class="hoja-cuerpo">
-      <div class="hoja-cabeza"><img class="hoja-escudo" src="logo.svg" alt="" width="84" height="84">${foto}</div>
+      <div class="hoja-cabeza"><img class="hoja-escudo" src="${new URL('logo.svg', import.meta.url).pathname}" alt="" width="84" height="84">${foto}</div>
       <p class="hoja-titulo">Simulación de crédito prendario</p>
       <div class="hoja-adorno" aria-hidden="true"><i></i><b></b><i></i></div>
       ${vehiculo ? `<p class="hoja-vehiculo">${esc(vehiculo)}</p>` : ''}
@@ -1137,6 +1272,13 @@ function vistaSolicitudes() {
 
 function render() {
   const der = $('#cabDer');
+  if (MOSTRADOR) {
+    der.innerHTML = '<a class="btn chico" href="./#ver-solicitudes" data-panel="solicitudes">Volver al panel</a>';
+    $('#main').innerHTML = S.fase === 'app' ? pestanasPanel() + vistaCotizar()
+      : S.fase === 'error' ? `<section class="card ingreso"><h2>No se pudo abrir</h2><p class="hint m0">${esc(S.error)}</p><a class="btn" href="./">Volver al panel</a></section>` : '<p class="hint">Abriendo…</p>';
+    $('#pie').textContent = '';
+    return;
+  }
   if (S.fase === 'app' || S.fase === 'clave' || S.fase === 'sinacceso') {
     der.innerHTML = `${S.yo ? `<span class="quien">${esc(S.yo.agencia)}${S.yo.vendedor && !S.yo.titular ? ` · ${esc(S.yo.vendedor)}` : ''}</span>` : ''}<button class="btn chico" type="button" id="btnSalir">Salir</button>`;
   } else der.innerHTML = '';
@@ -1204,6 +1346,8 @@ document.addEventListener('input', (e) => {
     if (S.version) { S.version = ''; S.anios = null; S.res = null; const b = $('#btnCotizar'); if (b) b.disabled = true; quitarDespues(t.closest('section')); }
     abrirLista(t.value);
   } else if (t.id === 'inCuit') S.cuit = t.value;
+  else if (t.id === 'inMutMonto') { S.mut.monto = t.value; S.mut.abierto = true; }
+  else if (t.id === 'inMutTasa') { S.mut.tasa = t.value; S.mut.abierto = true; }
   else if (t.id === 'inIngreso') {
     const antes = relacionOk(), n = soloNumero(t.value);
     S.sol.ingreso = n ? n.toLocaleString('es-AR') : '';
@@ -1220,6 +1364,8 @@ document.addEventListener('input', (e) => {
     }
   } else if (t.dataset.campo) {
     S.sol[t.dataset.campo] = t.value;
+    // En la Mutual, lo que se cambia después de «Aprobar crédito» pide confirmar de nuevo.
+    if (MOSTRADOR && S.sol.confirmar) { S.sol.confirmar = false; render(); $(`[data-campo="${t.dataset.campo}"]`)?.focus(); }
     if (t.dataset.campo === 'dom_localidad' || t.dataset.campo === 'dom_provincia') {
       const x = completarCP(S.sol.dom_cp, S.sol.cpPuesto, S.sol.dom_localidad, S.sol.dom_provincia);
       Object.assign(S.sol, { dom_cp: x.cp, cpPuesto: x.puesto });
@@ -1262,6 +1408,10 @@ document.addEventListener('keydown', (e) => {
 });
 
 document.addEventListener('click', (e) => {
+  // Salir de «Nuevo crédito» con un cliente cargado pide un segundo toque: lo escrito no se guarda.
+  const a = MOSTRADOR && e.target.closest('a[data-panel]');
+  if (a && S.bcra && !S.sol.enviada && S.salirA !== a.dataset.panel) { e.preventDefault(); S.salirA = a.dataset.panel; render(); window.scrollTo({ top: 0 }); return; }
+  if (a && S.sol.enviando) { e.preventDefault(); return; }
   const t = e.target.closest('button');
   if (!t) return;
   if (t.dataset.ver) { elegirVersion(t.dataset.ver); return; }
@@ -1281,6 +1431,10 @@ document.addEventListener('click', (e) => {
   else if (t.dataset.chk) { S.sol.chk[t.dataset.chk] = !S.sol.chk[t.dataset.chk]; render(); }
   else if (t.dataset.quitar) quitarArchivo(t.dataset.quitar, Number(t.dataset.i));
   else if (t.id === 'btnEnviarSol') enviarSolicitud();
+  else if (t.id === 'btnMutAplicar') { aplicarMutual(); render(); }
+  else if (t.id === 'btnAprobar') pedirAprobacion();
+  else if (t.id === 'btnAprobarSi') aprobarCredito();
+  else if (t.id === 'btnAprobarNo') { S.sol.confirmar = false; render(); }
   else if (t.dataset.wacot) { const x = S.cots?.find((c) => String(c.id) === t.dataset.wacot); if (x) window.open(`https://wa.me/?text=${encodeURIComponent(textoParaComprador(x))}`, '_blank', 'noopener'); }
   else if (t.dataset.elimcot) eliminarCotizacion(t.dataset.elimcot);
   else if (t.hasAttribute('data-elimcot-no')) { S.elimCot = ''; render(); }
@@ -1295,5 +1449,6 @@ document.addEventListener('click', (e) => {
   else if (t.dataset.vista) { S.vista = t.dataset.vista; S.det = null; if (S.vista === 'solicitudes') cargarSolicitudes(); else if (S.vista === 'historial') cargarCotizaciones(); else render(); }
 });
 
+window.addEventListener('pageshow', (e) => { if (MOSTRADOR && e.persisted) location.reload(); });
 sb?.auth.onAuthStateChange((ev) => { if (ev === 'SIGNED_OUT' && S.fase === 'app') { S.fase = 'ingreso'; render(); } });
 arrancar();

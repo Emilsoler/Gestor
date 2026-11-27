@@ -37,48 +37,89 @@ for (const [nombre, viewport] of [['celular', { width: 390, height: 800 }], ['pc
     p.on('request', (r) => { const m = r.url().match(/\/rest\/v1\/([a-z_/]+)/); if (m) pedidos.push(m[1]); });
     await p.goto(BASE + 'agencias/master/');
     await p.fill('#i_email', CORREO); await p.fill('#i_clave', CLAVE); await p.click('#fIngreso button[type=submit]');
+    // No queda el enlace «Ver como agencia»: «Nuevo crédito» ya es la pantalla de la agencia.
+    await p.waitForSelector('[data-tab="nuevo"]');
+    assert.doesNotMatch(await p.innerText('body'), /Ver como agencia/);
     await p.click('[data-tab="nuevo"]');
+    await p.waitForURL(/agencias\/master\/nuevo\.html/);
+    const texto = async () => norm(await p.innerText('body'));
 
-    // 1) BCRA
-    await p.fill('[data-k="ag.mos.cuit"]', CUIT.verde);
-    await p.click('[data-a="mo-bcra"]');
-    await p.waitForSelector('[data-a="mo-otro"]');
-    assert.match(norm(await p.textContent('#main')), /PERSONA VERDE/);
-    // 2) Vehículo y crédito
-    const elegir = async (k, op) => {
-      await p.waitForFunction((k) => { const s = document.querySelector(`[data-k="ag.mos.${k}"]`); return s && !s.disabled && s.options.length > 1; }, k);
-      await p.selectOption(`[data-k="ag.mos.${k}"]`, op);
+    // 1) BCRA, con la sesión del panel (sin volver a ingresar)
+    await p.waitForSelector('#inCuit');
+    await p.fill('#inCuit', CUIT.verde); await p.press('#inCuit', 'Enter');
+    await p.waitForSelector('#btnOtroCliente');
+    assert.match(await texto(), /PERSONA VERDE/);
+    assert.doesNotMatch(await texto(), /Vista previa|Cuenta máster|Ver como agencia/);
+    assert.equal(sql(`select count(*) from public.consultas_bcra`) > '0', true);
+    await p.click('#btnContinuar');
+    // 2) Vehículo y crédito, con los mismos controles de la agencia
+    const elegir = async (id) => {
+      await p.waitForFunction((id) => { const s = document.querySelector(id); return s && !s.disabled && s.options.length > 1; }, id);
+      await p.selectOption(id, { index: 1 });
     };
-    await elegir('marca', { label: 'MARCA UNO' });
-    await elegir('modelo', '10');
-    await elegir('anio', { index: 1 });
-    await elegir('version', { index: 1 });
-    await p.selectOption('[data-k="ag.mos.cuotas"]', '24');
-    await p.click('[data-a="mo-ver"]');
-    await p.waitForSelector('.mo-cuota');
-    const usual = norm(await p.textContent('.mo-cuota'));
+    await p.waitForFunction(() => [...document.querySelectorAll('#selMarca option')].some((o) => o.textContent === 'MARCA UNO'));
+    await p.selectOption('#selMarca', { label: 'MARCA UNO' });
+    await p.waitForSelector('#selModelo:not([disabled])'); await p.selectOption('#selModelo', '10');
+    await elegir('#selAnio');
+    await p.waitForSelector('#inVersion:not([disabled])'); await p.click('#inVersion'); await p.press('#inVersion', 'Enter');
+    await p.waitForSelector('#btnCotizar:not([disabled])'); await p.click('#btnCotizar');
+    await p.waitForSelector('#condMutual');
+    const usual = norm(await p.textContent('#resultado .cuota-grande:not(.no-imprimir)'));
     assert.equal(await p.locator('.mo-fuera').count(), 0);
+    assert.match(await texto(), /Enviar al cliente por WhatsApp/i);
+    assert.match(await texto(), /Imprimir/i);
     // Fuera de lo habitual: más monto que el máximo y otra tasa → avisa, no impide.
-    await p.fill('[data-k="ag.mos.monto"]', '30000000'); await p.press('[data-k="ag.mos.monto"]', 'Tab');
-    await p.waitForSelector('.mo-fuera');
-    await p.fill('[data-k="ag.mos.tasa"]', '6.5'); await p.press('[data-k="ag.mos.tasa"]', 'Tab');
+    await p.click('#mutOtros summary');
+    await p.fill('#inMutMonto', '30000000'); await p.fill('#inMutTasa', '6.5'); await p.click('#btnMutAplicar');
     await p.waitForFunction(() => document.querySelectorAll('.mo-fuera').length === 2);
-    assert.notEqual(norm(await p.textContent('.mo-cuota')), usual);
-    // 3) Aprobar sin datos: dice qué falta y no aprueba.
-    await p.click('[data-a="mo-aprobar"]');
-    assert.match(norm(await p.textContent('#main')), /Antes de aprobar, falta/);
-    const poner = (k, v) => p.fill(`[data-k="ag.mos.datos.${k}"]`, v);
-    await poner('nacionalidad', 'Argentina'); await poner('nacimiento', '1980-05-10');
+    assert.notEqual(norm(await p.textContent('#resultado .cuota-grande:not(.no-imprimir)')), usual);
+    await p.evaluate(() => { window.__abierto = ''; window.open = (u) => { window.__abierto = u; return null; }; });
+    await p.click('#btnWhatsapp');
+    assert.match(decodeURIComponent(await p.evaluate(() => window.__abierto)), /30\.000\.000/);
+    await p.click('#btnAvanzar');
+
+    // Sin los pasos de ingresos ni de documentación
+    await p.waitForSelector('#pasoDatos');
+    assert.equal(await p.locator('#pasoIngresos, #chkConformidad, #btnEnviarSol').count(), 0);
+    assert.match(await texto(), /3 · Datos del cliente/i);
+    assert.doesNotMatch(await texto(), /3 · Ingresos|4 · Documentación|5 · Datos/i);
+    // Aprobar sin datos: dice qué falta y no aprueba.
+    await p.click('#btnAprobar');
+    await p.waitForSelector('#erroresSol');
+    assert.match(await texto(), /Antes de aprobar, falta/i);
+    const poner = (k, v) => p.fill(`[data-campo="${k}"]`, v);
+    await poner('dni', '11111111'); await poner('nacionalidad', 'Argentina'); await poner('nacimiento', '1980-05-10');
     await poner('dom_calle', 'San Martín'); await poner('dom_numero', '450'); await poner('dom_localidad', 'Bell Ville'); await poner('dom_provincia', 'Córdoba');
-    await p.selectOption('[data-k="ag.mos.datos.estado_civil"]', 'soltero');
-    await poner('celular', '3534123456'); await p.selectOption('[data-k="ag.mos.datos.asociado"]', 'si');
+    assert.equal(await p.inputValue('[data-campo="dom_cp"]'), '2550');
+    await p.click('[data-civil="soltero"]');
+    await poner('celular', '3534123456'); await p.click('[data-asociado="si"]');
     writeFileSync('/tmp/doc-mostrador.pdf', '%PDF-1.4\n% prueba\n%%EOF\n');
-    await p.setInputFiles('#moArchivos', '/tmp/doc-mostrador.pdf');
-    await p.waitForSelector('.mo-lista li');
+    await p.setInputFiles('input[type=file][data-slot="documentacion"]', '/tmp/doc-mostrador.pdf');
+    await p.waitForSelector('.doc-lista li');
+    // Salir con un cliente cargado pide un segundo toque.
+    await p.click('[data-panel="chats"]');
+    assert.match(await texto(), /se borra lo que cargaste/);
+    assert.match(p.url(), /nuevo\.html/);
+    assert.ok(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'sin desborde horizontal');
     await p.screenshot({ path: `/tmp/mostrador-${nombre}.png`, fullPage: true });
-    await p.click('[data-a="mo-aprobar"]');
-    await p.waitForSelector('[data-a="mo-aprobar-si"]');
-    await p.click('[data-a="mo-aprobar-si"]');
+    await p.click('#btnAprobar');
+    await p.waitForSelector('#btnAprobarSi');
+    // Si algo cambia después, hay que confirmar de nuevo.
+    await poner('dom_numero', '452');
+    assert.equal(await p.locator('#btnAprobarSi').count(), 0);
+    await p.click('#btnAprobar'); await p.waitForSelector('#btnAprobarSi');
+    await p.screenshot({ path: `/tmp/mostrador-confirmar-${nombre}.png`, fullPage: true });
+    // Un monto escrito sin tocar «Aplicar» no se aprueba a ciegas: se vuelve a mostrar para confirmar.
+    await p.fill('#inMutMonto', '29000000');
+    await p.click('#btnAprobarSi');
+    await p.waitForSelector('#btnAprobar');
+    assert.equal(sql(`select count(*) from public.solicitudes_credito`), '0');
+    await p.click('#btnAprobar'); await p.waitForSelector('#btnAprobarSi');
+    assert.match(await texto(), /¿Aprobar \$ ?29\.000\.000/);
+    await p.fill('#inMutMonto', '30000000'); await p.click('#btnAprobarSi');
+    await p.waitForSelector('#btnAprobar'); await p.click('#btnAprobar');
+    await p.click('#btnAprobarSi');
+    await p.waitForURL(/agencias\/master\/(#.*)?$/);
     await p.waitForSelector('.ag-sol');
     const tarjeta = norm(await p.textContent('.ag-sol'));
     assert.match(tarjeta, /Mutual Bell · mostrador/); assert.match(tarjeta, /Aprobada/); assert.match(tarjeta, /Maca App/); assert.match(tarjeta, /30\.000\.000/);

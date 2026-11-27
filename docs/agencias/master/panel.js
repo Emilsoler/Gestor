@@ -316,9 +316,7 @@ export function htmlAgencias(A, est) {
   }).join('')}</nav>`;
   const msg = est.msg ? `<p class="aviso-chico" role="status">${esc(est.msg)}</p>` : '';
   let cuerpo;
-  if (est.tab === 'nuevo') {
-    cuerpo = est.vistas.nuevo(est.mos, A);
-  } else if (est.tab === 'rapida') {
+  if (est.tab === 'rapida') {
     cuerpo = est.vistas.rapida(est.rap, A);
   } else if (est.tab === 'chats') {
     cuerpo = htmlChats(est.chat || {}, A.ajustes, A);

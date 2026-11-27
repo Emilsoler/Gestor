@@ -1151,13 +1151,19 @@ Desde SQL no se abren los documentos: los enlaces los da la función (botón «V
   preguntan con `panel_acceso`. La cuenta de login la crea la persona en el panel de Supabase (Add user, Auto Confirm; la contraseña no
   pasa por el chat) y después: `select gestor.autorizar_master('mail', 'Nombre');` · baja: `select gestor.quitar_master('mail');`.
   Una cuenta máster no puede ser agencia ni vendedor. Prueba: `panel-master.test.mjs` (correrla si se toca cualquier permiso).
-- **Venta de mostrador y cotización rápida** (`master/mostrador.js`, solapas «Nuevo crédito» y «Cotización rápida»): CUIT y BCRA → vehículo y
-  crédito → datos de la persona → «Aprobar crédito» (sin ingresos; documentos opcionales; «¿es asociado?» va con los datos). Puede salirse
-  del monto máximo o la tasa habituales, con el aviso «Fuera de lo habitual». `public.mostrador_aprobar` la guarda ya aprobada en
-  `solicitudes_credito` como «Mutual Bell · mostrador» (`agencia_id` todo ceros), con quién la aprobó, y desde ahí se generan prenda y
-  contratos. Exige una consulta al BCRA de ese CUIT de menos de 3 días. Los documentos los sube la función `mostrador`
-  (`supabase/functions/mostrador/index.ts`, `verify_jwt: true`). `panel.js` no importa `mostrador.js` (app.js le pasa las vistas).
-  La cotización rápida usa el mismo texto de WhatsApp que la de las agencias. Prueba: `panel-mostrador-app.test.mjs`.
+- **Nuevo crédito = la pantalla de la agencia** (`master/nuevo.html`, pedido de la persona del 27/11/2026: así no hace falta «Ver como
+  agencia», que se sacó): carga `../app.js` en modo mostrador (`<body data-mostrador="1">`) con el estilo de las agencias. Usa la sesión del
+  panel (`cobranzas/datos.js`, sin segundo ingreso; sin sesión de panel vuelve a `./`) y solo funciona si `yo` contesta `miembro`. La
+  consulta al BCRA va por la función `bcra`, que la guarda (la aprobación exige una de menos de 3 días). **Mismos pasos 1 y 2 y mismo
+  resultado que la agencia** (WhatsApp, Imprimir, cuota deseada); **sin 3 · Ingresos ni 4 · Documentación**: el paso «3 · Datos del cliente»
+  es el de la agencia más «¿es asociado?» y documentos opcionales, sin la casilla de conformidad, y termina en «Aprobar crédito» (con
+  confirmación). Propio de la Mutual: «Cambiar el monto o la tasa», que puede salirse de lo habitual con el aviso «Fuera de lo habitual»
+  (`ajustarCredito` en `master/mostrador.js`). `public.mostrador_aprobar` lo guarda ya aprobado en `solicitudes_credito` como «Mutual Bell ·
+  mostrador» (`agencia_id` todo ceros), con quién lo aprobó; los documentos los sube la función `mostrador` (`verify_jwt: true`) y se vuelve
+  a `./#aprobado` (Solicitudes, para la prenda y los contratos). Las solapas de esa pantalla son enlaces (`./#ver-<solapa>`); con un cliente
+  cargado piden un segundo toque. **Un cambio en la pantalla de la agencia cambia también esta**: probar las dos.
+- **Cotización rápida** (`master/mostrador.js`): el mismo texto de WhatsApp que la simulación rápida de las agencias. `panel.js` no importa
+  `mostrador.js` (app.js le pasa las vistas). Prueba: `panel-mostrador-app.test.mjs`.
 - **Crear agencia desde la app** (migración 0032, pedido de la persona del 17/11/2026): en la pestaña Agencias, «Crear agencia» pide
   nombre, email y notas (sin fecha de aviso a InfoAuto desde la migración 0034); la función `agencias` (acción `crear_agencia`, solo miembros) crea la cuenta
   con la API de administración del login (`/auth/v1/admin/users`, clave de servicio), con una **contraseña provisoria al azar de
