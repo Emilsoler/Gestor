@@ -9,7 +9,7 @@ const CORDOBA = {
   ballesteros: '2572', 'ballesteros sud': '2572', 'san antonio de litin': '2559', cintra: '2559', 'san marcos sud': '2566',
   'monte leña': '2564', chilibroste: '2561', noetinger: '2563', 'justiniano posse': '2553', 'monte maiz': '2659',
   'wenceslao escalante': '2655', laborde: '2657', ordoñez: '2555', idiazabal: '2557', pascanas: '2679', ucacha: '2677',
-  inriville: '2587', 'monte buey': '2589', 'corral de bustos': '2645', 'cruz alta': '2189', 'general baldissera': '2583',
+  inriville: '2587', 'monte buey': '2589', 'corral de bustos': '2645', 'cruz alta': '2189',
   'los surgentes': '2581', 'alejo ledesma': '2662', canals: '2650', 'general roca': '2592', saira: '2525', oliva: '5980',
   'james craik': '5984', 'villa del rosario': '5963', 'rio tercero': '5850', 'rio cuarto': '5800', 'cruz del eje': '5280',
   'villa carlos paz': '5152', 'alta gracia': '5186', 'rio segundo': '5960', pilar: '5972', 'jesus maria': '5220',

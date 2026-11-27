@@ -14,7 +14,7 @@
 // ingresos; 4) su documentación; 5) datos del cliente con la suya; y se envía todo a la Mutual.
 import { iniciarChat, apagarChat } from './chat.js?v=20261123b';
 import { CATEGORIAS, DOCS, DOCS_NO_ASOCIADA, MAX_BYTES, NUPCIAS, docsPermitidos, dniDelCuit, esJuridica, relacionCuota, revisarDatos, tipoArchivo } from './solicitud.js?v=20261127e';
-import { completarCP } from './cp.js?v=20261127e';
+import { completarCP } from './cp.js?v=20261127f';
 
 const cfg = window.GESTOR_CONFIG || {};
 // Sesión propia, no la del gestor ('gestor.sesion', que comparten el gestor, Cobranzas y Prenda): así entrar acá

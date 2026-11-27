@@ -11,7 +11,7 @@ import { htmlAgencias, htmlConectadas, htmlFaltanGen, parametrosEnTexto, leerPar
 import { htmlMostrador, htmlRapida, nuevoMostrador, nuevaRapida, cargarMarcas, cambioMostrador, agregarDocs, accionMostrador, calcularRapida, textoRapida } from './mostrador.js';
 import { datosDeSolicitud, textoVencimientos, armarFormularios, conDomicilioDelDeudor, aplicarLectura } from './prendaforms.js';
 import { armarAsentimiento } from './asentimiento.js';
-import { completarCP } from '../cp.js';
+import { completarCP } from '../cp.js?v=20261127f';
 import { esc, hoy, cuantos } from '../../cobranzas/textos.js';
 
 const CLAVE_MIN = 10;
