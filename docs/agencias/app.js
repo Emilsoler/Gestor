@@ -6,7 +6,7 @@
 // el monto máximo, las cuotas y las tasas. La app no lee la base: a las agencias la API les está cerrada.
 //
 // Un usuario de la Mutual (miembro del gestor) entra en «vista previa», sin enviar nada. La administración
-// (solicitudes, parámetros, agencias y cotizaciones) está en Créditos y Cobros → Agencias.
+// (solicitudes, parámetros, agencias y cotizaciones) está en el panel máster (master/) y, por ahora, también en Créditos y Cobros → Agencias.
 //
 // El recorrido de la agencia: 1) CUIT del cliente → BCRA (verde «Continuar»; amarillo o sin antecedentes
 // «Continuar – Sujeto a revisión»; rojo también «Continuar – Sujeto a revisión», desde el 25/11/2026); 2) vehículo y crédito; 3) si quieren avanzar: ingresos
@@ -1152,7 +1152,9 @@ function render() {
   else {
     const rapida = S.yo.rapida && !S.yo.miembro;
     const tabs = S.yo.habilitado && !S.yo.miembro ? `<nav class="tabs no-imprimir" role="tablist"><button role="tab" data-vista="cotizar" aria-selected="${S.vista === 'cotizar'}">Cotizar</button>${rapida ? `<button role="tab" data-vista="rapida" aria-selected="${S.vista === 'rapida'}">Simulación rápida</button>` : ''}<button role="tab" data-vista="historial" aria-selected="${S.vista === 'historial'}">Mis cotizaciones</button><button role="tab" data-vista="solicitudes" aria-selected="${S.vista === 'solicitudes'}">${esc(rotuloSolicitudes())}</button></nav>` : '';
-    m.innerHTML = tabs + (S.vista === 'solicitudes' && !S.yo.miembro ? vistaSolicitudes() : S.vista === 'historial' && !S.yo.miembro ? vistaHistorial() : S.vista === 'rapida' && rapida ? vistaRapida() : vistaCotizar());
+    // La cuenta de la Mutual es la máster: desde acá se pasa al panel (aprobaciones, prenda, contratos, agencias y chats).
+    const master = S.yo.miembro ? '<section class="card no-imprimir"><h2 class="m0">Cuenta máster</h2><p class="hint m0">Solicitudes y aprobaciones, prenda y contratos, agencias, chats y parámetros.</p><a class="btn primario enlace-btn" href="master/">Abrir el panel máster</a></section>' : '';
+    m.innerHTML = master + tabs + (S.vista === 'solicitudes' && !S.yo.miembro ? vistaSolicitudes() : S.vista === 'historial' && !S.yo.miembro ? vistaHistorial() : S.vista === 'rapida' && rapida ? vistaRapida() : vistaCotizar());
   }
   $('#pie').textContent = S.fase === 'app' ? 'Simulación de referencia sujeta a aprobación crediticia de la Asociación Mutual Bell.' : '';
 }

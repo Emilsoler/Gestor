@@ -1,0 +1,8 @@
+/* Panel máster: los componentes son los de Créditos y Cobros (../../cobranzas/styles.css); acá, la identidad de la Mutual Bell (blanco y negro). */
+body.master{--side:#0a0a0a;--surface:#111;--raised:#1a1a1a;--hover:#171717;--sunken:#080808;--line:#383838;--line-soft:rgba(255,255,255,.14);
+  --fg:#f4f4f4;--soft:#d4d4d4;--muted:#a3a3a3;--accent:#fff;--accent-txt:#fff;--accent-fg:#000;--accent-soft:rgba(255,255,255,.13);--grad:linear-gradient(#fff,#fff);--barra:#bdbdbd}
+.m-cab{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:calc(12px + var(--arriba)) var(--pad) 12px;border-bottom:6px solid;border-image:repeating-linear-gradient(90deg,#fff 0 14px,#000 14px 28px) 6}
+.m-marca{display:flex;gap:10px;align-items:center}.m-marca b,.m-marca small{display:block}.m-marca small{color:var(--muted)}
+.m-der{display:flex;gap:8px}.m-der[hidden]{display:none}
+.m-wrap{max-width:1100px;margin:0 auto;padding:var(--pad) var(--pad) calc(48px + var(--abajo))}
+.master .ingreso{max-width:420px;margin:24px auto}.master .ingreso form{display:grid;gap:12px}

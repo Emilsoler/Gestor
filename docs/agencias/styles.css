@@ -292,3 +292,7 @@ tr.elegido td{background:#e9e9e9;color:#000;font-weight:600}
 .camara-btn.hecho{background:var(--raised)}
 .camara-ico{font-size:20px;line-height:1}
 @media (min-width:720px){.camara-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+/* El acceso al panel máster (solo lo ve la Mutual): un enlace con forma de botón. */
+.enlace-btn{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
+.btn.primario.enlace-btn:hover{color:#fff}

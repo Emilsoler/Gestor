@@ -1110,6 +1110,16 @@ select name, metadata->>'size' tamano from storage.objects where bucket_id = 'so
 ```
 Desde SQL no se abren los documentos: los enlaces los da la función (botón «Ver documentos» de Créditos y Cobros → Agencias).
 
+- **Panel máster** (`docs/agencias/master/`, pedido de la persona del 27/11/2026: la cobranza va en una app y la simulación y el otorgamiento
+  de créditos en el cotizador). Se abre desde la tarjeta «Cuenta máster» del cotizador (solo la ve un miembro) o directo en
+  `agencias/master/`. Entra con la cuenta de miembro de la persona (la de Créditos y Cobros), **no** con la cuenta de agencia «Emiliano Soler»:
+  una cuenta del gestor no puede ser agencia (`gestor.tg_agencias_reglas`) y hacer miembro a la de agencia le daría acceso a causas y deudores.
+  No cambia ningún permiso ni la base. Tiene todo lo de la solapa «Agencias» (incluida la prenda y los contratos). **Etapa 1**: los dos
+  conviven y comparten `../../cobranzas/` (`datos.js`, con la sesión `gestor.sesion`; `agencias.js`, `prendaforms.js`, `unirpdf.js`,
+  `styles.css`); la lógica de pantalla de `master/app.js` es **copia** de la de `cobranzas/app.js`: un cambio va en los dos. **Pendiente**:
+  que la persona lo pruebe; con su OK, sacar la solapa «Agencias» de Cobranzas, mudar esos módulos, quitar la carga de datos de cobranza
+  del panel y apuntar al panel los avisos (`URL_CHATS` y el mail en la función `agencias`). También falta decidir la consulta suelta al
+  BCRA (CUIT y cheques denunciados), que sigue en Créditos. Si se activan avisos en las dos, llegan duplicados.
 - **Administración** (solapa «Agencias» de Créditos y Cobros, `vistaAgencias` en `docs/cobranzas/app.js`; el HTML y la lectura
   de los parámetros en `docs/cobranzas/agencias.js`, que importa los casilleros de `../agencias/solicitud.js`; lo que habla con la
   base y con la función en `docs/cobranzas/datos.js`: `leerAgencias`, `contarSolicitudes`, `guardarAjustesAgencias`, `altaAgencia`,
