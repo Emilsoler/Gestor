@@ -6,7 +6,7 @@
 // el monto máximo, las cuotas y las tasas. La app no lee la base: a las agencias la API les está cerrada.
 //
 // Un usuario de la Mutual (miembro del gestor) entra en «vista previa», sin enviar nada. La administración
-// (solicitudes, parámetros, agencias y cotizaciones) está en el panel máster (master/) y, por ahora, también en Créditos y Cobros → Agencias.
+// (solicitudes, parámetros, agencias y cotizaciones) está en el panel máster (master/).
 //
 // El recorrido de la agencia: 1) CUIT del cliente → BCRA (verde «Continuar»; amarillo o sin antecedentes
 // «Continuar – Sujeto a revisión»; rojo también «Continuar – Sujeto a revisión», desde el 25/11/2026); 2) vehículo y crédito; 3) si quieren avanzar: ingresos
@@ -698,7 +698,7 @@ function vistaCotizar() {
   const Y = S.yo;
   if (!Y.habilitado && !Y.miembro) return `<section class="card"><h2>El cotizador todavía no está habilitado</h2><p class="hint m0">Consultá con la Asociación Mutual Bell.</p></section>`;
   const aviso = Y.miembro ? `<p class="aviso suave m0 no-imprimir">Vista previa de la Mutual: probás el recorrido sin enviar nada.${Y.habilitado ? '' : ' Las agencias todavía no pueden usarlo.'}
-      Las solicitudes, los parámetros y las agencias se manejan en <a href="../cobranzas/#agencias">Créditos y Cobros → Agencias</a>.</p>` : '';
+      Las solicitudes, los parámetros y las agencias se manejan en <a href="master/">el panel máster</a>.</p>` : '';
   if (!S.bcra || !S.continuo) return aviso + vistaCliente();
   const c = S.cargando;
   const delModelo = aniosDelModelo();

@@ -6,7 +6,7 @@ self.addEventListener('push', (e) => {
   try { d = e.data ? e.data.json() : {}; } catch { d = { c: e.data ? e.data.text() : '' }; }
   e.waitUntil(self.registration.showNotification(String(d.t || 'Mutual Bell'), { body: String(d.c || ''), icon: '../icons/apple-touch-icon.png' }));
 });
-// La función manda la dirección de Créditos y Cobros; un aviso del panel abre siempre los chats del panel.
+// La función manda una dirección vieja (la de Cobranzas); un aviso del panel abre siempre los chats del panel.
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
   e.waitUntil((async () => {

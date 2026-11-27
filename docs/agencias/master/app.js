@@ -1,15 +1,14 @@
 // Panel máster del cotizador: lo que la Mutual administra (solicitudes y su aprobación, Formulario 03 y contratos de prenda,
 // agencias, chats, parámetros, cotizaciones y estadísticas). Vive en el cotizador porque es parte del otorgamiento de créditos
 // (pedido de la persona del 27/11/2026). Entra solo un miembro de la Mutual: lo controla la base, no esta pantalla.
-// En esta primera etapa la solapa «Agencias» de Créditos y Cobros sigue igual y las dos usan los mismos módulos de
-// ../../cobranzas/ (base, HTML, formularios). Cuando la persona dé el OK, se saca de allá y esos módulos se mudan acá.
+// La base (../../cobranzas/datos.js, con su sesión) y los estilos se comparten con Créditos y Cobros.
 import {
   D, iniciar, reconectar, entrar, salir, cambiarClave, alCambiar, mensaje,
   leerAgencias, leerConectadas, contarSolicitudes, guardarAjustesAgencias, altaAgencia, crearAgencia, crearVendedor, activarVendedor, activarAgencia, resolverSolicitud, documentosSolicitud, leerDocumentos, eliminarSolicitud, eliminarCotizaciones, estadisticasAgencias,
   chatsAgencias, chatResumen, verChat, responderChat, cerrarChat, eliminarChat, iniciarChat, claveAvisos, registrarAvisos, quitarAvisos, probarAvisos,
 } from '../../cobranzas/datos.js';
-import { htmlAgencias, htmlConectadas, htmlFaltanGen, parametrosEnTexto, leerParametros, TABS_AGENCIAS } from '../../cobranzas/agencias.js';
-import { datosDeSolicitud, textoVencimientos, armarFormularios, conDomicilioDelDeudor, aplicarLectura } from '../../cobranzas/prendaforms.js';
+import { htmlAgencias, htmlConectadas, htmlFaltanGen, parametrosEnTexto, leerParametros, TABS_AGENCIAS } from './panel.js';
+import { datosDeSolicitud, textoVencimientos, armarFormularios, conDomicilioDelDeudor, aplicarLectura } from './prendaforms.js';
 import { esc, hoy, cuantos } from '../../cobranzas/textos.js';
 
 const CLAVE_MIN = 10;

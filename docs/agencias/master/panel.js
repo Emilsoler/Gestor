@@ -1,10 +1,10 @@
-// Vista «Agencias» de Créditos y Cobros: lo que la Mutual administra del cotizador para agencias
+// Pantallas del panel máster: lo que la Mutual administra del cotizador para agencias
 // (docs/agencias/). Acá solo se arma el HTML y se leen los formularios; los datos los trae datos.js y los
 // eventos están en app.js (acciones `ag-…`). Las agencias usan el cotizador con su propia cuenta; la Mutual
 // decide desde acá, con su sesión de siempre.
-import { esc, plata, cuantos } from './textos.js';
+import { esc, plata, cuantos } from '../../cobranzas/textos.js';
 // Los casilleros de documentos y los nombres de las categorías son los del cotizador (un solo lugar).
-import { CATEGORIAS, DOCS, docsSinAdjuntar, dniDelCuit } from '../agencias/solicitud.js';
+import { CATEGORIAS, DOCS, docsSinAdjuntar, dniDelCuit } from '../solicitud.js';
 import { faltanFormularios, textoVencimientos, conDomicilioDelDeudor } from './prendaforms.js';
 
 export const TABS_AGENCIAS = [['solicitudes', 'Solicitudes'], ['chats', 'Chats'], ['parametros', 'Parámetros'], ['agencias', 'Agencias'], ['cotizaciones', 'Cotizaciones'], ['estadisticas', 'Estadísticas']];
@@ -450,8 +450,8 @@ function htmlAvisos(C) {
   const st = C.push || 'cargando';
   const cuerpo = {
     cargando: '<p class="hint m0">Revisando si este dispositivo recibe avisos…</p>',
-    no: '<p class="m0">Este dispositivo no puede recibir avisos desde acá. <b>En el iPhone</b>: abrí Créditos y Cobros en Safari, tocá Compartir → «Agregar a pantalla de inicio» y entrá desde ese ícono (hace falta iOS 16.4 o más nuevo).</p>',
-    denegado: '<p class="m0">Los avisos están bloqueados para esta app. Activalos en <b>Ajustes del iPhone → Notificaciones → Créditos y Cobros</b> y volvé acá.</p>',
+    no: '<p class="m0">Este dispositivo no puede recibir avisos desde acá. <b>En el iPhone</b>: abrí el panel máster en Safari, tocá Compartir → «Agregar a pantalla de inicio» y entrá desde ese ícono (hace falta iOS 16.4 o más nuevo).</p>',
+    denegado: '<p class="m0">Los avisos están bloqueados para esta app. Activalos en <b>Ajustes del iPhone → Notificaciones → Máster Bell</b> y volvé acá.</p>',
     inactivo: '<p class="m0">Activalos para que te suene el celular cuando una agencia quiera hablar con vos, aunque no tengas la app abierta.</p><div class="actions"><button class="btn primary" data-a="ag-push-activar">Activar avisos en este celular</button></div>',
     activo: '<p class="m0">Los avisos están activados en este dispositivo.</p><div class="actions"><button class="btn" data-a="ag-push-probar">Mandarme un aviso de prueba</button><button class="btn" data-a="ag-push-quitar">Desactivar</button></div>',
   }[st] || '';
@@ -518,12 +518,6 @@ export function htmlChats(C, ajustes, A) {
       ${filas ? `<div class="ag-chats">${filas}</div>` : '<p class="hint m0">Todavía no hay conversaciones. Cuando una agencia te escriba desde el botón «M», aparece acá.</p>'}
     </section>`;
 }
-
-/** El aviso de Inicio cuando hay solicitudes esperando. */
-export const avisoInicio = (n, chats = 0) => (n ? `<section class="card ag-aviso"><div><b>${n === 1 ? 'Hay 1 solicitud de crédito de una agencia para revisar' : `Hay ${n} solicitudes de crédito de agencias para revisar`}</b>
-  <div class="hint">Con el informe del BCRA, el crédito y los documentos.</div></div><button class="btn primary" data-ir="agencias">Ver solicitudes</button></section>` : '')
-  + (chats ? `<section class="card ag-aviso"><div><b>${chats === 1 ? 'Hay 1 conversación de una agencia para atender' : `Hay ${chats} conversaciones de agencias para atender`}</b>
-  <div class="hint">Una agencia quiere hablar con vos o te escribió.</div></div><button class="btn primary" data-a="ag-ir-chats">Ver chats</button></section>` : '');
 
 // ───────────────────────── Agencias conectadas (migración 0051) ─────────────────────────
 

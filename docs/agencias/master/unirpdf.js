@@ -1,13 +1,13 @@
-// «Descargar todo en un PDF» de una solicitud de agencia (Créditos y Cobros → Agencias → Solicitudes): junta en un
+// «Descargar todo en un PDF» de una solicitud de agencia (panel máster → Solicitudes): junta en un
 // solo PDF los documentos que subió la agencia, ordenados por casillero, con una carátula que dice qué hay y qué
 // falta. Los PDF entran con sus páginas tal cual; cada foto (JPG) va en una página A4, achicada para que entre.
 //
 // Lo arma el navegador con pdf-lib (docs/vendor/pdf-lib.js, copiada por dev/vendor.mjs; MIT), que se carga recién al
 // tocar el botón. Nada sale de la app: los archivos se bajan con los mismos enlaces de 15 minutos de «Ver documentos».
-import { DOCS, docsSinAdjuntar } from '../agencias/solicitud.js';
+import { DOCS, docsSinAdjuntar } from '../solicitud.js';
 
 let lib = null;
-const cargarLib = async () => (lib ||= await import('../vendor/pdf-lib.js'));
+const cargarLib = async () => (lib ||= await import('../../vendor/pdf-lib.js'));
 
 const A4 = [595.28, 841.89];
 const MARGEN = 36;
@@ -42,7 +42,7 @@ export async function pdfSolicitud(sol, archivos, bajar, { hoy = '' } = {}) {
   const { PDFDocument, StandardFonts, rgb } = await cargarLib();
   const doc = await PDFDocument.create();
   doc.setTitle(`Solicitud de crédito - ${sol.denominacion || sol.cuit || ''}`);
-  doc.setProducer('Créditos y Cobros');
+  doc.setProducer('Asociación Mutual Bell');
   const normal = await doc.embedFont(StandardFonts.Helvetica), negrita = await doc.embedFont(StandardFonts.HelveticaBold);
   const orden = Object.keys(DOCS);
   const lista = [...archivos].sort((a, b) => orden.indexOf(a.slot) - orden.indexOf(b.slot));
@@ -61,7 +61,7 @@ export async function pdfSolicitud(sol, archivos, bajar, { hoy = '' } = {}) {
   escribir(`${sol.denominacion || ''} · CUIT ${sol.cuit || ''}`, { tam: 12, f: negrita });
   escribir(`Agencia: ${sol.agencia || ''} · Vehículo: ${sol.vehiculo || ''} (${sol.anio || ''})`);
   escribir(`Crédito: $ ${Number(sol.monto || 0).toLocaleString('es-AR')} en ${sol.cuotas} cuotas de $ ${Number(sol.cuota || 0).toLocaleString('es-AR')}`);
-  if (hoy) escribir(`Armado el ${hoy.split('-').reverse().join('/')} desde Créditos y Cobros.`, { gris: true });
+  if (hoy) escribir(`Armado el ${hoy.split('-').reverse().join('/')} desde el panel de la Mutual.`, { gris: true });
   y -= 10;
   escribir('Documentos', { tam: 12, f: negrita });
   const vacios = docsSinAdjuntar({ categoria: sol.categoria, anio: sol.anio, archivos: lista });

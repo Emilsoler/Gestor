@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { INSTRUCCIONES, MAX_ARCHIVOS, bloquesDelPedido, dominioValido, elegirArchivos, extraerJson, limpiarLectura, nombreSeguro, numeroValido } from '../../supabase/functions/leer-documentos/leer.js';
-import { aplicarLectura, datosDeSolicitud } from '../../docs/cobranzas/prendaforms.js';
+import { aplicarLectura, datosDeSolicitud } from '../../docs/agencias/master/prendaforms.js';
 
 const HOY = new Date(Date.UTC(2026, 10, 24));
 

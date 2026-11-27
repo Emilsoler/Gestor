@@ -749,8 +749,7 @@ vista; a la persona no le gustó (las fotos se veían pixeladas) y pidió volver
 
 **Cambiar la app**: `docs/cobranzas/` (`app.js` interfaz, `datos.js` la base, `calculo.js` cuentas,
 `textos.js` fechas, importes y mensajes, `creditos.js` lo que se muestra de una consulta al BCRA (por CUIT y por cheque),
-`agencias.js` la solapa «Agencias», que administra el cotizador para agencias —ver «Cotizador para agencias», al final—,
-`styles.css`). Si se toca una cuenta, también
+`styles.css`; la administración del cotizador está en `docs/agencias/master/`). Si se toca una cuenta, también
 `gestor.liquidacion_deudor` (migración nueva). Probar con `npm run test:cobranzas` (y las del gestor);
 capturas en ancho de PC y de celular. Su service worker es `docs/cobranzas/sw.js` (`VERSION`
 propia); el del gestor no atiende nada de `cobranzas/`. Estilo (nov 2026, pedido de la persona: «una pauta similar a la del
@@ -1114,21 +1113,19 @@ Desde SQL no se abren los documentos: los enlaces los da la función (botón «V
   de créditos en el cotizador). Se abre desde la tarjeta «Cuenta máster» del cotizador (solo la ve un miembro) o directo en
   `agencias/master/`. Entra con la cuenta de miembro de la persona (la de Créditos y Cobros), **no** con la cuenta de agencia «Emiliano Soler»:
   una cuenta del gestor no puede ser agencia (`gestor.tg_agencias_reglas`) y hacer miembro a la de agencia le daría acceso a causas y deudores.
-  No cambia ningún permiso ni la base. Tiene todo lo de la solapa «Agencias» (incluida la prenda y los contratos). **Etapa 1**: los dos
-  conviven y comparten `../../cobranzas/` (`datos.js`, con la sesión `gestor.sesion`; `agencias.js`, `prendaforms.js`, `unirpdf.js`,
-  `styles.css`); la lógica de pantalla de `master/app.js` es **copia** de la de `cobranzas/app.js`: un cambio va en los dos. **Pendiente**:
-  que la persona lo pruebe; con su OK, sacar la solapa «Agencias» de Cobranzas, mudar esos módulos, quitar la carga de datos de cobranza
-  del panel y apuntar al panel los avisos (`URL_CHATS` y el mail en la función `agencias`). También falta decidir la consulta suelta al
-  BCRA (CUIT y cheques denunciados), que sigue en Créditos. Si se activan avisos en las dos, llegan duplicados.
-- **Administración** (solapa «Agencias» de Créditos y Cobros, `vistaAgencias` en `docs/cobranzas/app.js`; el HTML y la lectura
-  de los parámetros en `docs/cobranzas/agencias.js`, que importa los casilleros de `../agencias/solicitud.js`; lo que habla con la
-  base y con la función en `docs/cobranzas/datos.js`: `leerAgencias`, `contarSolicitudes`, `guardarAjustesAgencias`, `altaAgencia`,
-  `activarAgencia`, `resolverSolicitud`, `documentosSolicitud`). Cuatro pestañas: Solicitudes (pendientes primero, con BCRA,
-  crédito, ingresos, datos, «Ver documentos», nota y Aprobar/Rechazar; abajo las resueltas), Parámetros, Agencias (alta, pausar y
-  activar) y Cotizaciones. Las solicitudes pendientes se cuentan al entrar, cada minuto y al
-  volver a la app: insignia en la solapa y aviso arriba de Inicio. `cobranzas/#agencias` abre la solapa. Usa la sesión de la
-  persona (las mismas barreras); los documentos los pide a la función `agencias`. Pruebas en el navegador:
-  `dev/tests/agencias-admin.test.mjs` (dentro de `npm run test:agencias`).
+  No cambia ningún permiso ni la base. **Desde el 27/11/2026 es la única administración**: la solapa «Agencias» se sacó de Créditos y
+  Cobros con el OK de la persona. **Un crédito aprobado se sigue entero en el cotizador: no pasa a Cobranzas.** En Cobranzas queda la
+  consulta al BCRA (pedido expreso: no sacarla). **Donde estas notas digan «Créditos y Cobros → Agencias», leer «panel máster»**; el código
+  está en `docs/agencias/master/`: `app.js` (pantalla y eventos), `panel.js` (HTML y parámetros; antes `cobranzas/agencias.js`),
+  `prendaforms.js` y `unirpdf.js`. Comparte `../../cobranzas/datos.js` (sesión `gestor.sesion`; ahí siguen las funciones de agencias, y al
+  entrar también lee los datos de Cobranzas, que el panel no muestra), `textos.js` y `styles.css` (clases `.ag-*`, `.gr-*`).
+  `cobranzas/#agencias` y `#agencias-chats` redirigen al panel (la función `agencias` todavía manda esas direcciones en el mail y el push;
+  no hizo falta republicarla). Al abrirse, Cobranzas da de baja los avisos push que ese dispositivo tuviera: se activan en el panel.
+- **Administración** (panel máster, ver arriba): solapas Solicitudes (pendientes primero, con BCRA, crédito, ingresos, datos,
+  «Ver documentos», nota y Aprobar/Rechazar; abajo las resueltas), Chats, Parámetros, Agencias (alta, pausar y activar), Cotizaciones y
+  Estadísticas. Las solicitudes pendientes se cuentan al entrar, cada minuto y al volver (aparecen en el título de la pestaña).
+  Las pruebas de navegador `dev/tests/agencias-admin.test.mjs` y `agencias-chat-app.test.mjs` todavía entran por `cobranzas/`:
+  **falta adaptarlas al panel**.
 - **Crear agencia desde la app** (migración 0032, pedido de la persona del 17/11/2026): en la pestaña Agencias, «Crear agencia» pide
   nombre, email y notas (sin fecha de aviso a InfoAuto desde la migración 0034); la función `agencias` (acción `crear_agencia`, solo miembros) crea la cuenta
   con la API de administración del login (`/auth/v1/admin/users`, clave de servicio), con una **contraseña provisoria al azar de

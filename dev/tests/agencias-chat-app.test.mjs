@@ -1,5 +1,5 @@
 // El chat de las agencias en un navegador real: el botón «M» y su ventana en el cotizador (docs/agencias/chat.js) y la
-// solapa «Chats» de Créditos y Cobros (docs/cobranzas/agencias.js), en celular y en compu, hablando con la función
+// solapa «Chats» de Créditos y Cobros (docs/agencias/master/panel.js), en celular y en compu, hablando con la función
 // `agencias` de verdad (con un doble de Claude).
 // Requiere `dev/stack.sh up` y `node dev/serve.mjs` (las apps en http://127.0.0.1:8080/). Con un Chrome del sistema:
 // CHROME=/usr/bin/google-chrome.

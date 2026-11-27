@@ -5,13 +5,13 @@
 // configuración, las cuentas de importes, el armado de Excel y las tipografías (../).
 //
 // Al cambiar la lista de archivos o una tipografía/ícono, subir VERSION para renovar la copia.
-const VERSION = 'cobranzas-v69';
+const VERSION = 'cobranzas-v70';
 const ESPERA_MS = 4000;
 
 const NUCLEO = [
-  './', 'styles.css', 'app.js', 'datos.js', 'calculo.js', 'textos.js', 'creditos.js', 'chat.js', 'vehiculos.js', 'refinanciacion.js', 'acuerdo.js', 'demanda.js', 'descuento.js', 'agencias.js', 'prendaforms.js', 'modelos/acuerdo-refinanciacion.docx', 'modelos/demanda-prendaria.docx', 'manifest.webmanifest',
+  './', 'styles.css', 'app.js', 'datos.js', 'calculo.js', 'textos.js', 'creditos.js', 'chat.js', 'vehiculos.js', 'refinanciacion.js', 'acuerdo.js', 'demanda.js', 'descuento.js', 'modelos/acuerdo-refinanciacion.docx', 'modelos/demanda-prendaria.docx', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
-  '../vendor/supabase.js', '../config.js', '../liquidacion.js', '../excel.js', '../oficio.js', '../agencias/solicitud.js',
+  '../vendor/supabase.js', '../config.js', '../liquidacion.js', '../excel.js', '../oficio.js',
   '../fonts/plex-sans-latin-300.woff2', '../fonts/plex-sans-latin-400.woff2', '../fonts/plex-sans-latin-500.woff2', '../fonts/plex-sans-latin-600.woff2',
   '../fonts/plex-mono-latin-400.woff2', '../fonts/plex-mono-latin-500.woff2',
   '../fonts/cinzel-latin-400-normal.woff2', '../fonts/eb-garamond-latin-400-italic.woff2', '../fonts/poppins-latin-600-normal.woff2', '../fonts/poppins-latin-700-normal.woff2',
@@ -74,11 +74,6 @@ self.addEventListener('push', (e) => {
 
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
-  const url = new URL(e.notification.data?.u || '/Gestor/cobranzas/#agencias-chats', self.location.origin).href;
-  e.waitUntil((async () => {
-    const abiertas = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    const mia = abiertas.find((c) => new URL(c.url).pathname.startsWith(new URL(self.registration.scope).pathname));
-    if (mia) { mia.postMessage({ abrir: 'agencias-chats' }); await mia.focus(); return; } // ya abierta: se avisa y se enfoca
-    await self.clients.openWindow(url);
-  })());
+  const url = new URL('../agencias/master/#chats', self.registration.scope).href;
+  e.waitUntil(self.clients.openWindow(url));
 });

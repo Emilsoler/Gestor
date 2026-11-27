@@ -59,7 +59,7 @@ const copias = [
   ['@fontsource/eb-garamond/LICENSE', 'fonts/LICENCIA-EB-Garamond.txt'],
   ['@fontsource/caladea/LICENSE', 'fonts/LICENCIA-Caladea.txt'],
   ['@supabase/supabase-js/LICENSE', 'vendor/LICENCIA-supabase-js.txt'],
-  // pdf-lib (MIT): «Descargar todo en un PDF» de las solicitudes de agencias (docs/cobranzas/unirpdf.js), que la carga recién ahí
+  // pdf-lib (MIT): «Descargar todo en un PDF» de las solicitudes de agencias (docs/agencias/master/unirpdf.js), que la carga recién ahí
   ['pdf-lib/dist/pdf-lib.esm.min.js', 'vendor/pdf-lib.js'],
   ['pdf-lib/LICENSE.md', 'vendor/LICENCIA-pdf-lib.txt'],
 ];

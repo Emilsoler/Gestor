@@ -5,10 +5,8 @@ import {
   crearDeudor, cambiarDeudor, borrarDeudor, crearModelo, guardarModelo, borrarModelo, guardarAjustes,
   consultarInfoAuto, consultarInfoAutoTodo, consultarBCRA, detalleConsulta, detalleGuardado, borrarConsulta, consultarCheque, entidadesCheques, borrarConsultaCheque, crearCasoRefi, actualizarCasoRefi, borrarCasoRefi, archivarCasoRefi,
   crearDescuento, guardarDescuento, borrarDescuento, estadoCheque,
-  leerAgencias, leerConectadas, contarSolicitudes, guardarAjustesAgencias, altaAgencia, crearAgencia, crearVendedor, activarVendedor, activarAgencia, resolverSolicitud, documentosSolicitud, leerDocumentos, eliminarSolicitud, eliminarCotizaciones, estadisticasAgencias,
-  chatsAgencias, chatResumen, verChat, responderChat, cerrarChat, eliminarChat, iniciarChat, claveAvisos, registrarAvisos, quitarAvisos, probarAvisos,
+  quitarAvisos,
 } from './datos.js';
-import { htmlAgencias, htmlConectadas, htmlFaltanGen, avisoInicio, parametrosEnTexto, leerParametros, TABS_AGENCIAS } from './agencias.js';
 import {
   avisoCuit, soloDigitos, fichaConsulta, filaConsulta, textoConsulta, deudoresDelCuit,
   avisoCheque, numeroCheque, bancosRecientes, opcionesBancos, bancoEnLista, fichaCheque, textoCheque, filaCheque, resumenBcraCheque, resumenDenuncia,
@@ -27,7 +25,6 @@ import { xlsx } from '../excel.js';
 import { datosAcuerdo, avisosAcuerdo, armarAcuerdo, hojasRefinanciacion, CAMPOS_ACUERDO } from './acuerdo.js';
 import { nuevaDemanda, nuevoDemandado, demandaDesdeDeudor, estadoDemanda, datosDemanda, avisosDemanda, faltanDemanda, CAMPOS_DEMANDA } from './demanda.js';
 import { abrirChat } from './chat.js';
-import { datosDeSolicitud, textoVencimientos, armarFormularios, conDomicilioDelDeudor, aplicarLectura } from './prendaforms.js';
 import { nuevoDescuento, nuevoCheque, formDeFila, filaDeForm, liquidarDescuento, cartera, resumenCartera, cuandoVence, bancoDe, htmlLiquidacionDescuento, hojaDescuento, ESTADOS_CHEQUE } from './descuento.js';
 
 const VERSION = '1.12.0';
@@ -38,7 +35,7 @@ const CONCEPTOS = ['Tasa de justicia', 'Aportes Caja de Abogados', 'Martillero',
 const TABS = [['resumen', 'Resumen'], ['liquidacion', 'Liquidación'], ['pagos', 'Pagos'], ['plan', 'Plan'], ['gestiones', 'Gestiones'], ['mensaje', 'WhatsApp'], ['datos', 'Datos']];
 const CLASE = { mora: 's-bad', plan: 's-ok', 'plan-atrasado': 's-warn', 'plan-caer': 's-bad', 'plan-cumplido': 's-ok', juicio: 's-violet', 'al-dia': 's-info' };
 const CHIPS = [['activos', 'Activos'], ['mora', 'En mora'], ['plan', 'Con plan'], ['atrasados', 'Planes atrasados'], ['promesas', 'Promesas'], ['juicio', 'En juicio'], ['cerrados', 'Cancelados y archivados']];
-const VISTAS = { inicio: 'Inicio', deudores: 'Deudores', planes: 'Planes', creditos: 'Aprobación de créditos', demanda: 'Demanda prendaria', agencias: 'Agencias' };
+const VISTAS = { inicio: 'Inicio', deudores: 'Deudores', planes: 'Planes', creditos: 'Aprobación de créditos', demanda: 'Demanda prendaria' };
 const AYUDA_CUIT = 'La situación en cada banco o financiera, los últimos 24 meses y los cheques rechazados.';
 const AYUDA_CHEQUE = 'Si el cheque fue denunciado como extraviado, robado o adulterado.';
 const MODOS_CREDITO = [['cuit', 'Deudas por CUIT'], ['cheque', 'Cheques denunciados'], ['refi', 'Estado de Deuda y Refinanciación'], ['descuento', 'Descuento de cheques'], ['vehiculo', 'Vehículo'], ['simulacion', 'Simulación']];
@@ -72,21 +69,11 @@ const S = {
     // Descuento de cheques: qué se ve (liquidar, cartera, operaciones), el formulario (null hasta entrar), la operación abierta.
     dc: { sub: 'liquidar', f: null, id: '', confirmar: false, q: '', bcra: {}, den: {} }, // bcra: por CUIT del librador, {estado: consultando|error, error}; den: lo mismo por «banco:número» del cheque
   },
-  // Agencias (el cotizador para agencias): lo leído, la pestaña, los enlaces a documentos ya pedidos, lo que se escribe
-  // (notas para la agencia, parámetros y alta, atados con data-k) y cuántas solicitudes esperan respuesta.
-  ag: {
-    est: { dias: 30, filas: null, error: '' },
-    datos: null, cargando: false, error: '', tab: 'solicitudes', msg: '', docs: new Map(), notas: {}, p: {}, alta: {}, vend: {}, pend: 0, conx: { filas: null, abierto: false }, borrar: '', borrarCot: '', selCot: new Set(),
-    // Chats de las agencias: la lista, la conversación abierta (hilo + mensajes), lo que se escribe (texto) y el estado de los
-    // avisos al celular (push: cargando | no | denegado | inactivo | activo). `atencion`: conversaciones que piden respuesta.
-    chat: { lista: [], atencion: 0, espera: 0, error: '', hilo: null, mensajes: [], texto: '', enviando: false, push: 'cargando', pushMsg: '' },
-  },
 };
 try { S.vista = VISTAS[localStorage.getItem('cb.vista')] ? localStorage.getItem('cb.vista') : 'inicio'; } catch { /* sin almacenamiento */ }
 try { if (localStorage.getItem('cb.simOrigen') === 'mano') S.cred.simOrigen = 'mano'; } catch { /* sin almacenamiento */ }
 try { const m = localStorage.getItem('cb.credModo'); if (m === 'cheque' || m === 'vehiculo' || m === 'refi' || m === 'simulacion' || m === 'descuento') S.cred.modo = m; } catch { /* sin almacenamiento */ }
 try { S.maxi = localStorage.getItem('cb.maxi') === '1'; } catch { /* sin almacenamiento */ }
-try { const t = localStorage.getItem('cb.agTab'); if (TABS_AGENCIAS.some(([k]) => k === t)) S.ag.tab = t; } catch { /* sin almacenamiento */ }
 
 // ───────────────────────── Utilidades ─────────────────────────
 
@@ -190,8 +177,7 @@ function mostrar(pantalla) {
   $('#vIngreso').hidden = enApp;
   if (enApp) { $('#ingresoCuerpo').innerHTML = ''; render(); seguirEnlace(); return; }
   cerrarFicha(); S.menu = false; renderMenu();
-  for (const k of ['#main', '#chips', '#franja', '#nPlanes', '#nDeudores', '#nAgencias']) $(k).innerHTML = '';
-  S.ag = { ...S.ag, gen: null, est: { dias: 30, filas: null, error: '' }, datos: null, error: '', docs: new Map(), notas: {}, alta: {}, vend: {}, nueva: null, pend: 0, conx: { filas: null, abierto: false } }; // al salir no queda nada de otra sesión
+  for (const k of ['#main', '#chips', '#franja', '#nPlanes', '#nDeudores']) $(k).innerHTML = '';
   $('#sub').textContent = ''; $('#q').value = ''; S.q = '';
   renderIngreso();
 }
@@ -294,14 +280,12 @@ function render() {
   insignia('#nPlanes', atrasados, 'urg', atrasados === 1 ? 'plan atrasado' : 'planes atrasados');
   const dia = hoy(), urgentes = todos.filter((x) => x.r.activo && pendientesDe(x.d, x.r).some((p) => p.tarde || (p.fecha && p.fecha <= dia))).length;
   insignia('#nDeudores', urgentes, 'pend', urgentes === 1 ? 'deudor con algo para hoy o atrasado' : 'deudores con algo para hoy o atrasado');
-  const porAgencias = S.ag.pend + (S.ag.chat.atencion || 0);
-  insignia('#nAgencias', porAgencias, 'pend', porAgencias === 1 ? 'cosa de agencias para atender (solicitud o chat)' : 'cosas de agencias para atender (solicitudes y chats)');
   main.innerHTML = {
-    inicio: (t) => htmlConectadas(S.ag.conx) + avisoInicio(S.ag.pend, S.ag.chat.atencion) + vistaInicio(t), deudores: vistaDeudores, planes: vistaPlanes, creditos: vistaCreditos, demanda: vistaDemandaAparte, agencias: vistaAgencias,
+    inicio: vistaInicio, deudores: vistaDeudores, planes: vistaPlanes, creditos: vistaCreditos, demanda: vistaDemandaAparte,
   }[S.vista](todos);
   aplicarAnchos(main);
   if (S.vista === 'inicio') ajustarNombre();
-  $('#fabNuevo').hidden = ['inicio', 'creditos', 'demanda', 'agencias'].includes(S.vista); // en el celular taparía el resultado, y ahí no hace falta (en Inicio está en las acciones rápidas)
+  $('#fabNuevo').hidden = ['inicio', 'creditos', 'demanda'].includes(S.vista); // en el celular taparía el resultado, y ahí no hace falta (en Inicio está en las acciones rápidas)
   // Los 24 meses se ven desde el más reciente: si no entran (celular), el corrimiento arranca a la derecha.
   main.querySelectorAll('.historia-caja').forEach((el) => { el.scrollLeft = el.scrollWidth; });
   devolverFoco(foco);
@@ -515,363 +499,6 @@ function vistaPlanes(todos) {
 // Dos consultas al BCRA, cada una en su pestaña: por CUIT (la función `bcra` pregunta a la Central de
 // Deudores, arma el semáforo y guarda la consulta) y por cheque (si fue denunciado como extraviado, robado
 // o adulterado). Las anteriores quedan en el historial de cada una, como constancia de ese día.
-
-// ───────────────────────── Agencias: lo que mandan las agencias desde el cotizador ─────────────────────────
-
-function vistaAgencias() {
-  const G = S.ag;
-  if (!G.datos && !G.cargando && !G.error) setTimeout(cargarAgencias); // fuera del dibujo: cargar vuelve a dibujar
-  if (!G.datos) {
-    subtitulo('Cotizador para agencias');
-    return G.error ? `${vacio('No se pudo abrir', G.error)}<div class="actions"><button class="btn" data-a="ag-recargar">Probar de nuevo</button></div>`
-      : vacio('Cargando las solicitudes…', 'Las solicitudes de crédito que mandan las agencias, con el informe del BCRA y los documentos.');
-  }
-  const pend = G.datos.solicitudes.filter((x) => x.estado === 'pendiente' || x.estado === 'en_analisis').length;
-  subtitulo(`${pend ? cuantos(pend, 'solicitud pendiente', 'solicitudes pendientes') : 'Sin solicitudes pendientes'} · el cotizador está ${G.datos.ajustes?.habilitado ? 'habilitado' : 'apagado'}`);
-  return htmlConectadas(G.conx) + htmlAgencias(G.datos, G);
-}
-
-async function cargarAgencias() {
-  const G = S.ag;
-  if (G.cargando) return;
-  G.cargando = true; G.error = '';
-  try {
-    G.datos = await leerAgencias();
-    G.p = parametrosEnTexto(G.datos.ajustes || {});
-    G.pend = G.datos.solicitudes.filter((x) => x.estado === 'pendiente' || x.estado === 'en_analisis').length;
-    await cargarChats(false);
-  } catch (e) {
-    G.error = /PGRST205|42P01|does not exist/i.test(`${e.code} ${e.message}`) ? 'Falta activar el cotizador de agencias en la base. Avisale a Claude.' : mensaje(e, 'no se pudo leer');
-  }
-  G.cargando = false;
-  render();
-  if (G.tab === 'estadisticas') cargarEstadisticas(); // la solapa se recuerda: si se abrió en esa, se calcula al entrar
-}
-
-async function cargarEstadisticas() {
-  const E = S.ag.est, dias = E.dias;
-  E.filas = null; E.error = ''; render();
-  try { const f = await estadisticasAgencias(dias); if (E.dias === dias) E.filas = f; }
-  catch (e) { E.error = /PGRST202|42883|does not exist/i.test(`${e.code} ${e.message}`) ? 'Falta activar las estadísticas en la base. Avisale a Claude.' : mensaje(e, 'no se pudieron calcular las estadísticas'); }
-  render();
-}
-
-/** Cuántas solicitudes esperan respuesta: el aviso de la solapa y de Inicio. Si cambió, se redibuja. */
-async function contarPendientes() {
-  if (S.pantalla !== 'listo') return;
-  const [n, r] = await Promise.all([contarSolicitudes(), chatResumen()]);
-  const atencion = r ? r.atencion || 0 : S.ag.chat.atencion;
-  if (n === S.ag.pend && atencion === S.ag.chat.atencion) return;
-  const nuevoChat = atencion !== S.ag.chat.atencion, nuevasSol = n !== S.ag.pend;
-  S.ag.pend = n; S.ag.chat.atencion = atencion;
-  if (S.vista === 'agencias' && nuevasSol) cargarAgencias(); // solicitudes nuevas: se vuelve a leer todo
-  else if (S.vista === 'agencias' && S.ag.tab === 'chats' && nuevoChat) { await cargarChats(true); render(); }
-  else render();
-}
-
-// ── Chats de las agencias ──
-/** La lista de conversaciones (y, si hay una abierta, sus mensajes). Un error no tira abajo el resto de la vista. */
-async function cargarChats(silencioso) {
-  const C = S.ag.chat;
-  try {
-    const r = await chatsAgencias();
-    C.lista = r.chats || []; C.atencion = r.atencion || 0; C.espera = r.espera || 0; C.error = '';
-    if (C.hilo) {
-      const v = await verChat(C.hilo.id);
-      C.hilo = v.chat; C.mensajes = v.mensajes || [];
-    }
-  } catch (e) {
-    if (!silencioso) C.error = e.codigo === 'accion' || e.status === 400 ? 'El chat todavía no está publicado en la función. Avisale a Claude.' : mensaje(e, 'no se pudo leer el chat');
-  }
-  if (S.ag.tab === 'chats' && C.push === 'cargando') revisarAvisos();
-}
-
-async function abrirHiloAgencia(id) {
-  const C = S.ag.chat;
-  try {
-    const v = await verChat(id);
-    C.hilo = v.chat; C.mensajes = v.mensajes || []; C.texto = ''; C.error = ''; C.borrar = false;
-  } catch (e) { C.error = mensaje(e, 'no se pudo abrir la conversación'); }
-  await contarPendientes();
-  render();
-  const m = $('#agMsgs'); if (m) m.scrollTop = m.scrollHeight;
-}
-
-// ── Avisos al celular (Web Push). El service worker (sw.js) los muestra; la función los manda. ──
-const deB64u = (x) => Uint8Array.from(atob(String(x).replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (String(x).length % 4)) % 4)), (c) => c.charCodeAt(0));
-const sePuedeAvisar = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && window.isSecureContext;
-/** Mira cómo está este dispositivo: no puede, bloqueado, sin activar o activado. */
-async function revisarAvisos() {
-  const C = S.ag.chat;
-  let estado = 'no';
-  try {
-    if (sePuedeAvisar()) {
-      if (Notification.permission === 'denied') estado = 'denegado';
-      else estado = (await (await navigator.serviceWorker.ready).pushManager.getSubscription()) ? 'activo' : 'inactivo';
-    }
-  } catch { estado = 'no'; }
-  if (C.push !== estado) { C.push = estado; render(); }
-}
-async function activarAvisos() {
-  const C = S.ag.chat;
-  C.pushMsg = '';
-  try {
-    if ((await Notification.requestPermission()) !== 'granted') { C.pushMsg = 'No diste el permiso: los avisos quedaron apagados.'; await revisarAvisos(); render(); return; }
-    const reg = await navigator.serviceWorker.ready;
-    let sub = await reg.pushManager.getSubscription();
-    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: deB64u(await claveAvisos()) });
-    await registrarAvisos(sub.toJSON(), navigator.userAgent);
-    C.push = 'activo'; C.pushMsg = 'Listo: avisos activados. Probalos con «Mandarme un aviso de prueba».';
-  } catch (e) { C.pushMsg = mensaje(e, 'no se pudieron activar los avisos'); await revisarAvisos(); }
-  render();
-}
-async function quitarAvisosAca() {
-  const C = S.ag.chat;
-  try {
-    const sub = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
-    if (sub) { await quitarAvisos(sub.endpoint).catch(() => {}); await sub.unsubscribe(); }
-    C.push = 'inactivo'; C.pushMsg = 'Avisos desactivados en este dispositivo.';
-  } catch (e) { C.pushMsg = mensaje(e, 'no se pudieron desactivar'); }
-  render();
-}
-async function probarAvisosAca() {
-  const C = S.ag.chat;
-  try {
-    const r = await probarAvisos();
-    C.pushMsg = r.enviados ? 'Aviso enviado: tendría que llegarte en unos segundos.' : r.celulares ? 'No se pudo entregar el aviso. Desactivá y volvé a activar los avisos en este celular.' : 'Esta cuenta no tiene celulares registrados todavía.';
-  } catch (e) { C.pushMsg = mensaje(e, 'no se pudo mandar el aviso de prueba'); }
-  render();
-}
-
-/** «Descargar todo en un PDF»: los documentos de la solicitud, con enlaces recién pedidos, en un solo archivo. */
-async function pdfDeSolicitud(id) {
-  const sol = S.ag.datos?.solicitudes.find((x) => x.id === id);
-  if (!sol) return;
-  toast('Armando el PDF con los documentos…');
-  try {
-    const archivos = await documentosSolicitud(id);
-    const bajarArchivo = async (url) => {
-      if (!url) throw new Error('sin enlace');
-      const r = await fetch(url);
-      if (!r.ok) throw new Error('archivo ' + r.status);
-      return new Uint8Array(await r.arrayBuffer());
-    };
-    const { pdfSolicitud } = await import('./unirpdf.js');
-    const { bytes, problemas } = await pdfSolicitud(sol, archivos, bajarArchivo, { hoy: hoy() });
-    const nombre = String(sol.denominacion || sol.cuit || 'cliente').replace(/[\\/:*?"<>|]+/g, ' ').trim();
-    const archivo = `${hoy().slice(2).replace(/-/g, '')} - Solicitud de crédito - ${nombre}.pdf`;
-    if (!(await entregar(new Blob([bytes], { type: 'application/pdf' }), archivo))) return;
-    toast(problemas.length ? `PDF listo, pero no se pudo incluir: ${problemas.join(', ')}` : `PDF listo: ${archivo}`);
-  } catch (e) { console.error(e); toast(mensaje(e, 'no se pudo armar el PDF')); }
-}
-
-// ---- Documentación del Registro del Automotor: Formulario 03 y contratos de prenda (solo los datos, sobre papel oficial) ----
-const AJUSTE_PRENDA = 'cb.prendaAjuste';
-function abrirGenerar(id, tipo) {
-  const sol = S.ag.datos?.solicitudes.find((x) => x.id === id);
-  if (!sol) return;
-  if (S.ag.gen && S.ag.gen.id === id && S.ag.gen.tipo === tipo) { S.ag.gen = null; render(); return; }
-  let aj = {}; try { aj = JSON.parse(localStorage.getItem(AJUSTE_PRENDA) || '{}'); } catch { /* sin almacenamiento */ }
-  S.ag.gen = { id, tipo, p: datosDeSolicitud(sol, hoy()), dx: aj.dx ?? '', dy: aj.dy ?? '', sinOriginal: false, sinCopia: false };
-  render();
-  document.querySelector('.ag-gen-panel')?.scrollIntoView({ block: 'nearest' });
-}
-/** «Leer documentos»: la función lee el título y el DNI de la solicitud; lo leído completa los campos vacíos y queda para revisar. */
-async function leerDocumentosGen() {
-  const g = S.ag.gen; if (!g || g.leyendo) return;
-  const sol = S.ag.datos?.solicitudes.find((x) => x.id === g.id);
-  g.leyendo = true; g.lecturaError = ''; render();
-  try {
-    const l = await leerDocumentos(g.id);
-    if (S.ag.gen === g) g.lectura = aplicarLectura(g.p, l, sol);
-  } catch (e) { g.lecturaError = mensaje(e, 'no se pudieron leer los documentos'); }
-  g.leyendo = false; render();
-}
-const mm = (v) => { const n = Number(String(v ?? '').replace(',', '.')); return Number.isFinite(n) ? n : 0; };
-function datosListos(g) {
-  const p = conDomicilioDelDeudor(g.p);
-  for (const k of ['monto', 'cuotas', 'cuota', 'tna']) p[k] = Number(String(p[k] ?? '').replace(',', '.')) || 0;
-  if (!p.vencimientos) p.vencimientos = textoVencimientos(p);
-  if (p.fecha) p.fecha = String(p.fecha);
-  return p;
-}
-async function generarFormularios() {
-  const g = S.ag.gen; if (!g) return;
-  const cuales = g.tipo === 'prenda' ? ['f03'] : g.sinOriginal && !g.sinCopia ? ['b'] : g.sinCopia && !g.sinOriginal ? ['a'] : ['a', 'b'];
-  try {
-    localStorage.setItem(AJUSTE_PRENDA, JSON.stringify({ dx: g.dx, dy: g.dy }));
-  } catch { /* sin almacenamiento */ }
-  try {
-    const { bytes } = await armarFormularios(datosListos(g), { dx: mm(g.dx), dy: mm(g.dy), hoy: hoy(), cuales });
-    const nombre = String(g.p.deudor?.nombre || 'deudor').replace(/[\\/:*?"<>|]+/g, ' ').trim();
-    const etiqueta = g.tipo === 'prenda' ? 'Formulario 03' : cuales.length === 2 ? 'Contratos de prenda' : cuales[0] === 'a' ? 'Contrato de prenda' : 'Contrato de prenda copia no negociable';
-    const archivo = `${hoy().slice(2).replace(/-/g, '')} - ${etiqueta} - ${nombre}.pdf`;
-    if (!(await entregar(new Blob([bytes], { type: 'application/pdf' }), archivo))) return;
-    toast(`PDF listo: ${archivo}. Imprimilo sobre los formularios oficiales en blanco.`);
-  } catch (e) { console.error(e); toast('No se pudo armar el PDF'); }
-}
-
-async function accionAgencias(act, b) {
-  const G = S.ag, id = b.dataset.id;
-  if (act === 'ag-recargar') { G.error = ''; await cargarAgencias(); return; }
-  if (act === 'ag-ir-chats') { G.tab = 'chats'; G.chat.hilo = null; verVista('agencias'); return; }
-  if (act === 'ag-chat-abrir') { await abrirHiloAgencia(id); return; }
-  if (act === 'ag-chat-volver') { G.chat.hilo = null; G.chat.borrar = false; G.chat.error = ''; await cargarChats(true); render(); return; }
-  if (act === 'ag-chat-nuevo') { const C = G.chat; C.nuevo = C.nuevo ? null : { vendedor: '', texto: '', enviando: false, error: '' }; render(); return; }
-  if (act === 'ag-chat-iniciar') {
-    const N = G.chat.nuevo, texto = String(N?.texto || '').trim();
-    if (!N) return;
-    if (!N.vendedor) { N.error = 'Elegí a quién escribirle.'; render(); return; }
-    if (!texto) { N.error = 'Escribí el mensaje.'; render(); return; }
-    N.enviando = true; N.error = ''; render();
-    try {
-      const r = await iniciarChat(N.vendedor, texto);
-      G.chat.nuevo = null; toast('Mensaje enviado');
-      await abrirHiloAgencia(r.chat);
-    } catch (e) { N.error = mensaje(e, 'no se pudo iniciar la conversación'); N.enviando = false; render(); }
-    return;
-  }
-  if (act === 'ag-chat-borrar-fila-preguntar' || act === 'ag-chat-borrar-fila-no') { G.chat.borrarFila = act === 'ag-chat-borrar-fila-preguntar' ? id : ''; render(); return; }
-  if (act === 'ag-chat-borrar-fila') {
-    try { await eliminarChat(id); } catch (e) { G.chat.error = mensaje(e, 'no se pudo eliminar la conversación'); G.chat.borrarFila = ''; render(); return; }
-    G.chat.borrarFila = ''; G.chat.error = ''; toast('Conversación eliminada');
-    await cargarChats(true); await contarPendientes(); render(); return;
-  }
-  if (act === 'ag-chat-enviar') {
-    const C = G.chat, texto = String(C.texto || '').trim();
-    if (!texto) { C.error = 'Escribí la respuesta.'; render(); return; }
-    C.enviando = true; C.error = ''; render();
-    try {
-      await responderChat(id, texto);
-      C.texto = '';
-      const v = await verChat(id); C.hilo = v.chat; C.mensajes = v.mensajes || [];
-      toast('Respuesta enviada');
-    } catch (e) { C.error = mensaje(e, 'no se pudo enviar la respuesta'); }
-    C.enviando = false;
-    await contarPendientes();
-    render();
-    const m = $('#agMsgs'); if (m) m.scrollTop = m.scrollHeight;
-    return;
-  }
-  if (act === 'ag-chat-cerrar') {
-    try { await cerrarChat(id); } catch (e) { G.chat.error = mensaje(e, 'no se pudo cerrar'); render(); return; }
-    G.chat.hilo = null; G.chat.texto = ''; toast('Conversación cerrada');
-    await cargarChats(true); await contarPendientes(); render(); return;
-  }
-  if (act === 'ag-chat-borrar-preguntar' || act === 'ag-chat-borrar-no') { G.chat.borrar = act === 'ag-chat-borrar-preguntar'; render(); return; }
-  if (act === 'ag-chat-borrar') {
-    try { await eliminarChat(id); } catch (e) { G.chat.error = mensaje(e, 'no se pudo eliminar la conversación'); G.chat.borrar = false; render(); return; }
-    G.chat.hilo = null; G.chat.texto = ''; G.chat.borrar = false; G.chat.error = ''; toast('Conversación eliminada');
-    await cargarChats(true); await contarPendientes(); render(); return;
-  }
-  if (act === 'ag-push-activar') { await activarAvisos(); return; }
-  if (act === 'ag-push-quitar') { await quitarAvisosAca(); return; }
-  if (act === 'ag-push-probar') { await probarAvisosAca(); return; }
-  if (act === 'ag-conx') { G.conx.abierto = !G.conx.abierto; pintarConectadas(); return; }
-  if (act === 'ag-tab') {
-    G.tab = b.dataset.tab; G.msg = ''; G.nueva = null; G.borrarCot = ''; G.verCot = ''; G.selCot.clear(); G.chat.hilo = null; G.chat.error = '';
-    try { localStorage.setItem('cb.agTab', G.tab); } catch { /* sin almacenamiento */ }
-    render(); if (G.tab === 'estadisticas') cargarEstadisticas(); return;
-  }
-  if (act === 'ag-est-dias') { G.est.dias = b.dataset.dias === '' ? null : Number(b.dataset.dias); cargarEstadisticas(); return; }
-  if (act === 'ag-docs') {
-    G.docs.set(id, { cargando: true }); render();
-    try { G.docs.set(id, { lista: await documentosSolicitud(id) }); } catch (e) { G.docs.set(id, { error: mensaje(e, 'no se pudieron buscar los documentos') }); }
-    render(); return;
-  }
-  if (act === 'ag-pdf') { await pdfDeSolicitud(id); return; }
-  if (act === 'ag-gen-abrir') { await abrirGenerar(id, b.dataset.tipo); return; }
-  if (act === 'ag-gen-cerrar') { G.gen = null; render(); return; }
-  if (act === 'ag-gen-leer') { await leerDocumentosGen(); return; }
-  if (act === 'ag-gen-pdf') { await generarFormularios(); return; }
-  if (act === 'ag-borrar-preguntar' || act === 'ag-borrar-no') { G.borrar = act === 'ag-borrar-preguntar' ? id : ''; render(); return; }
-  if (act === 'ag-borrar') {
-    try { await eliminarSolicitud(id); } catch (e) { toast(mensaje(e, 'no se pudo eliminar la solicitud')); return; }
-    G.borrar = ''; G.docs.delete(id); delete G.notas[id];
-    toast('Solicitud eliminada');
-    await cargarAgencias(); return;
-  }
-  if (act === 'ag-cot-ver' || act === 'ag-cot-ver-no') { G.verCot = act === 'ag-cot-ver' ? id : ''; render(); return; }
-  if (act === 'ag-cot-preguntar' || act === 'ag-cot-no') { G.borrarCot = act === 'ag-cot-preguntar' ? id : ''; render(); return; }
-  // Casilleros de la lista: uno por fila y uno arriba que tilda o destilda todas (las 200 que se ven).
-  if (act === 'ag-cot-sel') { if (G.selCot.has(id)) G.selCot.delete(id); else G.selCot.add(id); G.borrarCot = ''; render(); return; }
-  if (act === 'ag-cot-sel-todas') {
-    const ids = (G.datos?.cotizaciones || []).map((x) => String(x.id));
-    if (ids.length && ids.every((i) => G.selCot.has(i))) G.selCot.clear(); else ids.forEach((i) => G.selCot.add(i));
-    G.borrarCot = ''; render(); return;
-  }
-  if (act === 'ag-cot-borrar') {
-    // «sel»: solo las tildadas (y que sigan en la lista).
-    const existentes = new Set((G.datos?.cotizaciones || []).map((x) => String(x.id)));
-    const elegidas = [...G.selCot].filter((i) => existentes.has(i));
-    if (id === 'sel' && !elegidas.length) { G.borrarCot = ''; render(); return; }
-    try { await eliminarCotizaciones(id === 'todas' ? null : id === 'sel' ? elegidas : id); } catch (e) { toast(mensaje(e, 'no se pudieron eliminar las cotizaciones')); return; }
-    G.borrarCot = ''; G.selCot.clear();
-    toast(id === 'todas' ? 'Cotizaciones eliminadas' : id === 'sel' ? (elegidas.length === 1 ? 'Cotización eliminada' : `${elegidas.length} cotizaciones eliminadas`) : 'Cotización eliminada');
-    await cargarAgencias(); return;
-  }
-  if (act === 'ag-resolver') {
-    const estado = b.dataset.estado;
-    try { await resolverSolicitud(id, estado, String(G.notas[id] || '').trim()); } catch (e) { toast(mensaje(e)); return; }
-    delete G.notas[id];
-    toast(estado === 'aprobada' ? 'Solicitud aprobada' : estado === 'rechazada' ? 'Solicitud rechazada' : estado === 'en_analisis' ? 'Solicitud en análisis: la agencia ya lo ve' : 'La solicitud volvió a recibida');
-    await cargarAgencias(); return;
-  }
-  if (act === 'ag-activa') {
-    const activa = b.dataset.valor === '1';
-    try { await activarAgencia(id, activa); } catch (e) { G.msg = mensaje(e); render(); return; }
-    G.msg = ''; toast(activa ? 'Agencia activada' : 'Agencia pausada: ya no puede cotizar');
-    await cargarAgencias(); return;
-  }
-  if (act === 'ag-param-guardar') {
-    const r = leerParametros(G.p);
-    if (r.error) { G.msg = r.error; render(); return; }
-    try { await guardarAjustesAgencias(r.fila); } catch (e) { G.msg = mensaje(e); render(); return; }
-    G.msg = ''; toast('Parámetros guardados');
-    await cargarAgencias(); return;
-  }
-  if (act === 'ag-crear') {
-    const al = G.alta, email = String(al.email || '').trim(), nombre = String(al.nombre || '').trim();
-    if (!email || !nombre) { G.msg = 'Completá el nombre y el email.'; render(); return; }
-    let r;
-    try { r = await crearAgencia(nombre, email, String(al.notas || '').trim()); } catch (e) { G.msg = mensaje(e); render(); return; }
-    // La clave solo vive en esta pantalla: no se guarda en el dispositivo y desaparece al cambiar de solapa.
-    G.alta = {}; G.msg = ''; G.nueva = { nombre, email: r.email || email, clave: r.clave };
-    toast('Agencia creada');
-    await cargarAgencias(); return;
-  }
-  if (act === 'ag-vend-crear') {
-    const v = G.vend || {}, email = String(v.email || '').trim(), nombre = String(v.nombre || '').trim(), agencia = String(v.agencia || '');
-    if (!agencia) { G.msg = 'Elegí la agencia.'; render(); return; }
-    if (!email || !nombre) { G.msg = 'Completá el nombre y el email del vendedor.'; render(); return; }
-    let r;
-    try { r = await crearVendedor(agencia, nombre, email); } catch (e) { G.msg = mensaje(e); render(); return; }
-    const ag = (G.datos?.agencias || []).find((x) => x.id === agencia);
-    G.vend = { agencia }; G.msg = ''; G.nueva = { nombre: `${nombre} (${ag?.nombre || 'agencia'})`, email: r.email || email, clave: r.clave, vendedor: true };
-    toast('Vendedor creado');
-    await cargarAgencias(); return;
-  }
-  if (act === 'ag-vend-activo') {
-    const activo = b.dataset.valor === '1';
-    try { await activarVendedor(id, activo); } catch (e) { G.msg = mensaje(e); render(); return; }
-    G.msg = ''; toast(activo ? 'Vendedor activado' : 'Vendedor pausado: ya no puede cotizar');
-    await cargarAgencias(); return;
-  }
-  if (act === 'ag-copiar-acceso') {
-    const n = G.nueva; if (!n) return;
-    // Sin el enlace: la persona se lo manda a la agencia con el QR (pedido del 19/11/2026).
-    copiar(`Cotizador de créditos prendarios · Mutual Bell\nUsuario: ${n.email}\nContraseña provisoria: ${n.clave}\nLa primera vez que entres, el cotizador te va a pedir que elijas tu propia contraseña.`);
-    return;
-  }
-  if (act === 'ag-listo') { G.nueva = null; render(); return; }
-  if (act === 'ag-alta') {
-    const al = G.alta, email = String(al.email || '').trim(), nombre = String(al.nombre || '').trim();
-    if (!email || !nombre) { G.msg = 'Completá el nombre y el email.'; render(); return; }
-    try { await altaAgencia(email, nombre, String(al.notas || '').trim()); } catch (e) { G.msg = mensaje(e); render(); return; }
-    G.alta = {}; G.msg = ''; toast('Agencia habilitada');
-    await cargarAgencias();
-  }
-}
 
 function vistaCreditos() {
   const modos = `<nav class="tabs cr-modos" role="tablist" aria-label="Qué consultar">${MODOS_CREDITO.map(([k, l]) => `<button role="tab" data-cr-modo="${k}" aria-selected="${S.cred.modo === k}">${esc(l)}</button>`).join('')}</nav>`;
@@ -1168,7 +795,7 @@ function vistaRefi() {
     <div class="actions" id="refiAcciones">${accionesRefi(d)}</div>
   </section>`;
 }
-document.addEventListener('toggle', (e) => { if (e.target.matches?.('details[data-est]')) S.ag.est.abierto = e.target.open; if (e.target.matches?.('details[data-gastos]')) S.cred.gastosAbierto = e.target.open; if (e.target.matches?.('details[data-convenio]')) S.cred.convenioAbierto = e.target.open; }, true);
+document.addEventListener('toggle', (e) => { if (e.target.matches?.('details[data-gastos]')) S.cred.gastosAbierto = e.target.open; if (e.target.matches?.('details[data-convenio]')) S.cred.convenioAbierto = e.target.open; }, true);
 /** Casos guardados: nombre y botones para guardar el que está en pantalla, y la lista para abrir otro. */
 function bloqueCasos(guardar) {
   if (!D.casos) return `<p class="hint m0">Falta activar el guardado de casos: la base todavía no tiene dónde guardarlos. Pedile a Claude que lo active.</p>`;
@@ -2948,7 +2575,6 @@ async function unaVez(boton, tarea) {
 const verVista = (v) => {
   S.vista = v;
   try { localStorage.setItem('cb.vista', v); } catch { /* sin almacenamiento */ }
-  if (v === 'agencias') { S.ag.msg = ''; S.ag.nueva = null; setTimeout(cargarAgencias); } // al entrar, lo último que mandaron
   render(); window.scrollTo(0, 0);
 };
 
@@ -3006,7 +2632,6 @@ document.addEventListener('click', async (e) => {
     await unaVez(a, (b) => accionCredito(act, b)); return;
   }
   if (act.startsWith('rf-') && !S.panel && !S.abierto) { accionRefi(act, a); return; }
-  if (act.startsWith('ag-') && !S.panel && !S.abierto) { await unaVez(a, (b) => accionAgencias(act, b)); return; }
   if (act.startsWith('dp-') && !S.panel && !S.abierto) { accionDemanda(act, a); return; }
   if (act.startsWith('dc-') && !S.panel && !S.abierto) {
     if (act === 'dc-excel') { accionDescuento(act, a); return; } // sin esperas: el menú de compartir del celular lo exige
@@ -3047,7 +2672,6 @@ document.addEventListener('input', (e) => {
     const n = k.match(/\.cheques\.(\d+)\.(numero|banco)$/); if (n) programarDenuncia(+n[1]);
     actualizarDescuento(); return;
   }
-  if (k.startsWith('ag.gen.')) { const f = $('#genFaltan'); if (f && S.ag.gen) f.innerHTML = htmlFaltanGen(S.ag.gen); return; }
   if (k === 'cred.cuit') { actualizarCuit(); return; }
   if (k === 'cred.numero' || k === 'cred.entidad') { actualizarCheque(); return; }
   if (k === 'cred.filtro' || k === 'cred.chFiltro' || k === 'cred.veh.fm' || k === 'cred.veh.fv') { render(); return; }
@@ -3106,7 +2730,7 @@ movil.addEventListener('change', () => render());
 
 // Cambios que llegan de la base: los propios, los de Claude o los de otro dispositivo.
 alCambiar((que, detalle) => {
-  if (que === 'sesion') { if (detalle !== S.pantalla) mostrar(detalle); else if (detalle === 'listo') render(); if (detalle === 'listo') { contarPendientes(); cargarConectadas(); } return; }
+  if (que === 'sesion') { if (detalle !== S.pantalla) mostrar(detalle); else if (detalle === 'listo') render(); if (detalle === 'listo') avisosAlPanel(); return; }
   if (S.pantalla !== 'listo') return;
   if (que === 'estado') { renderFranja(); if (S.menu) renderMenu(); return; }
   render();
@@ -3116,12 +2740,10 @@ alCambiar((que, detalle) => {
 });
 
 /** Enlace desde el gestor ("Ver en Cobranzas" de una causa): #deudor=<id> abre la ficha de ese deudor.
- *  #agencias (desde el cotizador) abre la solapa Agencias. */
+ *  #agencias y #agencias-chats (enlaces y avisos viejos) llevan al panel máster del cotizador, donde está ahora esa administración. */
 function seguirEnlace() {
-  if ((location.hash === '#agencias' || location.hash === '#agencias-chats') && S.pantalla === 'listo') {
-    if (location.hash === '#agencias-chats') { S.ag.tab = 'chats'; S.ag.chat.hilo = null; } // el aviso del celular abre directo los chats
-    history.replaceState(null, '', location.pathname + location.search);
-    verVista('agencias'); return;
+  if (location.hash === '#agencias' || location.hash === '#agencias-chats') {
+    location.replace(location.hash === '#agencias-chats' ? '../agencias/master/#chats' : '../agencias/master/'); return;
   }
   const m = /^#deudor=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(location.hash || '');
   if (!m || S.pantalla !== 'listo' || !D.cargado) return;
@@ -3135,43 +2757,21 @@ window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); S.in
 window.addEventListener('appinstalled', () => { S.instalar = null; toast('App instalada'); });
 if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('sw.js').catch(() => { /* la app funciona igual sin él */ });
 
-// Un aviso del celular tocado con la app ya abierta: el service worker avisa y se abre la solapa de chats.
-if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', (e) => {
-  if (e.data?.abrir === 'agencias-chats' && S.pantalla === 'listo') { S.ag.tab = 'chats'; S.ag.chat.hilo = null; verVista('agencias'); }
-});
-// Con una conversación abierta, se mira cada 10 s si la agencia contestó (sin pisar lo que se está escribiendo).
-setInterval(async () => {
-  const C = S.ag.chat;
-  if (document.visibilityState !== 'visible' || S.pantalla !== 'listo' || S.vista !== 'agencias' || S.ag.tab !== 'chats' || !C.hilo || C.enviando) return;
-  const antes = C.mensajes.length ? C.mensajes[C.mensajes.length - 1].id : 0;
-  await cargarChats(true);
-  if ((C.mensajes.length ? C.mensajes[C.mensajes.length - 1].id : 0) !== antes) { render(); const m = $('#agMsgs'); if (m) m.scrollTop = m.scrollHeight; }
-}, 10_000);
-
-/** Repinta solo el cartel «agencias conectadas», sin tocar lo que se esté escribiendo en la pantalla. */
-function pintarConectadas() {
-  const el = document.getElementById('agConx');
-  if (el) el.outerHTML = htmlConectadas(S.ag.conx);
+// Los avisos de los chats se activan ahora en el panel máster. Si este dispositivo los tenía acá, se dan de baja para que no
+// lleguen dos veces (ya no hay pantalla para apagarlos desde esta app).
+let avisosRevisados = false;
+async function avisosAlPanel() {
+  if (avisosRevisados || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  avisosRevisados = true;
+  try {
+    const sub = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
+    if (!sub) return;
+    await quitarAvisos(sub.endpoint); // primero la base: si falla, se reintenta la próxima vez que se abra
+    await sub.unsubscribe();
+    toast('Los avisos de las agencias ahora se activan en el panel máster del cotizador (Chats)');
+  } catch { avisosRevisados = false; }
 }
-
-/** Lee quiénes tienen el cotizador abierto. Si el cartel ya está en pantalla lo repinta en el lugar; si no estaba, dibuja. */
-async function cargarConectadas() {
-  if (S.pantalla !== 'listo') return;
-  const f = await leerConectadas();
-  if (f === null || S.pantalla !== 'listo') return; // sin la función o sin red: queda lo último que se vio
-  const antes = !!S.ag.conx.filas;
-  S.ag.conx.filas = f;
-  if (document.getElementById('agConx')) pintarConectadas();
-  else if (!antes && (S.vista === 'inicio' || S.vista === 'agencias')) render();
-}
-
-// Las solicitudes de las agencias no llegan en vivo: se cuentan al abrir, al volver a la app y cada minuto.
-setInterval(() => { if (document.visibilityState === 'visible') contarPendientes(); }, 60_000);
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') contarPendientes(); });
-// Las agencias avisan cada minuto que tienen el cotizador abierto (migración 0051): se mira cada 30 s para que la luz no llegue tarde.
-setInterval(() => { if (document.visibilityState === 'visible') cargarConectadas(); }, 30_000);
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') cargarConectadas(); });
 
 (async () => {
-  try { mostrar(await iniciar()); contarPendientes(); cargarConectadas(); } catch (e) { console.error(e); S.falla = mensaje(e, 'no se pudo abrir'); mostrar('error'); }
+  try { mostrar(await iniciar()); if (S.pantalla === 'listo') avisosAlPanel(); seguirEnlace(); } catch (e) { console.error(e); S.falla = mensaje(e, 'no se pudo abrir'); mostrar('error'); }
 })();

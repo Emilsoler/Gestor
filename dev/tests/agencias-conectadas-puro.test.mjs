@@ -1,8 +1,8 @@
 // «Agencias conectadas» (migración 0051), la parte que no necesita la base: cómo se agrupan los vendedores por agencia,
-// cómo se dice cuánto hace que entró y el cartel que ve la Mutual (docs/cobranzas/agencias.js). No necesita el stack.
+// cómo se dice cuánto hace que entró y el cartel que ve la Mutual (docs/agencias/master/panel.js). No necesita el stack.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resumenConectadas, haceTexto, htmlConectadas } from '../../docs/cobranzas/agencias.js';
+import { resumenConectadas, haceTexto, htmlConectadas } from '../../docs/agencias/master/panel.js';
 
 const fila = (agencia_id, agencia, vendedor, hace_seg, conectado) => ({ agencia_id, agencia, vendedor_id: `${agencia_id}-${vendedor}`, vendedor, titular: false, hace_seg, conectado });
 const FILAS = [

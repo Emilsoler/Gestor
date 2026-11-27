@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PDFDocument } from '../../docs/vendor/pdf-lib.js';
-import { datosDeSolicitud, textoVencimientos, faltanFormularios, armarFormularios, hojaDePrueba, conDomicilioDelDeudor, sumarDias, MUTUAL } from '../../docs/cobranzas/prendaforms.js';
+import { datosDeSolicitud, textoVencimientos, faltanFormularios, armarFormularios, hojaDePrueba, conDomicilioDelDeudor, sumarDias, MUTUAL } from '../../docs/agencias/master/prendaforms.js';
 
 const sol = { denominacion: 'PEREZ JUAN CARLOS', cuit: '20123456786', monto: 4200000, cuotas: 24, cuota: 301500.5, tasa: 5, vehiculo: 'FIAT CRONOS 1.3 DRIVE', anio: 2021,
   datos: { dni: '12345678', domicilio: 'San Martín 450, Bell Ville', estado_civil: 'casado', actividad: 'Comerciante' } };

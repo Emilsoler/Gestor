@@ -1,4 +1,4 @@
-// «Generar documentación» de un crédito prendario aprobado (Créditos y Cobros → Agencias → Solicitudes): completa a
+// «Generar documentación» de un crédito prendario aprobado (panel máster → Solicitudes): completa a
 // máquina los formularios OFICIALES del Registro de la Propiedad del Automotor, para imprimirlos sobre el papel en
 // blanco: el Formulario 03 (solicitud de inscripción, 2 hojas) y el Contrato de Prenda con Registro en sus dos modelos
 // (A: «Ministerio de Educación y Justicia»; B: «Ministerio de Justicia», con la parte del cónyuge). Los dos modelos se
@@ -11,10 +11,10 @@
 // escritura pública del Registro).
 //
 // Lo arma el navegador con pdf-lib (docs/vendor/pdf-lib.js; MIT), cargada recién al pedir el PDF. Nada sale de la app.
-import { enLetras, cifra, dniOficio, partirDomicilio, partirVehiculo } from '../oficio.js';
+import { enLetras, cifra, dniOficio, partirDomicilio, partirVehiculo } from '../../oficio.js';
 
 let lib = null;
-const cargarLib = async () => (lib ||= await import('../vendor/pdf-lib.js'));
+const cargarLib = async () => (lib ||= await import('../../vendor/pdf-lib.js'));
 
 const MM = 72 / 25.4;
 // Cada hoja oficial tiene su tamaño real (ancho × alto, en mm, medidos por la persona el 24/11/2026). Las posiciones de abajo
@@ -204,7 +204,7 @@ export async function armarFormularios(p, { dx = 0, dy = 0, hoy = '', fondos = n
   const { PDFDocument, StandardFonts, rgb } = await cargarLib();
   const doc = await PDFDocument.create();
   doc.setTitle(`Prenda - ${p.deudor?.nombre || ''}`);
-  doc.setProducer('Créditos y Cobros');
+  doc.setProducer('Asociación Mutual Bell');
   const fn = await doc.embedFont(StandardFonts.Helvetica), fb = await doc.embedFont(StandardFonts.HelveticaBold);
   const tinta = fondos ? rgb(0.05, 0.1, 0.8) : rgb(0, 0, 0);
 
