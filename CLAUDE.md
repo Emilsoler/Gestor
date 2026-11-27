@@ -1061,7 +1061,7 @@ de la solicitud, editables, y la lista de lo que va a salir en blanco.
   cuota = hoy + 37 días, prenda fija, sin pagarés, concepto «Préstamo de dinero», lugar de pago «Bv. Colón 135 Bell Ville», inspección «Amplios»,
   gravámenes «Ninguno de ninguna índole», interés punitorio, base del % y todos los datos del seguro con «-»; los del cónyuge también con «-» **salvo que el deudor sea casado/a** (ahí quedan en blanco para completar y se avisa). «Dónde están los bienes» y el domicilio constituido salen del
   domicilio del deudor si están vacíos (`conDomicilioDelDeudor`); en el deudor, ciudad y localidad son lo mismo (un solo campo). Lo escrito a mano manda.
-- **La TNA arranca en blanco** (pedido de la persona del 24/11/2026): no se toma de la tasa de la solicitud; se escribe a mano y, si falta, se avisa.
+- **La TNA arranca con un guion «-»** (pedido de la persona del 27/11/2026; antes, en blanco): no se toma de la tasa de la solicitud. El guion se imprime tal cual; una tasa escrita a mano lo reemplaza. Si el casillero queda vacío, se avisa.
 - **Renglones tachados** (pedido de la persona del 24/11/2026, `tachar`/`llena` en `armarFormularios`): en los contratos, lo que no se usa de un renglón se tacha con una raya desde donde termina el texto hasta el final del renglón. Se tachan: concepto, «a don», el último renglón de bienes y de vencimientos, cuartel, documentación, inspección, todo el seguro (más el renglón que sigue a «la suma de», antes de «contra») y estado civil, nacionalidad y edad del acreedor. No se tachan departamento, nombre del campo, gravámenes ni los renglones de bienes sin usar. La raya de CON/SIN pagarés va 2 mm más abajo (en el medio de la palabra). La provincia de la ubicación de los bienes sale «Córdoba» si no se escribe otra.
 - **No se inventa nada del deudor ni del vehículo**: lo que la solicitud no trae (dominio, motor, chasis, nacionalidad, nacimiento) queda en blanco
   y se avisa. El **texto de los modelos no se cambia**; la única
@@ -1162,6 +1162,9 @@ Desde SQL no se abren los documentos: los enlaces los da la función (botón «V
   mostrador» (`agencia_id` todo ceros), con quién lo aprobó; los documentos los sube la función `mostrador` (`verify_jwt: true`) y se vuelve
   a `./#aprobado` (Solicitudes, para la prenda y los contratos). Las solapas de esa pantalla son enlaces (`./#ver-<solapa>`); con un cliente
   cargado piden un segundo toque. **Un cambio en la pantalla de la agencia cambia también esta**: probar las dos.
+- **Relación cuota-ingreso en la Mutual** (pedido de la persona del 27/11/2026): bajo el resultado, el plegado «¿Querés calcular la relación
+  cuota-ingreso?» (`htmlCalcRelacion`), verde hasta `relacion_max` (45) y rojo si lo supera. Es solo para mirar: no se guarda ni frena la aprobación.
+- **Sin la palabra «mostrador» a la vista** (mismo día): la base sigue guardando «Mutual Bell · mostrador»; `leerAgencias` (`cobranzas/datos.js`) lo muestra como «Mutual Bell».
 - **Cotización rápida** (`master/mostrador.js`): el mismo texto de WhatsApp que la simulación rápida de las agencias. `panel.js` no importa
   `mostrador.js` (app.js le pasa las vistas). Prueba: `panel-mostrador-app.test.mjs`.
 - **Crear agencia desde la app** (migración 0032, pedido de la persona del 17/11/2026): en la pestaña Agencias, «Crear agencia» pide

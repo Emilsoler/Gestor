@@ -64,6 +64,13 @@ for (const [nombre, viewport] of [['celular', { width: 390, height: 800 }], ['pc
     await p.waitForSelector('#inVersion:not([disabled])'); await p.click('#inVersion'); await p.press('#inVersion', 'Enter');
     await p.waitForSelector('#btnCotizar:not([disabled])'); await p.click('#btnCotizar');
     await p.waitForSelector('#condMutual');
+    // Relación cuota-ingreso: opcional, verde hasta 45 % y roja si lo supera. Queda en rojo: abajo se aprueba igual.
+    await p.click('#relCalc summary');
+    await p.fill('#inIngresoCalc', '900000000');
+    assert.equal(await p.locator('#resRelCalc .aviso.ok').count(), 1);
+    await p.fill('#inIngresoCalc', '1000');
+    assert.match(norm(await p.innerText('#resRelCalc')), /Relación Cuota-Ingreso/);
+    assert.equal(await p.locator('#resRelCalc .aviso:not(.ok)').count(), 1);
     const usual = norm(await p.textContent('#resultado .cuota-grande:not(.no-imprimir)'));
     assert.equal(await p.locator('.mo-fuera').count(), 0);
     assert.match(await texto(), /Enviar al cliente por WhatsApp/i);
@@ -122,7 +129,7 @@ for (const [nombre, viewport] of [['celular', { width: 390, height: 800 }], ['pc
     await p.waitForURL(/agencias\/master\/(#.*)?$/);
     await p.waitForSelector('.ag-sol');
     const tarjeta = norm(await p.textContent('.ag-sol'));
-    assert.match(tarjeta, /Mutual Bell · mostrador/); assert.match(tarjeta, /Aprobada/); assert.match(tarjeta, /Maca App/); assert.match(tarjeta, /30\.000\.000/);
+    assert.match(tarjeta, /Mutual Bell/); assert.doesNotMatch(tarjeta, /mostrador/i); assert.match(tarjeta, /Aprobada/); assert.match(tarjeta, /Maca App/); assert.match(tarjeta, /30\.000\.000/);
     assert.match(tarjeta, /Venta en la Mutual: no se cargan ingresos/);
     assert.equal(sql(`select estado || ' ' || monto::bigint || ' ' || tasa::float || ' ' || jsonb_array_length(archivos) || ' ' || (datos->>'dni') from public.solicitudes_credito`), `aprobada 30000000 6.5 1 11111111`);
     // De ahí salen la prenda y los contratos.

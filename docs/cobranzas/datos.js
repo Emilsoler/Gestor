@@ -517,6 +517,8 @@ export async function leerAgencias() {
   ]);
   const ids = [...new Set(solicitudes.map((x) => x.consulta).filter(Boolean))];
   const bcra = ids.length ? await pedir(sb.from('consultas_bcra').select('id,semaforo,motivos,deuda_total,entidades,peor_situacion,periodo').in('id', ids)) : [];
+  // La base guarda las ventas propias como «Mutual Bell · mostrador»; en pantalla y en los PDF va solo «Mutual Bell» (pedido del 27/11/2026).
+  for (const x of solicitudes) if (x.agencia === 'Mutual Bell · mostrador') x.agencia = 'Mutual Bell';
   return { ajustes, agencias, cotizaciones, solicitudes, vendedores, bcra: new Map(bcra.map((x) => [x.id, x])) };
 }
 

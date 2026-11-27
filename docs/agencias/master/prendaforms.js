@@ -167,6 +167,7 @@ const edadDe = (nac, hoy) => {
 };
 const fechaLarga = (iso) => { const p = partes(iso); return p ? `${p.d} de ${MESES[p.m - 1]} de ${p.a}` : ''; };
 const num = (n) => (n === '' || n == null ? '' : String(n));
+const guion = (v) => String(v ?? '').trim() === '-';
 const pct = (n) => (n === '' || n == null ? '' : `${String(n).replace('.', ',')}`);
 
 /** Lo que falta para que los formularios salgan completos, por su nombre. No bloquea: lo que falta queda en blanco. */
@@ -176,7 +177,7 @@ export function faltanFormularios(p, { soloF03 = false } = {}) {
   pide(p.fecha, 'Fecha'); pide(p.lugar, 'Lugar');
   pide(p.monto > 0, 'Monto del crédito'); pide(p.modalidad, 'Préstamo o saldo de precio');
   if (!soloF03) {
-    pide(p.cuotas > 0, 'Cantidad de cuotas'); pide(p.cuota > 0, 'Valor de la cuota'); pide(p.tna > 0, 'Interés anual (TNA)');
+    pide(p.cuotas > 0, 'Cantidad de cuotas'); pide(p.cuota > 0, 'Valor de la cuota'); pide(p.tna > 0 || guion(p.tna), 'Interés anual (TNA)');
     pide(p.clase, 'Prenda fija o flotante'); pide(p.pagares, 'Con o sin pagarés'); pide(p.concepto, 'Concepto de la deuda');
     pide(p.vencimientos, 'Vencimientos'); pide(p.lugarPago, 'Lugar de pago');
   }
@@ -272,7 +273,7 @@ export async function armarFormularios(p, { dx = 0, dy = 0, hoy = '', fondos = n
   const descripcionBien = v.descripcion || [v.tipo, v.marca, v.modelo, v.anio && `año ${v.anio}`, v.marcaMotor && `motor ${v.marcaMotor}`, v.motor && `N° ${v.motor}`, v.marcaChasis && `chasis ${v.marcaChasis}`, v.chasis && `N° ${v.chasis}`, v.dominio && `dominio ${v.dominio}`].filter(Boolean).join(', ');
   const montoTxt = p.monto > 0 ? `$ ${cifra(p.monto)}` : '';
   const letras = p.monto > 0 ? `Pesos ${enLetras(p.monto)}` : '';
-  const interes = p.tna > 0 ? pct(+(+p.tna).toFixed(2)) : '';
+  const interes = p.tna > 0 ? pct(+(+p.tna).toFixed(2)) : guion(p.tna) ? '-' : '';
   const lugarDia = p.lugar && fp ? `${p.lugar}, ${fp.d} de ${MESES[fp.m - 1]}` : p.lugar || '';
   const mesAnio = fp ? String(fp.a) : '';
   const venceSeguro = sg.venceDia ? `${sg.venceDia}` : '';
@@ -392,7 +393,7 @@ export { fechaLarga };
  */
 export function datosDeSolicitud(x, hoy = '') {
   const p = nuevosDatos(), d = x.datos || {}, dom = partirDomicilio(d.domicilio), v = partirVehiculo(x.vehiculo);
-  Object.assign(p, { fecha: hoy, lugar: 'Bell Ville', monto: Number(x.monto) || 0, cuotas: Number(x.cuotas) || 0, cuota: Number(x.cuota) || 0, tna: '', primerVto: '' }); // la TNA queda en blanco a propósito (pedido de la persona, 24/11/2026): se escribe a mano
+  Object.assign(p, { fecha: hoy, lugar: 'Bell Ville', monto: Number(x.monto) || 0, cuotas: Number(x.cuotas) || 0, cuota: Number(x.cuota) || 0, tna: '-', primerVto: '' }); // la TNA arranca con guion (pedido de la persona, 27/11/2026); si hay tasa, se escribe a mano
   Object.assign(p.deudor, {
     nombre: String(x.denominacion || '').trim(), dni: String(d.dni || ''), estadoCivil: d.estado_civil === 'casado' ? 'casado' : d.estado_civil === 'soltero' ? 'soltero' : '',
     profesion: String(d.actividad || ''), calle: dom.calle, numero: dom.numero, localidad: dom.localidad,

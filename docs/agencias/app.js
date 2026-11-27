@@ -22,7 +22,7 @@ const cfg = window.GESTOR_CONFIG || {};
 // «Aprobar crédito» (pedido de la persona del 27/11/2026). Los permisos los controlan la base y las funciones.
 const MOSTRADOR = document.body.dataset.mostrador === '1';
 const [PANEL, MUTUAL, PESTANAS] = MOSTRADOR
-  ? await Promise.all([import('../cobranzas/datos.js'), import('./master/mostrador.js?v=20261127h'), import('./master/panel.js?v=20261127h')])
+  ? await Promise.all([import('../cobranzas/datos.js'), import('./master/mostrador.js?v=20261127i'), import('./master/panel.js?v=20261127i')])
   : [null, null, null];
 // Sesión propia, no la del gestor ('gestor.sesion', que comparten el gestor, Cobranzas y Prenda): así entrar acá
 // con la cuenta de una agencia no saca a la persona de sus apps en ese mismo navegador, ni al revés.
@@ -215,7 +215,7 @@ function otroCliente() {
 
 // ───────────────────────── La solicitud ─────────────────────────
 const hoy = () => new Date().toLocaleDateString('sv-SE'); // AAAA-MM-DD, en la hora del teléfono
-const tope = () => S.yo?.relacion_max || 45;
+const tope = () => S.yo?.relacion_max || Number(S.ajustes?.relacion_max) || 45; // en la Mutual sale de Parámetros
 /** Persona jurídica (CUIT 30, 33 o 34): sus ingresos son siempre como responsable inscripto y se piden los datos de la empresa. */
 const juridica = () => esJuridica(S.bcra?.cuit);
 const asociadoDe = (L) => (L.asociado === 'si' ? true : L.asociado === 'no' ? false : undefined);
@@ -568,6 +568,23 @@ function htmlExtrasMutual() {
       ${xs.length ? `<ul class="doc-lista">${xs.map((x, i) => `<li><span class="doc-nombre">${esc(x.nombre)}</span><span class="hint">${tamano(x.file.size)}</span><button class="btn chico" type="button" data-quitar="documentacion" data-i="${i}">Quitar</button></li>`).join('')}</ul>` : ''}</div>`;
 }
 
+/** En la Mutual no se piden ingresos: la relación se puede calcular igual, solo para mirar. No se guarda ni frena nada. */
+function htmlCalcRelacion() {
+  if (!MOSTRADOR || !S.res?.financiable) return '';
+  return `<section class="card no-imprimir" id="calcRelacion">
+    <details class="plegado" id="relCalc"${S.sol.relAbierto ? ' open' : ''}><summary>¿Querés calcular la relación cuota-ingreso?</summary>
+      <div class="bloque"><label class="f">Ingresos mensuales de la persona ($)<input id="inIngresoCalc" inputmode="numeric" autocomplete="off" placeholder="Ej.: 1.500.000" value="${esc(S.sol.ingresoCalc || '')}"></label>
+      <div id="resRelCalc">${htmlResultadoCalc()}</div></div>
+    </details>
+  </section>`;
+}
+
+function htmlResultadoCalc() {
+  const rel = relacionCuota(S.res.cuota, soloNumero(S.sol.ingresoCalc));
+  if (rel === null) return '';
+  return `<p class="aviso ${rel > tope() ? '' : 'ok '}relacion m0" role="status">Relación Cuota-Ingreso: ${porcentaje(rel)} %</p>`;
+}
+
 function htmlAprobar() {
   const L = S.sol, r = S.res;
   if (!L.confirmar) return `<div class="acciones"><button class="btn primario mo-aprobar" type="button" id="btnAprobar" ${L.preparando ? 'disabled' : ''}>Aprobar crédito</button></div>`;
@@ -857,7 +874,7 @@ function vistaCotizar() {
     ${S.error ? `<p class="aviso m0" role="alert">${esc(S.error)}</p>` : ''}
     <div class="acciones"><button class="btn primario" type="button" id="btnCotizar" ${!S.version || !S.anio || c ? 'disabled' : ''}>${c === 'cotizar' ? 'Calculando…' : 'Ver crédito'}</button></div>
   </section>`;
-  return aviso + vistaCliente() + form + (S.res ? vistaResultado(S.res) + htmlMutual() + vistaSolicitud() : '');
+  return aviso + vistaCliente() + form + (S.res ? vistaResultado(S.res) + htmlMutual() + htmlCalcRelacion() + vistaSolicitud() : '');
 }
 
 /** De todos los plazos, los que se muestran en la tabla: el elegido, el más largo y los "redondos". */
@@ -1348,6 +1365,12 @@ document.addEventListener('input', (e) => {
   } else if (t.id === 'inCuit') S.cuit = t.value;
   else if (t.id === 'inMutMonto') { S.mut.monto = t.value; S.mut.abierto = true; }
   else if (t.id === 'inMutTasa') { S.mut.tasa = t.value; S.mut.abierto = true; }
+  else if (t.id === 'inIngresoCalc') {
+    const n = soloNumero(t.value);
+    S.sol.ingresoCalc = n ? n.toLocaleString('es-AR') : '';
+    if (t.value !== S.sol.ingresoCalc) t.value = S.sol.ingresoCalc;
+    $('#resRelCalc').innerHTML = htmlResultadoCalc(); // solo esta parte, para no perder el teclado
+  }
   else if (t.id === 'inIngreso') {
     const antes = relacionOk(), n = soloNumero(t.value);
     S.sol.ingreso = n ? n.toLocaleString('es-AR') : '';
@@ -1385,7 +1408,10 @@ document.addEventListener('input', (e) => {
 document.addEventListener('focusin', (e) => {
   if (e.target.id === 'inVersion') { e.target.select(); abrirLista(S.version ? '' : e.target.value); }
 });
-document.addEventListener('toggle', (e) => { if (e.target.id === 'rapOtros' && S.rap) S.rap.otros = e.target.open; }, true);
+document.addEventListener('toggle', (e) => {
+  if (e.target.id === 'rapOtros' && S.rap) S.rap.otros = e.target.open;
+  if (e.target.id === 'relCalc') S.sol.relAbierto = e.target.open;
+}, true);
 document.addEventListener('pointerdown', (e) => {
   if (!e.target.closest('.combo')) cerrarLista();
   else if (e.target.closest('#listaVersiones')) e.preventDefault(); // que el campo no pierda el foco antes del toque

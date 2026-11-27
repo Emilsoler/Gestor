@@ -7,8 +7,8 @@ import {
   leerAgencias, leerConectadas, contarSolicitudes, guardarAjustesAgencias, altaAgencia, crearAgencia, crearVendedor, activarVendedor, activarAgencia, resolverSolicitud, documentosSolicitud, leerDocumentos, eliminarSolicitud, eliminarCotizaciones, estadisticasAgencias,
   chatsAgencias, chatResumen, verChat, responderChat, cerrarChat, eliminarChat, iniciarChat, claveAvisos, registrarAvisos, quitarAvisos, probarAvisos,
 } from '../../cobranzas/datos.js';
-import { htmlAgencias, htmlConectadas, htmlFaltanGen, parametrosEnTexto, leerParametros, TABS_AGENCIAS } from './panel.js?v=20261127h';
-import { htmlRapida, nuevaRapida, calcularRapida, textoRapida } from './mostrador.js?v=20261127h';
+import { htmlAgencias, htmlConectadas, htmlFaltanGen, parametrosEnTexto, leerParametros, TABS_AGENCIAS } from './panel.js?v=20261127i';
+import { htmlRapida, nuevaRapida, calcularRapida, textoRapida } from './mostrador.js?v=20261127i';
 import { datosDeSolicitud, textoVencimientos, armarFormularios, conDomicilioDelDeudor, aplicarLectura } from './prendaforms.js';
 import { armarAsentimiento } from './asentimiento.js?v=20261127g';
 import { esc, hoy, cuantos } from '../../cobranzas/textos.js';
@@ -306,7 +306,10 @@ async function leerDocumentosGen() {
 const mm = (v) => { const n = Number(String(v ?? '').replace(',', '.')); return Number.isFinite(n) ? n : 0; };
 function datosListos(g) {
   const p = conDomicilioDelDeudor(g.p);
-  for (const k of ['monto', 'cuotas', 'cuota', 'tna']) p[k] = Number(String(p[k] ?? '').replace(',', '.')) || 0;
+  for (const k of ['monto', 'cuotas', 'cuota', 'tna']) {
+    if (k === 'tna' && String(p[k] ?? '').trim() === '-') continue; // el guion se imprime tal cual
+    p[k] = Number(String(p[k] ?? '').replace(',', '.')) || 0;
+  }
   if (!p.vencimientos) p.vencimientos = textoVencimientos(p);
   if (p.fecha) p.fecha = String(p.fecha);
   return p;
