@@ -7,10 +7,10 @@ import {
   leerAgencias, leerConectadas, contarSolicitudes, guardarAjustesAgencias, altaAgencia, crearAgencia, crearVendedor, activarVendedor, activarAgencia, resolverSolicitud, documentosSolicitud, leerDocumentos, eliminarSolicitud, eliminarCotizaciones, estadisticasAgencias,
   chatsAgencias, chatResumen, verChat, responderChat, cerrarChat, eliminarChat, iniciarChat, claveAvisos, registrarAvisos, quitarAvisos, probarAvisos,
 } from '../../cobranzas/datos.js';
-import { htmlAgencias, htmlConectadas, htmlFaltanGen, parametrosEnTexto, leerParametros, TABS_AGENCIAS } from './panel.js';
+import { htmlAgencias, htmlConectadas, htmlFaltanGen, parametrosEnTexto, leerParametros, TABS_AGENCIAS } from './panel.js?v=20261127g';
 import { htmlMostrador, htmlRapida, nuevoMostrador, nuevaRapida, cargarMarcas, cambioMostrador, agregarDocs, accionMostrador, calcularRapida, textoRapida } from './mostrador.js';
 import { datosDeSolicitud, textoVencimientos, armarFormularios, conDomicilioDelDeudor, aplicarLectura } from './prendaforms.js';
-import { armarAsentimiento } from './asentimiento.js';
+import { armarAsentimiento } from './asentimiento.js?v=20261127g';
 import { completarCP } from '../cp.js?v=20261127f';
 import { esc, hoy, cuantos } from '../../cobranzas/textos.js';
 

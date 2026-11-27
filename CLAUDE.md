@@ -1035,8 +1035,8 @@ Mutual y no nombra a InfoAuto.
   consultas a sitios externos, no pisa lo escrito a mano y queda siempre editable. No agregar localidades sin confirmar el dato.
 - **Nupcias** (`datos.matrimonio_nupcias`, obligatorio si es casado/a; sin migración; las solicitudes anteriores no lo traen).
 - **Asentimiento conyugal** (`docs/agencias/master/asentimiento.js`): con «Generar PRENDA» de un deudor casado/a bajan dos PDF, el
-  Formulario 03 y el asentimiento (hoja completa A4, en papel común), con el texto del modelo de la persona. El N° de contrato de prenda
-  se escribe en la pantalla de revisión; lo que falta queda en blanco y se avisa; las firmas quedan vacías. El modelo que mandó la persona
+  Formulario 03 y el asentimiento (hoja completa A4, en papel común), con el texto del modelo de la persona, con dos cambios que pidió el mismo
+  día: **sin N° de contrato de prenda** (ni se pide ni se imprime) y **sin «COMPRE»** (quedó «A) VENDA; B) GRAVE…»). Lo que falta queda en blanco y se avisa; las firmas quedan vacías. El modelo que mandó la persona
   tiene datos reales: no va al repositorio. Prueba sin stack: `asentimiento-cp-puro.test.mjs`.
 
 ### Documentación para el Registro del Automotor (nov 2026, pedido de la persona del 24/11/2026)

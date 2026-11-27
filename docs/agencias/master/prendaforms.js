@@ -405,8 +405,8 @@ export function datosDeSolicitud(x, hoy = '') {
   }
   if (d.nacionalidad) p.deudor.nacionalidad = String(d.nacionalidad);
   if (d.nacimiento) p.deudor.nacimiento = String(d.nacimiento);
-  // Para el asentimiento conyugal. El N° de contrato no está en la solicitud: se escribe a mano.
-  p.asentimiento = { contrato: '', nupcias: String(d.matrimonio_nupcias || ''), lugar: String(d.matrimonio_lugar || ''), fecha: String(d.matrimonio_fecha || '') };
+  // Para el asentimiento conyugal (sin N° de contrato: la persona pidió no pedirlo ni ponerlo, 27/11/2026).
+  p.asentimiento = { nupcias: String(d.matrimonio_nupcias || ''), lugar: String(d.matrimonio_lugar || ''), fecha: String(d.matrimonio_fecha || '') };
   // Cónyuge: lo que la agencia cargó en la solicitud (solo si el cliente es casado/a). La profesión no se pide: queda para completar.
   if (d.estado_civil === 'casado' && d.conyuge_nombre) {
     const edad = edadDe(d.conyuge_nacimiento, hoy);

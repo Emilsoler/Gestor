@@ -6,7 +6,7 @@ import { esc, plata, cuantos } from '../../cobranzas/textos.js';
 // Los casilleros de documentos y los nombres de las categorías son los del cotizador (un solo lugar).
 import { CATEGORIAS, DOCS, docsSinAdjuntar, dniDelCuit } from '../solicitud.js';
 import { faltanFormularios, textoVencimientos, conDomicilioDelDeudor } from './prendaforms.js';
-import { faltanAsentimiento } from './asentimiento.js';
+import { faltanAsentimiento } from './asentimiento.js?v=20261127g';
 
 // La fila fija de las ventas en la Mutual (migración 0057). Las pantallas de «Nuevo crédito» y «Cotización rápida»
 // las pasa app.js: así este archivo no arrastra la conexión con la base.
@@ -214,7 +214,7 @@ const GEN_PRENDA = [
   ['Vehículo (del título del automotor)', [['vehiculo.dominio', 'Dominio', 't'], ['vehiculo.marca', 'Marca', 't'], ['vehiculo.tipo', 'Tipo', 't'], ['vehiculo.modelo', 'Modelo', 't'], ['vehiculo.marcaMotor', 'Marca del motor', 't'], ['vehiculo.motor', 'N° de motor', 't'], ['vehiculo.marcaChasis', 'Marca del chasis', 't'], ['vehiculo.chasis', 'N° de chasis', 't']]],
 ];
 // Solo con la PRENDA de un deudor casado/a: lo que lleva el asentimiento conyugal y no está en los otros grupos.
-const GEN_ASENTIMIENTO = ['Asentimiento conyugal (sale junto con la PRENDA, en otro PDF)', [['asentimiento.contrato', 'Contrato de prenda N°', 't'], ['asentimiento.nupcias', 'Nupcias (1, 2…)', 't'], ['asentimiento.lugar', 'Lugar del matrimonio', 't'], ['asentimiento.fecha', 'Fecha del matrimonio', 'd'], ['conyuge.dni', 'DNI del cónyuge', 't'], ['conyuge.domicilio', 'Domicilio del cónyuge', 't'], ['vehiculo.anio', 'Año del vehículo', 't']]];
+const GEN_ASENTIMIENTO = ['Asentimiento conyugal (sale junto con la PRENDA, en otro PDF)', [['asentimiento.nupcias', 'Nupcias (1, 2…)', 't'], ['asentimiento.lugar', 'Lugar del matrimonio', 't'], ['asentimiento.fecha', 'Fecha del matrimonio', 'd'], ['conyuge.dni', 'DNI del cónyuge', 't'], ['conyuge.domicilio', 'Domicilio del cónyuge', 't'], ['vehiculo.anio', 'Año del vehículo', 't']]];
 // El tercer elemento (true) deja el grupo plegado: son datos que casi siempre son los mismos y vienen ya cargados.
 const GEN_CONTRATOS = [
   ['Datos del contrato', [['fecha', 'Fecha', 'd'], ['lugar', 'Lugar', 't'], ['monto', 'Monto del crédito ($)', 'n'], ['cuotas', 'Cantidad de cuotas', 'n'], ['cuota', 'Valor de la cuota ($)', 'n'], ['tna', 'Interés anual (TNA %)', 'n']]],

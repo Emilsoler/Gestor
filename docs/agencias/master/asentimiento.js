@@ -25,7 +25,7 @@ const importe = (n) => (Number(n) > 0 ? `$${Number(n).toLocaleString('es-AR', { 
 export function datosAsentimiento(p) {
   const d = p.deudor || {}, c = p.conyuge || {}, v = p.vehiculo || {}, a = p.asentimiento || {};
   return {
-    contrato: limpio(a.contrato), acreedor: limpio(p.acreedor?.nombre), deudor: limpio(d.nombre), monto: importe(p.monto),
+    acreedor: limpio(p.acreedor?.nombre), deudor: limpio(d.nombre), monto: importe(p.monto),
     nupcias: limpio(a.nupcias), lugar: limpio(a.lugar), fecha: fechaConDia(a.fecha),
     marca: limpio(v.marca), modelo: limpio(v.modelo), anio: limpio(v.anio), motor: limpio(v.motor), marcaMotor: limpio(v.marcaMotor),
     chasis: limpio(v.chasis), marcaChasis: limpio(v.marcaChasis), dominio: limpio(v.dominio),
@@ -36,7 +36,7 @@ export function datosAsentimiento(p) {
 /** Lo que va a quedar en blanco, para avisarlo en pantalla. */
 export function faltanAsentimiento(p) {
   const x = datosAsentimiento(p);
-  return [['contrato', 'N° de contrato de prenda'], ['nupcias', 'nupcias'], ['lugar', 'lugar del matrimonio'], ['fecha', 'fecha del matrimonio'],
+  return [['nupcias', 'nupcias'], ['lugar', 'lugar del matrimonio'], ['fecha', 'fecha del matrimonio'],
     ['nombre', 'nombre del cónyuge'], ['dni', 'DNI del cónyuge'], ['domicilio', 'domicilio del cónyuge'], ['marcaMotor', 'marca del motor'],
     ['motor', 'N° de motor'], ['marcaChasis', 'marca del chasis'], ['chasis', 'N° de chasis'], ['dominio', 'dominio'], ['anio', 'año']]
     .filter(([k]) => !x[k]).map(([, t]) => t);
@@ -46,7 +46,7 @@ export function textoAsentimiento(x) {
   const o = (v) => v || BLANCO;
   return {
     comparece: `En mi carácter de cónyuge en ${x.nupcias ? `${x.nupcias}°` : '......'} nupcias de ${o(x.deudor)}, por matrimonio contraído en ${o(x.lugar)}, en el día ${o(x.fecha)}.`,
-    asiento: 'Doy mi expreso asentimiento en los términos del art.470 inc. A de Cod.Civ. y Com. (Ley Nro. 26994), para que mi nombrado cónyuge: A) COMPRE; B) VENDA; C) GRAVE CON DERECHO REAL DE PRENDA CON REGISTROS, del automotor cuyos datos se consignan a continuación:',
+    asiento: 'Doy mi expreso asentimiento en los términos del art.470 inc. A de Cod.Civ. y Com. (Ley Nro. 26994), para que mi nombrado cónyuge: A) VENDA; B) GRAVE CON DERECHO REAL DE PRENDA CON REGISTROS, del automotor cuyos datos se consignan a continuación:',
     certifica: 'Certificamos que la firma correspondiente al cónyuge del deudor es auténtica.',
   };
 }
@@ -92,7 +92,7 @@ export async function armarAsentimiento(p) {
   const titulo = 'ASENTIMIENTO CONYUGAL', wt = fb.widthOfTextAtSize(titulo, 14);
   centrado(titulo, y, { f: fb, tam: 14 }); raya((W - wt) / 2, (W + wt) / 2, y - 3);
   y -= 34;
-  for (const [r, v] of [['Contrato de Prenda N°:', x.contrato], ['Acreedor:', x.acreedor], ['Deudor:', x.deudor], ['Monto:', x.monto]]) {
+  for (const [r, v] of [['Acreedor:', x.acreedor], ['Deudor:', x.deudor], ['Monto:', x.monto]]) {
     campo(r, v, IZQ, y, fn.widthOfTextAtSize(r, 11) + 8); y -= 19;
   }
   y = parrafo(t.comparece, y - 16);

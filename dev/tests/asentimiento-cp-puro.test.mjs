@@ -17,7 +17,9 @@ test('el asentimiento toma lo que cargó la agencia y deja en blanco lo que no e
   const x = datosAsentimiento(p);
   assert.equal(x.monto, '$15.242.800,00'); assert.equal(x.dni, '22.333.444'); assert.equal(x.fecha, 'lunes, 10 de mayo de 2010');
   assert.equal(textoAsentimiento(x).comparece, 'En mi carácter de cónyuge en 1° nupcias de PEREZ JUAN CARLOS, por matrimonio contraído en Bell Ville, en el día lunes, 10 de mayo de 2010.');
-  assert.ok(faltanAsentimiento(p).includes('N° de contrato de prenda'));
+  const textos = textoAsentimiento(x);
+  assert.ok(!/COMPRE/.test(textos.asiento) && textos.asiento.includes('A) VENDA; B) GRAVE'));
+  assert.ok(!faltanAsentimiento(p).some((t) => /contrato/i.test(t)));
   assert.ok(!faltanAsentimiento(p).includes('lugar del matrimonio'));
   const viejo = datosDeSolicitud({ ...sol, datos: { estado_civil: 'casado' } }, '2026-11-27');
   assert.ok(faltanAsentimiento(viejo).includes('nupcias'));
@@ -28,9 +30,9 @@ test('el asentimiento toma lo que cargó la agencia y deja en blanco lo que no e
 test('el asentimiento es una sola hoja, también con datos largos o vacíos', async () => {
   const p = datosDeSolicitud(sol, '2026-11-27');
   Object.assign(p.vehiculo, { dominio: 'AB123CD', motor: 'R59AB0000000', chasis: '9BFZE00N000000000', marcaMotor: 'FORD', marcaChasis: 'FORD' });
-  p.asentimiento.contrato = '12345';
   const bytes = await armarAsentimiento(p);
   assert.equal((await PDFDocument.load(bytes)).getPageCount(), 1);
+  assert.deepEqual(faltanAsentimiento(p), []); // con los datos del vehículo cargados no falta nada
   if (process.env.GUARDAR_PDF) writeFileSync(`${process.env.GUARDAR_PDF}/asentimiento.pdf`, bytes);
   p.deudor.nombre = 'APELLIDO MUY LARGO '.repeat(8); p.vehiculo.modelo = 'MODELO LARGUISIMO '.repeat(10); p.conyuge.domicilio = '';
   assert.equal((await PDFDocument.load(await armarAsentimiento(p))).getPageCount(), 1);
