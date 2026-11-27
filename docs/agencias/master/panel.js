@@ -453,10 +453,11 @@ function htmlAvisos(C) {
     no: '<p class="m0">Este dispositivo no puede recibir avisos desde acá. <b>En el iPhone</b>: abrí el panel máster en Safari, tocá Compartir → «Agregar a pantalla de inicio» y entrá desde ese ícono (hace falta iOS 16.4 o más nuevo).</p>',
     denegado: '<p class="m0">Los avisos están bloqueados para esta app. Activalos en <b>Ajustes del iPhone → Notificaciones → Máster Bell</b> y volvé acá.</p>',
     inactivo: '<p class="m0">Activalos para que te suene el celular cuando una agencia quiera hablar con vos, aunque no tengas la app abierta.</p><div class="actions"><button class="btn primary" data-a="ag-push-activar">Activar avisos en este celular</button></div>',
+    error: '<p class="m0">No pude revisar los avisos. Cerrá el panel del todo y volvé a abrirlo.</p>',
     activo: '<p class="m0">Los avisos están activados en este dispositivo.</p><div class="actions"><button class="btn" data-a="ag-push-probar">Mandarme un aviso de prueba</button><button class="btn" data-a="ag-push-quitar">Desactivar</button></div>',
   }[st] || '';
   return `<section class="card"><div class="card-cab"><h3>Avisos al celular</h3></div>${cuerpo}${C.pushMsg ? `<p class="aviso-chico" role="status">${esc(C.pushMsg)}</p>` : ''}
-    <p class="hint m0">Si el aviso no llega, igual ves el pedido acá, con la insignia en la solapa Agencias.</p></section>`;
+    <p class="hint m0">Si el aviso no llega, igual ves el pedido acá, en las conversaciones.</p></section>`;
 }
 
 function htmlHilo(C) {

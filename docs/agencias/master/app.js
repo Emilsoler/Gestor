@@ -197,6 +197,14 @@ async function abrirHiloAgencia(id) {
 // ── Avisos al celular (Web Push). El service worker (sw.js) los muestra; la función los manda. ──
 const deB64u = (x) => Uint8Array.from(atob(String(x).replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (String(x).length % 4)) % 4)), (c) => c.charCodeAt(0));
 const sePuedeAvisar = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && window.isSecureContext;
+/** El service worker puede no quedar listo nunca (si no se pudo registrar): se espera un rato y se avisa, sin quedarse «revisando». */
+const swListo = () => Promise.race([navigator.serviceWorker.ready, new Promise((_, no) => setTimeout(() => no(new Error('sin service worker')), 8000))]);
+/** Al entrar a Chats, aunque el panel haya abierto en otra solapa: las conversaciones al día y cómo están los avisos. */
+async function entrarAChats() {
+  revisarAvisos();
+  await cargarChats(true);
+  if (S.ag.tab === 'chats') render();
+}
 /** Mira cómo está este dispositivo: no puede, bloqueado, sin activar o activado. */
 async function revisarAvisos() {
   const C = S.ag.chat;
@@ -204,9 +212,9 @@ async function revisarAvisos() {
   try {
     if (sePuedeAvisar()) {
       if (Notification.permission === 'denied') estado = 'denegado';
-      else estado = (await (await navigator.serviceWorker.ready).pushManager.getSubscription()) ? 'activo' : 'inactivo';
+      else estado = (await (await swListo()).pushManager.getSubscription()) ? 'activo' : 'inactivo';
     }
-  } catch { estado = 'no'; }
+  } catch { estado = 'error'; }
   if (C.push !== estado) { C.push = estado; render(); }
 }
 async function activarAvisos() {
@@ -214,7 +222,7 @@ async function activarAvisos() {
   C.pushMsg = '';
   try {
     if ((await Notification.requestPermission()) !== 'granted') { C.pushMsg = 'No diste el permiso: los avisos quedaron apagados.'; await revisarAvisos(); render(); return; }
-    const reg = await navigator.serviceWorker.ready;
+    const reg = await swListo();
     let sub = await reg.pushManager.getSubscription();
     if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: deB64u(await claveAvisos()) });
     await registrarAvisos(sub.toJSON(), navigator.userAgent);
@@ -225,7 +233,7 @@ async function activarAvisos() {
 async function quitarAvisosAca() {
   const C = S.ag.chat;
   try {
-    const sub = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
+    const sub = await (await swListo()).pushManager.getSubscription();
     if (sub) { await quitarAvisos(sub.endpoint).catch(() => {}); await sub.unsubscribe(); }
     C.push = 'inactivo'; C.pushMsg = 'Avisos desactivados en este dispositivo.';
   } catch (e) { C.pushMsg = mensaje(e, 'no se pudieron desactivar'); }
@@ -368,7 +376,7 @@ async function accionAgencias(act, b) {
   if (act === 'ag-tab') {
     G.tab = b.dataset.tab; G.msg = ''; G.nueva = null; G.borrarCot = ''; G.verCot = ''; G.selCot.clear(); G.chat.hilo = null; G.chat.error = '';
     try { localStorage.setItem('cb.agTab', G.tab); } catch { /* sin almacenamiento */ }
-    render(); if (G.tab === 'estadisticas') cargarEstadisticas(); return;
+    render(); if (G.tab === 'estadisticas') cargarEstadisticas(); if (G.tab === 'chats') entrarAChats(); return;
   }
   if (act === 'ag-est-dias') { G.est.dias = b.dataset.dias === '' ? null : Number(b.dataset.dias); cargarEstadisticas(); return; }
   if (act === 'ag-docs') {
@@ -531,6 +539,8 @@ function seguirEnlace() {
   abrirChats();
 }
 window.addEventListener('hashchange', seguirEnlace);
+// Al volver de los ajustes del teléfono, el permiso pudo haber cambiado.
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.pantalla === 'listo' && S.ag.tab === 'chats') revisarAvisos(); });
 if ('serviceWorker' in navigator && window.isSecureContext) {
   navigator.serviceWorker.register('sw.js').catch(() => { /* el panel funciona igual sin él */ });
   navigator.serviceWorker.addEventListener('message', (e) => { if (e.data?.abrir === 'chats' && S.pantalla === 'listo') abrirChats(); });
